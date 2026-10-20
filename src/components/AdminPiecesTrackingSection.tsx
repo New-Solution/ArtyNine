@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useApp, getRiyadhDateString } from '../context/AppContext';
 import { 
   Flame, LayoutGrid, List, Search, Filter, AlertCircle, X, Check, 
@@ -11,6 +11,7 @@ import {
   Camera, Hash, Upload
 } from 'lucide-react';
 import { PotteryPiece, isStageEnabled, PIECE_END_STATES } from '../types';
+import { PieceImage, PiecePhotoError, compressPiecePhoto, uploadPiecePhoto } from '../lib/pieceImages';
 
 /**
  * A suggested code that is not already on the board.
@@ -138,7 +139,15 @@ export const AdminPiecesTrackingSection: React.FC = () => {
   const [pieceType, setPieceType] = useState('Mug');
   const [pieceCodeInput, setPieceCodeInput] = useState(() => suggestPieceCode(pieces));
   const [pieceNameInput, setPieceNameInput] = useState('Custom Clay Vessel');
+  // customPhotoUrl is the local preview only; customPhotoRef is the uploaded
+  // photo's storage reference, which is what the piece record stores.
   const [customPhotoUrl, setCustomPhotoUrl] = useState('');
+  const [customPhotoRef, setCustomPhotoRef] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  // Picking a second photo while the first is still uploading must not let the
+  // first one's result land last.
+  const photoAttemptRef = useRef(0);
   const [dateCreatedInput, setDateCreatedInput] = useState(() => new Date().toISOString().split('T')[0]);
   const [assignedStaffInput, setAssignedStaffInput] = useState('');
   const [initialStatus, setInitialStatus] = useState<PotteryPiece['status']>('Created');
@@ -329,14 +338,56 @@ export const AdminPiecesTrackingSection: React.FC = () => {
   const stageColor = (name: string) =>
     orderedStages.find(stage => stage.name === name)?.color;
 
-  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const clearCustomPhoto = () => {
+    photoAttemptRef.current++;
+    if (customPhotoUrl.startsWith('blob:')) URL.revokeObjectURL(customPhotoUrl);
+    setCustomPhotoUrl('');
+    setCustomPhotoRef('');
+    setPhotoUploading(false);
+    setPhotoError('');
+  };
+
+  /**
+   * Compresses the photo and uploads it to Storage straight away, so the piece
+   * record only ever carries a short reference. This used to read the file
+   * into a base64 data URL and store that in pieces.image — thirty of those
+   * made the pieces table too heavy to read at all.
+   */
+  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCustomPhotoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    // Cleared so picking the same file again still fires onChange.
+    e.target.value = '';
+    if (!file) return;
+
+    clearCustomPhoto();
+    const attempt = photoAttemptRef.current;
+    setPhotoUploading(true);
+    let previewUrl = '';
+
+    try {
+      const photo = await compressPiecePhoto(file);
+      if (attempt !== photoAttemptRef.current) return;
+      previewUrl = URL.createObjectURL(photo);
+      setCustomPhotoUrl(previewUrl);
+
+      const reference = await uploadPiecePhoto(photo);
+      if (attempt !== photoAttemptRef.current) return;
+      setCustomPhotoRef(reference);
+    } catch (err) {
+      if (attempt !== photoAttemptRef.current) return;
+      const code = err instanceof PiecePhotoError ? err.code : 'upload-failed';
+      setPhotoError(
+        code === 'undecodable'
+          ? t('This photo format cannot be read here (HEIC photos often cannot be read on a computer). Use the phone camera, or upload a JPEG or PNG.', 'لا يمكن قراءة صيغة هذه الصورة هنا (غالبًا لا يمكن قراءة صور HEIC على الكمبيوتر). استخدم كاميرا الهاتف أو ارفع صورة JPEG أو PNG.')
+          : code === 'too-large'
+            ? t('This photo is too large even after compression (5MB limit).', 'هذه الصورة كبيرة جدًا حتى بعد الضغط (الحد 5 ميجابايت).')
+            : t('The photo could not be uploaded. Check your connection and try again.', 'تعذّر رفع الصورة. تحقق من الاتصال وحاول مرة أخرى.')
+      );
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setCustomPhotoUrl('');
+      setCustomPhotoRef('');
+    } finally {
+      if (attempt === photoAttemptRef.current) setPhotoUploading(false);
     }
   };
 
@@ -508,6 +559,14 @@ export const AdminPiecesTrackingSection: React.FC = () => {
   const selectedPiece = useMemo(() => {
     return pieces.find(p => p.id === selectedPieceId) || null;
   }, [pieces, selectedPieceId]);
+
+  // Shown for a piece with no photo, while its signed URL is pending, and when
+  // the photo cannot be loaded — never a broken image.
+  const photoPlaceholder = (
+    <div className="flex h-full w-full items-center justify-center text-brand-charcoal/30">
+      <Camera className="h-6 w-6" />
+    </div>
+  );
 
   return (
     <div className="p-4 sm:p-6 space-y-6 min-w-0 text-left bg-brand-cream min-h-full">
@@ -757,7 +816,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                       >
                         {/* Image */}
                         <div className="aspect-video w-full rounded-lg overflow-hidden bg-brand-sand shrink-0">
-                          <img src={p.image} alt={p.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                          <PieceImage value={p.image} alt={p.name} className="h-full w-full object-cover" fallback={photoPlaceholder} />
                         </div>
 
                         {/* Title and stats */}
@@ -947,7 +1006,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
               {/* Left Column: Big Photo Preview */}
               <div className="space-y-4">
                 <div className="aspect-square w-full rounded-2xl overflow-hidden border border-brand-clay bg-brand-sand">
-                  <img src={selectedPiece.image} alt={selectedPiece.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  <PieceImage value={selectedPiece.image} alt={selectedPiece.name} className="h-full w-full object-cover" fallback={photoPlaceholder} />
                 </div>
                 
                 <div className="space-y-1.5">
@@ -1629,6 +1688,18 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                         />
                       </label>
                       <p className="text-[9px] text-brand-charcoal/60 leading-tight">{t('Use phone camera to snap piece photo directly.', 'استخدم كاميرا الهاتف لالتقاط صورة القطعة مباشرة.')}</p>
+                      {photoUploading && (
+                        <p className="text-[10px] font-bold text-brand-charcoal/70 flex items-center gap-1">
+                          <RefreshCw className="h-3 w-3 animate-spin" />
+                          {t('Uploading photo…', 'جارٍ رفع الصورة…')}
+                        </p>
+                      )}
+                      {photoError && (
+                        <p className="text-[10px] font-bold text-red-700 flex items-start gap-1 leading-tight">
+                          <AlertCircle className="h-3 w-3 shrink-0 mt-px" />
+                          {photoError}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1718,6 +1789,11 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     return;
                   }
 
+                  if (photoUploading) {
+                    alert(t('The photo is still uploading. Please wait a moment.', 'لا تزال الصورة قيد الرفع. يرجى الانتظار قليلًا.'));
+                    return;
+                  }
+
                   // Uniqueness check for Piece Code
                   const normalizedPieceCode = pieceCodeInput.trim().toUpperCase();
                   const codeExists = pieces.some(p => {
@@ -1760,7 +1836,9 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     // photographed was stored carrying a picture of someone
                     // else's mug — which the customer then reads as their own
                     // pottery on My Pieces.
-                    image: customPhotoUrl || '',
+                    // The storage reference, never the photo itself: see
+                    // handleCameraCapture. Empty when nothing was uploaded.
+                    image: customPhotoRef || '',
                     status: initialStatus,
                     assignedStaff: assignedStaffInput,
                     storageLocation: storageLocationInput,
@@ -1791,7 +1869,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                   setSelectedCust(null);
                   setIsNewCust(false);
                   setRelatedWorkshopId('');
-                  setCustomPhotoUrl('');
+                  clearCustomPhoto();
                   setManualNotes('');
                 }}
                 className="bg-brand-terracotta hover:bg-brand-terracotta/90 text-brand-cream font-bold py-3 rounded-xl cursor-pointer transition-colors text-center shadow-sm"
