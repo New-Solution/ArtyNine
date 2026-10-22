@@ -6,6 +6,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { CustomerAccount, Booking, QueueItem, PotteryPiece } from '../types';
+import { PieceImage } from '../lib/pieceImages';
 import { 
   Users, UserPlus, Search, Filter, Phone, Mail, Calendar, Clock, 
   Edit, CheckCircle2, AlertCircle, ShoppingBag, CreditCard, Flame, ChevronRight, 
@@ -1005,13 +1006,16 @@ export const AdminCustomersSection: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {selectedCustomerMetrics.customerPieces.map(p => (
                     <div key={p.id} className="bg-brand-cream/40 border border-brand-clay/60 rounded-2xl p-4 space-y-3 flex items-start gap-3">
-                      {p.image ? (
-                        <img src={p.image} alt={p.name} className="h-16 w-16 rounded-xl object-cover border border-brand-clay shrink-0" />
-                      ) : (
-                        <div className="h-16 w-16 rounded-xl bg-brand-terracotta/10 border border-brand-terracotta/20 flex items-center justify-center text-brand-terracotta shrink-0">
-                          <Flame className="h-6 w-6" />
-                        </div>
-                      )}
+                      <PieceImage
+                        value={p.image}
+                        alt={p.name}
+                        className="h-16 w-16 rounded-xl object-cover border border-brand-clay shrink-0"
+                        fallback={
+                          <div className="h-16 w-16 rounded-xl bg-brand-terracotta/10 border border-brand-terracotta/20 flex items-center justify-center text-brand-terracotta shrink-0">
+                            <Flame className="h-6 w-6" />
+                          </div>
+                        }
+                      />
                       <div className="flex-1 space-y-1 text-left">
                         <div className="flex justify-between items-start">
                           <span className="font-mono font-bold text-xs text-brand-terracotta">{p.pieceCode || p.id}</span>

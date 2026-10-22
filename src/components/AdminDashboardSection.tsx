@@ -10,6 +10,7 @@ import {
   TrendingUp, TrendingDown, Clock, Cake, Bell, CheckCircle2, Phone, Mail, ChevronRight, Sparkles, Filter
 } from 'lucide-react';
 import { Booking, PotteryPiece } from '../types';
+import { PieceImage } from '../lib/pieceImages';
 import { getActivitiesForDate, categorizeBooking } from '../utils/activityUtils';
 import { searchText } from '../utils/search';
 import { usePagination, TablePager } from './ui/TablePager';
@@ -696,13 +697,16 @@ export const AdminDashboardSection: React.FC = () => {
                     <td className="py-3 px-3 font-mono font-bold text-brand-terracotta">{p.pieceCode || p.id}</td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-2.5">
-                        {p.image ? (
-                          <img src={p.image} alt={p.name} className="h-9 w-9 rounded-lg object-cover border border-brand-clay shrink-0" />
-                        ) : (
-                          <div className="h-9 w-9 rounded-lg bg-brand-terracotta/10 border border-brand-terracotta/20 flex items-center justify-center text-brand-terracotta shrink-0">
-                            <Box className="h-4 w-4" />
-                          </div>
-                        )}
+                        <PieceImage
+                          value={p.image}
+                          alt={p.name}
+                          className="h-9 w-9 rounded-lg object-cover border border-brand-clay shrink-0"
+                          fallback={
+                            <div className="h-9 w-9 rounded-lg bg-brand-terracotta/10 border border-brand-terracotta/20 flex items-center justify-center text-brand-terracotta shrink-0">
+                              <Box className="h-4 w-4" />
+                            </div>
+                          }
+                        />
                         <div>
                           <p className="font-bold text-brand-charcoal">{p.name}</p>
                           <p className="text-[10px] text-brand-charcoal/50">{p.workshopName}</p>
