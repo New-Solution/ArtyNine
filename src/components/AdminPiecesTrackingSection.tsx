@@ -10,8 +10,26 @@ import {
   MapPin, User, Calendar, RefreshCw, ClipboardList, Clock, Sparkles,
   Camera, Hash, Upload
 } from 'lucide-react';
-import { PotteryPiece, isStageEnabled, PIECE_END_STATES } from '../types';
+import { PotteryPiece, isStageEnabled, PIECE_END_STATES, DEFAULT_LOGGING_FIELDS } from '../types';
 import { PieceImage, PiecePhotoError, compressPiecePhoto, uploadPiecePhoto } from '../lib/pieceImages';
+
+/**
+ * Display labels [English, Arabic] for the known piece types. The option value
+ * itself (from Settings → Pottery Logging Console) is what gets stored in the
+ * default piece name; a type not listed here shows as typed in both languages.
+ */
+const PIECE_TYPE_LABELS: Record<string, [string, string]> = {
+  'Mug': ['Mug', 'كوب'],
+  'Mug with handle': ['Mug with handle', 'كوب بمقبض'],
+  'Bowl': ['Bowl', 'وعاء'],
+  'Plate': ['Plate', 'طبق'],
+  'Vase': ['Vase', 'مزهرية'],
+  'Sculpture': ['Sculpture', 'منحوتة'],
+  'Ash tray': ['Ash tray', 'طفاية'],
+  'Other': ['Other (Trinket Box, Tile, etc.)', 'أخرى (علبة حلي، بلاطة، إلخ)']
+};
+
+const DEFAULT_PIECE_TYPES = DEFAULT_LOGGING_FIELDS.find(f => f.key === 'pieceType')?.options || [];
 
 /** The studio's numbered codes, e.g. "10.98" or "10.106". */
 const DOTTED_CODE = /^(\d+)\.(\d+)$/;
@@ -116,7 +134,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
   const {
     pieces, updatePieceStatus, addPiece, updatePiece, workshops, bookings,
     // Shared records — no local copies of customers or staff.
-    customers, queue, staff, resolveCustomer, pipelineStages
+    customers, queue, staff, resolveCustomer, pipelineStages, loggingFields
   } = useApp();
   const { lang, t } = useLanguage();
 
@@ -168,6 +186,18 @@ export const AdminPiecesTrackingSection: React.FC = () => {
 
   const [relatedWorkshopId, setRelatedWorkshopId] = useState('');
   const [pieceType, setPieceType] = useState('Mug');
+  // Piece types come from the saved Pottery Logging Console config (loggingFields
+  // already falls back to DEFAULT_LOGGING_FIELDS when nothing is saved). A config
+  // whose piece-type field was removed or left without options uses the defaults.
+  const pieceTypeOptions = useMemo(() => {
+    const saved = (loggingFields.find(f => f.key === 'pieceType')?.options || [])
+      .map(o => o.trim())
+      .filter(Boolean);
+    return saved.length > 0 ? saved : DEFAULT_PIECE_TYPES;
+  }, [loggingFields]);
+  // A remembered type that is no longer offered falls back to the first option,
+  // so the default piece name always matches what the dropdown shows.
+  const selectedPieceType = pieceTypeOptions.includes(pieceType) ? pieceType : (pieceTypeOptions[0] ?? pieceType);
   const [pieceCodeInput, setPieceCodeInput] = useState(() => nextPieceCode(pieces));
   const lastUsedPieceCode = useMemo(() => highestDottedCode(pieces), [pieces]);
   const [pieceNameInput, setPieceNameInput] = useState('Custom Clay Vessel');
@@ -1633,20 +1663,20 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                 <div className="space-y-1.5">
                   <label className="font-bold text-brand-charcoal/60 block">{t('3. Pottery Piece Type', '3. نوع قطعة الفخار')}</label>
                   <select
-                    value={pieceType}
+                    value={selectedPieceType}
                     onChange={e => {
                       setPieceType(e.target.value);
                     }}
                     className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-bold text-brand-charcoal cursor-pointer"
                   >
-                    <option value="Mug">{t('Mug', 'كوب')}</option>
-                    <option value="Mug with handle">{t('Mug with handle', 'كوب بمقبض')}</option>
-                    <option value="Bowl">{t('Bowl', 'وعاء')}</option>
-                    <option value="Plate">{t('Plate', 'طبق')}</option>
-                    <option value="Vase">{t('Vase', 'مزهرية')}</option>
-                    <option value="Sculpture">{t('Sculpture', 'منحوتة')}</option>
-                    <option value="Ash tray">{t('Ash tray', 'طفاية')}</option>
-                    <option value="Other">{t('Other (Trinket Box, Tile, etc.)', 'أخرى (علبة حلي، بلاطة، إلخ)')}</option>
+                    {pieceTypeOptions.map(option => {
+                      const label = PIECE_TYPE_LABELS[option];
+                      return (
+                        <option key={option} value={option}>
+                          {label ? t(label[0], label[1]) : option}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -1865,7 +1895,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     // photo instead of the shot uploaded below.
                     workshopId: selectedWorkshop?.id,
                     pieceCode: pieceCodeInput.trim(),
-                    name: pieceNameInput.trim() || `${pieceType} Piece`,
+                    name: pieceNameInput.trim() || `${selectedPieceType} Piece`,
                     workshopName: selectedWorkshop ? selectedWorkshop.title : 'Freestyle Handbuilding',
                     customerName: manualName.trim(),
                     customerPhone: manualPhone.trim(),
