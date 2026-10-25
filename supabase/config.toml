@@ -1,0 +1,16 @@
+# Supabase CLI configuration — per-function deploy settings ONLY.
+#
+# This file exists for one setting: send-sms-hook is called by Supabase Auth
+# (server-to-server, no user JWT) and authenticates requests by their webhook
+# signature instead, so its JWT verification must be off on every deploy.
+#
+# Every other function is not listed here and keeps the CLI default
+# (verify_jwt = true) — the same setting they get today when deployed with
+# plain `supabase functions deploy <name>`.
+#
+# ⚠️ Do NOT run `supabase config push` against this file. It holds no auth,
+# API or database settings, and pushing it could reset the hosted project's
+# settings to CLI defaults. Project settings are managed in the dashboard.
+
+[functions.send-sms-hook]
+verify_jwt = false
