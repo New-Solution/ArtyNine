@@ -239,8 +239,9 @@ export const AdminSettingsSection: React.FC = () => {
 
   const handleSaveStageEdit = async (id: string) => {
     if (!editingStageName.trim()) return;
+    // The name is never sent: existing stages can't be renamed (see the
+    // read-only name field below), only recoloured.
     await updatePipelineStage(id, {
-      name: editingStageName.trim(),
       color: editingStageColor
     });
     setEditingStageId(null);
@@ -623,12 +624,20 @@ export const AdminSettingsSection: React.FC = () => {
                         {/* Stage Name Block */}
                         <td className="p-3 font-semibold text-brand-charcoal">
                           {isEditing ? (
-                            <input
-                              type="text"
-                              value={editingStageName}
-                              onChange={e => setEditingStageName(e.target.value)}
-                              className="w-full bg-white border border-brand-clay/80 rounded-lg p-1.5 text-xs font-semibold text-brand-charcoal"
-                            />
+                            // Read-only: a piece's status IS the stage name, and
+                            // pieces_status_valid only accepts the original names,
+                            // so a rename would drop every piece off the board.
+                            <div className="space-y-1">
+                              <input
+                                type="text"
+                                value={editingStageName}
+                                disabled
+                                className="w-full bg-brand-sand/40 border border-brand-clay/60 rounded-lg p-1.5 text-xs font-semibold text-brand-charcoal/60 cursor-not-allowed"
+                              />
+                              <p className="text-[10px] font-semibold text-brand-charcoal/50">
+                                {t("Stage names can't be changed because pieces are linked to them. You can edit the customer-facing label.", 'لا يمكن تغيير اسم المرحلة لأن القطع مرتبطة به. يمكنك تعديل الاسم الظاهر للعميل.')}
+                              </p>
+                            </div>
                           ) : (
                             <div className="flex items-center gap-2">
                               <span>{stage.name}</span>
