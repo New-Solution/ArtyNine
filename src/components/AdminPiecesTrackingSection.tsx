@@ -43,6 +43,24 @@ const nextPieceCode = (existing: PotteryPiece[]): string => {
   const m = DOTTED_CODE.exec(highestDottedCode(existing) || '');
   return m ? `${m[1]}.${Number(m[2]) + 1}` : '';
 };
+
+/**
+ * Board card order within a column: "N.M" codes first, numerically (10.2, 10.98,
+ * 10.106); then any other code in natural order; pieces with no code last, by id.
+ */
+const comparePiecesByCode = (a: PotteryPiece, b: PotteryPiece): number => {
+  const ca = a.pieceCode?.trim() || '', cb = b.pieceCode?.trim() || '';
+  if (!ca || !cb) {
+    if (ca) return -1;
+    if (cb) return 1;
+    return a.id.localeCompare(b.id, undefined, { numeric: true });
+  }
+  const ma = DOTTED_CODE.exec(ca), mb = DOTTED_CODE.exec(cb);
+  if (ma && mb) return (Number(ma[1]) - Number(mb[1])) || (Number(ma[2]) - Number(mb[2]));
+  if (ma) return -1;
+  if (mb) return 1;
+  return ca.localeCompare(cb, undefined, { numeric: true });
+};
 import { PhoneInput } from './PhoneInput';
 import { DateInput } from './DateInput';
 import { formatDateTime } from '../utils/calendarConfig';
@@ -782,7 +800,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
            on the track is what allows it to scroll rather than push the page. */
         <div className="flex flex-row flex-nowrap gap-4 overflow-x-auto overscroll-x-contain pb-4 w-full min-w-0 max-w-full select-none no-scrollbar items-stretch">
           {COLUMNS.map((col) => {
-            const columnPieces = processedPieces.filter(p => p.status === col);
+            const columnPieces = processedPieces.filter(p => p.status === col).sort(comparePiecesByCode);
             
             return (
               <div 
