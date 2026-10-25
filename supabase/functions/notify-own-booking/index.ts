@@ -122,7 +122,7 @@ Deno.serve(async (req: Request) => {
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
   const { data: booking, error: bookingError } = await admin
     .from('bookings')
-    .select('id, customer_id, customer_phone, workshop_title, date, total_price, payment_status, status, customers(preferred_lang)')
+    .select('id, customer_id, customer_phone, workshop_title, date, total_price, payment_status, status')
     .eq('id', bookingId)
     .maybeSingle();
 
