@@ -551,41 +551,13 @@ export const AdminSettingsSection: React.FC = () => {
               </p>
             </div>
 
-            {/* Quick Add Stage Form */}
-            <form onSubmit={handleAddStage} className="p-4 bg-brand-sand/30 border border-brand-clay/40 rounded-2xl flex flex-wrap gap-4 items-end">
-              <div className="space-y-1.5 flex-1 min-w-[200px]">
-                <label className="text-xs font-bold text-brand-charcoal/80">{t('Stage Name', 'اسم المرحلة')}</label>
-                <input
-                  type="text"
-                  required
-                  placeholder={t('e.g. Clay Drying', 'مثال: تجفيف الطين')}
-                  value={newStageName}
-                  onChange={e => setNewStageName(e.target.value)}
-                  className="w-full bg-white border border-brand-clay/60 rounded-xl py-2 px-3 text-xs font-semibold text-brand-charcoal"
-                />
-              </div>
-
-              <div className="space-y-1.5 shrink-0">
-                <label className="text-xs font-bold text-brand-charcoal/80 block">{t('Label Color Accent', 'لون تمييز التسمية')}</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={newStageColor}
-                    onChange={e => setNewStageColor(e.target.value)}
-                    className="h-9 w-12 rounded border border-brand-clay cursor-pointer p-0"
-                  />
-                  <span className="text-xs font-mono font-bold text-brand-charcoal/60">{newStageColor.toUpperCase()}</span>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="bg-brand-charcoal hover:bg-brand-charcoal/90 text-brand-cream text-xs font-bold py-2.5 px-4 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-2 h-9"
-              >
-                <Plus className="h-4 w-4" />
-                <span>{t('Add Stage', 'إضافة مرحلة')}</span>
-              </button>
-            </form>
+            {/* Adding stages is switched off: pieces_status_valid only accepts the
+                original stage names, so a piece moved into a new stage would be
+                refused by the database. The quick-add form (handleAddStage) comes
+                back once custom stages are supported. */}
+            <p className="p-4 bg-brand-sand/30 border border-brand-clay/40 rounded-2xl text-xs font-semibold text-brand-charcoal/60">
+              {t("New stages can't be added yet.", 'لا يمكن إضافة مراحل جديدة حاليًا.')}
+            </p>
 
             {/* List Table with native drag and drop indicator */}
             <div className="border border-brand-clay/50 rounded-2xl overflow-hidden bg-white">
