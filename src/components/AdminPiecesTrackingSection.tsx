@@ -13,22 +13,35 @@ import {
 import { PotteryPiece, isStageEnabled, PIECE_END_STATES } from '../types';
 import { PieceImage, PiecePhotoError, compressPiecePhoto, uploadPiecePhoto } from '../lib/pieceImages';
 
+/** The studio's numbered codes, e.g. "10.98" or "10.106". */
+const DOTTED_CODE = /^(\d+)\.(\d+)$/;
+
 /**
- * A suggested code that is not already on the board.
- *
- * Only a suggestion — staff can type their own, and `addPiece` is the actual
- * guard. It exists so the field does not open pre-filled with a code that is
- * already taken, which is how duplicates were being typed in.
+ * The highest "N.M" piece code on the board, compared numerically (first number,
+ * then second), so 10.106 beats 10.98. Null when no piece has a code in that form.
  */
-const suggestPieceCode = (existing: PotteryPiece[]): string => {
-  const taken = new Set(
-    existing.flatMap(p => [p.pieceCode, p.id].filter(Boolean).map(v => String(v).trim().toUpperCase()))
-  );
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const candidate = `AC-${Math.floor(1000 + Math.random() * 9000)}`;
-    if (!taken.has(candidate)) return candidate;
+const highestDottedCode = (existing: PotteryPiece[]): string | null => {
+  let best: { major: number; minor: number; code: string } | null = null;
+  for (const p of existing) {
+    const code = p.pieceCode?.trim() || '';
+    const m = DOTTED_CODE.exec(code);
+    if (!m) continue;
+    const major = Number(m[1]), minor = Number(m[2]);
+    if (!best || major > best.major || (major === best.major && minor > best.minor)) {
+      best = { major, minor, code };
+    }
   }
-  return `AC-${Date.now().toString(36).toUpperCase()}`;
+  return best?.code ?? null;
+};
+
+/**
+ * The prefill for a new piece: the number after the highest "N.M" code, or empty
+ * when there is none. Only a suggestion — staff can type their own, and the
+ * duplicate check on save plus `addPiece` are the actual guards.
+ */
+const nextPieceCode = (existing: PotteryPiece[]): string => {
+  const m = DOTTED_CODE.exec(highestDottedCode(existing) || '');
+  return m ? `${m[1]}.${Number(m[2]) + 1}` : '';
 };
 import { PhoneInput } from './PhoneInput';
 import { DateInput } from './DateInput';
@@ -137,7 +150,8 @@ export const AdminPiecesTrackingSection: React.FC = () => {
 
   const [relatedWorkshopId, setRelatedWorkshopId] = useState('');
   const [pieceType, setPieceType] = useState('Mug');
-  const [pieceCodeInput, setPieceCodeInput] = useState(() => suggestPieceCode(pieces));
+  const [pieceCodeInput, setPieceCodeInput] = useState(() => nextPieceCode(pieces));
+  const lastUsedPieceCode = useMemo(() => highestDottedCode(pieces), [pieces]);
   const [pieceNameInput, setPieceNameInput] = useState('Custom Clay Vessel');
   // customPhotoUrl is the local preview only; customPhotoRef is the uploaded
   // photo's storage reference, which is what the piece record stores.
@@ -587,7 +601,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
           {/* Log Piece Manually Button */}
           <button
             onClick={() => {
-              setPieceCodeInput(suggestPieceCode(pieces));
+              setPieceCodeInput(nextPieceCode(pieces));
               setShowManualLogModal(true);
             }}
             className="cursor-pointer px-4 py-2 bg-brand-terracotta hover:bg-brand-terracotta/95 text-brand-cream rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all duration-200"
@@ -1653,6 +1667,11 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     />
                   </div>
                   <p className="text-[10px] text-brand-charcoal/50 font-semibold">{t('Unique piece code stamped/written on the physical piece.', 'رمز فريد مختوم أو مكتوب على القطعة الفعلية.')}</p>
+                  {lastUsedPieceCode && (
+                    <p className="text-[10px] text-brand-terracotta font-bold">
+                      {t('Last used:', 'آخر رقم مستخدم:')} <span className="font-mono">{lastUsedPieceCode}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* OPTION 6: PHONE-CAMERA CAPTURE & PHOTO PREVIEW */}
