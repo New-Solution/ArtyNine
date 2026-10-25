@@ -100,7 +100,7 @@ export const AdminDashboardSection: React.FC = () => {
       });
   }, [bookings, currentRiyadhMonth]);
 
-  // 4. OVERDUE READY-FOR-PICKUP PIECES (7+ DAYS)
+  // 4. OVERDUE READY-FOR-PICKUP PIECES (14+ DAYS)
   // overduePickupPiecesRaw is already filtered to status = 'Ready for Pickup'
   // server-side, inside get_overdue_pickup_pieces() itself (audit finding
   // C-4) — no need to re-check status here.
@@ -120,13 +120,13 @@ export const AdminDashboardSection: React.FC = () => {
           }
         }
 
-        return daysWaiting >= 7;
+        return daysWaiting >= 14;
       })
       .map(p => {
         const readyDate = p.expectedReadyDate || p.actualReadyDate || p.readyDate || p.dateCreated || todayDateStr;
         const t1 = new Date(todayDateStr).getTime();
         const t2 = new Date(readyDate.split('T')[0]).getTime();
-        let daysWaiting = p.daysElapsed || 7;
+        let daysWaiting = p.daysElapsed || 14;
         if (!isNaN(t1) && !isNaN(t2)) {
           const diffDays = Math.max(0, Math.floor((t1 - t2) / (1000 * 60 * 60 * 24)));
           daysWaiting = Math.max(daysWaiting, diffDays);
@@ -284,10 +284,10 @@ export const AdminDashboardSection: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 4: Awaiting Pickup 7+ Days */}
+        {/* Card 4: Awaiting Pickup 14+ Days */}
         <div className="bg-white border border-brand-clay/70 p-4 rounded-2xl shadow-2xs flex flex-col justify-between">
           <div className="flex justify-between items-start">
-            <span className="text-[10px] font-bold text-brand-charcoal/60 uppercase">{t('Overdue Pickup (7d+)', 'استلام متأخر (7+ أيام)')}</span>
+            <span className="text-[10px] font-bold text-brand-charcoal/60 uppercase">{t('Overdue Pickup (14d+)', 'استلام متأخر (14+ يومًا)')}</span>
             <div className="p-1.5 rounded-lg bg-amber-50 text-amber-700">
               <Box className="h-4 w-4" />
             </div>
@@ -296,7 +296,7 @@ export const AdminDashboardSection: React.FC = () => {
             <p className={`text-2xl font-bold ${overduePickupPieces.length > 0 ? 'text-amber-700' : 'text-brand-charcoal'}`}>
               {overduePickupPieces.length}
             </p>
-            <p className="text-[10px] font-semibold text-amber-800 mt-0.5">{t('Shelved & ready 7+ days', 'على الرف وجاهزة منذ 7+ أيام')}</p>
+            <p className="text-[10px] font-semibold text-amber-800 mt-0.5">{t('Shelved & ready 14+ days', 'على الرف وجاهزة منذ 14+ يومًا')}</p>
           </div>
         </div>
 
@@ -649,7 +649,7 @@ export const AdminDashboardSection: React.FC = () => {
       </div>
 
       {/* =========================================================
-          SECTION 4: AWAITING PICKUP FOR 7+ DAYS
+          SECTION 4: AWAITING PICKUP FOR 14+ DAYS
           ========================================================= */}
       <div className="bg-white border border-brand-clay/70 rounded-3xl p-6 shadow-2xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-brand-clay/50 pb-4">
@@ -658,9 +658,9 @@ export const AdminDashboardSection: React.FC = () => {
               <Box className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="font-display font-bold text-lg text-brand-charcoal">{t('Pottery Awaiting Pickup for 7+ Days', 'فخار بانتظار الاستلام منذ 7+ أيام')}</h2>
+              <h2 className="font-display font-bold text-lg text-brand-charcoal">{t('Pottery Awaiting Pickup for 14+ Days', 'فخار بانتظار الاستلام منذ 14+ يومًا')}</h2>
               <p className="text-xs text-brand-charcoal/60">
-                {t('Pieces in "Ready for Pickup" status that have been waiting on storage shelves for 7 days or longer.', 'قطع بحالة «جاهزة للاستلام» ينتظر أصحابها على أرفف التخزين منذ 7 أيام أو أكثر.')}
+                {t('Pieces in "Ready for Pickup" status that have been waiting on storage shelves for 14 days or longer.', 'قطع بحالة «جاهزة للاستلام» ينتظر أصحابها على أرفف التخزين منذ 14 يومًا أو أكثر.')}
               </p>
             </div>
           </div>
@@ -673,7 +673,7 @@ export const AdminDashboardSection: React.FC = () => {
         {overduePickupPieces.length === 0 ? (
           <div className="p-8 text-center text-xs text-brand-charcoal/50 italic bg-brand-cream/30 rounded-2xl border border-dashed border-brand-clay">
             <CheckCircle2 className="inline h-4 w-4 me-1.5 align-[-3px] text-brand-sage" />
-            {t('Excellent! No pottery pieces are currently overdue for collection (7+ days).', 'ممتاز! لا توجد قطع فخار متأخرة حاليًا عن الاستلام (7+ أيام).')}
+            {t('Excellent! No pottery pieces are currently overdue for collection (14+ days).', 'ممتاز! لا توجد قطع فخار متأخرة حاليًا عن الاستلام (14+ يومًا).')}
           </div>
         ) : (
           <>
