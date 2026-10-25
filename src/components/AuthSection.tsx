@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { PasswordField } from './PasswordField';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -23,6 +23,7 @@ import { bookingTitleLabel } from '../utils/bookingTitleLabel';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
 import { PhoneOtpFlow } from './PhoneOtpFlow';
 import { toE164Saudi } from '../utils/phoneAuth';
+import { supabase } from '../lib/supabase';
 
 /** Staggered fade-up for the title block over the photograph. */
 const textVariants = {
@@ -166,6 +167,22 @@ export const AuthSection: React.FC = () => {
     setPhoneCodeInitial(identifier && toE164Saudi(identifier) ? identifier : '');
     setPhoneCodeOpen(true);
   };
+
+  /**
+   * Whether the signed-in account signs in by phone (Supabase confirmed its
+   * number). Its phone is the sign-in identifier, so it is not changed from
+   * here. Read from the local session only — no request.
+   */
+  const [isPhoneAccount, setIsPhoneAccount] = useState(false);
+  useEffect(() => {
+    if (!PHONE_AUTH_ENABLED) return;
+    if (!currentUser || !supabase) { setIsPhoneAccount(false); return; }
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) setIsPhoneAccount(!!data.session?.user?.phone_confirmed_at);
+    });
+    return () => { cancelled = true; };
+  }, [currentUser]);
 
   /** Where a finished phone flow goes — the same places a password sign-in goes. */
   const handlePhoneFlowDone = () => {
@@ -400,6 +417,12 @@ export const AuthSection: React.FC = () => {
                   </div>
                 ))}
               </dl>
+              {isPhoneAccount && (
+                <p className="mt-3 text-[11px] text-brand-muted">
+                  {t('You sign in with this phone number, so it cannot be changed here. To change it, contact the studio.',
+                     'تسجّل الدخول برقم الجوال هذا، لذا لا يمكن تغييره من هنا. لتغييره، تواصل مع الاستوديو.')}
+                </p>
+              )}
             </div>
           </Reveal>
 
