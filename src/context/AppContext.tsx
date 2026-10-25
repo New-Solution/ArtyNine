@@ -76,7 +76,7 @@ import { validateSaudiPhone, normaliseSaudiPhone, normalisePhone } from '../util
 import { formatDate, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
 import { pieceStatusText, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 import { enumLabel } from '../utils/enumLabels';
-import { cancellationMessage } from '../../supabase/functions/notify-own-booking/logic';
+import { bookingCancellationSms } from '../../supabase/functions/_shared/bookingSmsTemplates';
 import { getConfiguredTables, computeTableStates, validateTableSelection } from '../utils/tableSeatingUtils';
 
 export {
@@ -2206,18 +2206,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     (async () => {
       try {
-        const smsText = (await customerPrefersArabic(booking.customerPhone))
-          ? cancellationMessage({
-              id: booking.id,
-              customer_id: booking.customerId ?? null,
-              customer_phone: booking.customerPhone,
-              workshop_title: booking.workshopTitle,
-              date: booking.date,
-              total_price: booking.totalPrice,
-              payment_status: refunded ? 'Refunded' : booking.paymentStatus,
-              status: 'Cancelled'
-            }, refunded, 'ar')
-          : friendlyMsg;
+        // Always English then Arabic, whatever the customer's language
+        // preference — the same shared template the Edge Functions use. The
+        // in-app notification above keeps friendlyMsg.
+        const smsText = bookingCancellationSms(refunded ? 'refunded' : 'notRefunded', {
+          workshopTitle: booking.workshopTitle,
+          date: booking.date,
+          amount: booking.totalPrice
+        });
         const { data: smsData, error: smsError } = await smsClient.functions.invoke('send-sms', {
           body: { phone: booking.customerPhone, message: smsText }
         });
