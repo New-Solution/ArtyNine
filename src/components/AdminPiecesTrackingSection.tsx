@@ -89,6 +89,7 @@ import { ConsoleModal } from './ui/ConsoleModal';
 import { useLanguage } from '../context/LanguageContext';
 import type { Lang } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
+import { pieceDaysWaiting, OVERDUE_PIECE_DAYS } from '../utils/pieceDays';
 import { KILN_TEXTS, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 
 /** Stored status of the stage staff see as "Kiln Time" (see enumLabels.ts). */
@@ -144,7 +145,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
   const {
     pieces, updatePieceStatus, addPiece, updatePiece, workshops, bookings,
     // Shared records — no local copies of customers or staff.
-    customers, queue, staff, resolveCustomer, pipelineStages, loggingFields
+    customers, queue, staff, resolveCustomer, pipelineStages, loggingFields, todayDateStr
   } = useApp();
   const { lang, t } = useLanguage();
 
@@ -624,7 +625,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
     }
 
     if (overdueOnly) {
-      result = result.filter(p => p.status !== 'Collected' && p.daysElapsed >= 10);
+      result = result.filter(p => p.status !== 'Collected' && pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS);
     }
 
     if (awaitingCollectionOnly) {
@@ -642,7 +643,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
     }
 
     return result;
-  }, [pieces, debouncedSearch, overdueOnly, awaitingCollectionOnly, startDate, endDate, dateField]);
+  }, [pieces, debouncedSearch, overdueOnly, awaitingCollectionOnly, startDate, endDate, dateField, todayDateStr]);
 
   /* Ten rows a page in the table. The board is unaffected — its columns are
      already bounded by their own scroll. */
@@ -751,7 +752,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
               }`}
             >
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>{t('Overdue Only (>=10 days)', 'المتأخرة فقط (10 أيام أو أكثر)')}</span>
+              <span>{t('Overdue Only (>=14 days)', 'المتأخرة فقط (14 يومًا أو أكثر)')}</span>
             </button>
 
             <button
@@ -889,7 +890,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                 {/* Column Cards */}
                 <div className="flex-1 overflow-y-auto pr-1 py-1 mt-3 space-y-3 flex flex-col no-scrollbar">
                   {columnPieces.map((p) => {
-                    const isOverdue = p.daysElapsed >= 10 && col !== 'Collected';
+                    const isOverdue = pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS && col !== 'Collected';
                     return (
                       <div
                         key={p.id}
@@ -940,7 +941,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                           <span className={`font-bold uppercase tracking-wider text-[9px] shrink-0 ${
                             isOverdue ? 'text-red-500 animate-pulse font-extrabold' : 'text-brand-charcoal/40'
                           }`}>
-                            {p.daysElapsed} {t('days', 'يوم')}
+                            {pieceDaysWaiting(p, todayDateStr)} {t('days', 'يوم')}
                           </span>
                         </div>
 
@@ -978,7 +979,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-brand-clay/30">
                 {tablePager.pageItems.map((p) => {
-                  const isOverdue = p.daysElapsed >= 10 && p.status !== 'Collected';
+                  const isOverdue = pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS && p.status !== 'Collected';
                   return (
                     <tr 
                       key={p.id}

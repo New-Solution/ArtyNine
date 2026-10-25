@@ -16,6 +16,7 @@ import { searchText } from '../utils/search';
 import { usePagination, TablePager } from './ui/TablePager';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
+import { pieceDaysWaiting, OVERDUE_PIECE_DAYS } from '../utils/pieceDays';
 
 export const AdminDashboardSection: React.FC = () => {
   const {
@@ -105,37 +106,11 @@ export const AdminDashboardSection: React.FC = () => {
   // server-side, inside get_overdue_pickup_pieces() itself (audit finding
   // C-4) — no need to re-check status here.
   const overduePickupPieces = useMemo(() => {
+    // Days waiting: the shared rule in utils/pieceDays.ts, also used by the
+    // Pottery Pieces page's overdue filter, so the two can't drift apart.
     return overduePickupPiecesRaw
-      .filter(p => {
-        // Calculate days waiting since ready date or daysElapsed
-        const readyDate = p.expectedReadyDate || p.actualReadyDate || p.readyDate || p.dateCreated || todayDateStr;
-        let daysWaiting = p.daysElapsed || 0;
-
-        if (readyDate) {
-          const t1 = new Date(todayDateStr).getTime();
-          const t2 = new Date(readyDate.split('T')[0]).getTime();
-          if (!isNaN(t1) && !isNaN(t2)) {
-            const diffDays = Math.max(0, Math.floor((t1 - t2) / (1000 * 60 * 60 * 24)));
-            daysWaiting = Math.max(daysWaiting, diffDays);
-          }
-        }
-
-        return daysWaiting >= 14;
-      })
-      .map(p => {
-        const readyDate = p.expectedReadyDate || p.actualReadyDate || p.readyDate || p.dateCreated || todayDateStr;
-        const t1 = new Date(todayDateStr).getTime();
-        const t2 = new Date(readyDate.split('T')[0]).getTime();
-        let daysWaiting = p.daysElapsed || 14;
-        if (!isNaN(t1) && !isNaN(t2)) {
-          const diffDays = Math.max(0, Math.floor((t1 - t2) / (1000 * 60 * 60 * 24)));
-          daysWaiting = Math.max(daysWaiting, diffDays);
-        }
-        return {
-          ...p,
-          daysWaiting
-        };
-      })
+      .map(p => ({ ...p, daysWaiting: pieceDaysWaiting(p, todayDateStr) }))
+      .filter(p => p.daysWaiting >= OVERDUE_PIECE_DAYS)
       .sort((a, b) => b.daysWaiting - a.daysWaiting);
   }, [overduePickupPiecesRaw, todayDateStr]);
 
