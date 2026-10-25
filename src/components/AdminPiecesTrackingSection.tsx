@@ -1719,7 +1719,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     <input
                       type="text"
                       required
-                      placeholder={t('e.g. AC-8802', 'مثال: AC-8802')}
+                      placeholder={t('e.g. 10.107', 'مثال: 10.107')}
                       value={pieceCodeInput}
                       onChange={e => {
                         pieceCodeTouchedRef.current = true;
