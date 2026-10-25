@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp, getRiyadhDateString } from '../context/AppContext';
 import { 
   Flame, LayoutGrid, List, Search, Filter, AlertCircle, X, Check, 
@@ -198,8 +198,18 @@ export const AdminPiecesTrackingSection: React.FC = () => {
   // A remembered type that is no longer offered falls back to the first option,
   // so the default piece name always matches what the dropdown shows.
   const selectedPieceType = pieceTypeOptions.includes(pieceType) ? pieceType : (pieceTypeOptions[0] ?? pieceType);
-  const [pieceCodeInput, setPieceCodeInput] = useState(() => nextPieceCode(pieces));
+  const [pieceCodeInput, setPieceCodeInput] = useState('');
   const lastUsedPieceCode = useMemo(() => highestDottedCode(pieces), [pieces]);
+  // Set once staff edit the code field; until then the field follows the next
+  // number. Computing it only on click left the field empty when the modal was
+  // opened before the piece list had loaded, while the "Last used" hint (which
+  // re-derives from pieces) filled in afterwards.
+  const pieceCodeTouchedRef = useRef(false);
+  useEffect(() => {
+    if (!showManualLogModal || pieceCodeTouchedRef.current) return;
+    const next = nextPieceCode(pieces);
+    if (next) setPieceCodeInput(next);
+  }, [showManualLogModal, pieces]);
   const [pieceNameInput, setPieceNameInput] = useState('Custom Clay Vessel');
   // customPhotoUrl is the local preview only; customPhotoRef is the uploaded
   // photo's storage reference, which is what the piece record stores.
@@ -649,6 +659,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
           {/* Log Piece Manually Button */}
           <button
             onClick={() => {
+              pieceCodeTouchedRef.current = false;
               setPieceCodeInput(nextPieceCode(pieces));
               setShowManualLogModal(true);
             }}
@@ -1710,7 +1721,10 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                       required
                       placeholder={t('e.g. AC-8802', 'مثال: AC-8802')}
                       value={pieceCodeInput}
-                      onChange={e => setPieceCodeInput(e.target.value.toUpperCase())}
+                      onChange={e => {
+                        pieceCodeTouchedRef.current = true;
+                        setPieceCodeInput(e.target.value.toUpperCase());
+                      }}
                       className="w-full bg-white border-2 border-brand-terracotta/40 rounded-xl py-2.5 pl-9 pr-3 font-mono font-bold text-brand-charcoal uppercase tracking-wider"
                     />
                   </div>
