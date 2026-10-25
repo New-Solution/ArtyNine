@@ -1578,7 +1578,7 @@ export const DEFAULT_LOGGING_FIELDS: LoggingConsoleField[] = [
     required: false,
     enabled: true,
     order: 3,
-    options: ['Mug', 'Bowl', 'Plate', 'Vase', 'Sculpture', 'Other']
+    options: ['Mug', 'Mug with handle', 'Bowl', 'Plate', 'Vase', 'Sculpture', 'Ash tray', 'Other']
   },
   {
     id: 'f_glazing_notes',

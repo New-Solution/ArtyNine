@@ -1608,10 +1608,12 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-bold text-brand-charcoal cursor-pointer"
                   >
                     <option value="Mug">{t('Mug', 'كوب')}</option>
+                    <option value="Mug with handle">{t('Mug with handle', 'كوب بمقبض')}</option>
                     <option value="Bowl">{t('Bowl', 'وعاء')}</option>
                     <option value="Plate">{t('Plate', 'طبق')}</option>
                     <option value="Vase">{t('Vase', 'مزهرية')}</option>
                     <option value="Sculpture">{t('Sculpture', 'منحوتة')}</option>
+                    <option value="Ash tray">{t('Ash tray', 'طفاية')}</option>
                     <option value="Other">{t('Other (Trinket Box, Tile, etc.)', 'أخرى (علبة حلي، بلاطة، إلخ)')}</option>
                   </select>
                 </div>
