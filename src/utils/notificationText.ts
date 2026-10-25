@@ -2,6 +2,7 @@ import type { Lang } from '../context/LanguageContext';
 import type { NotificationItem } from '../types';
 import { MONTH_NAMES } from './calendarConfig';
 import { enumLabel } from './enumLabels';
+import { KILN_TEXTS, pieceStatusText, type PieceText } from './pieceSmsTemplates';
 
 /**
  * Arabic display text for a customer notification.
@@ -38,12 +39,29 @@ export function dateAr(text: string): string | null {
 }
 
 // ---------------------------------------------------------------- pieces
-// English mirrors AppContext.tsx notifyPieceStatusChange exactly.
+// Current texts come from pieceSmsTemplates.ts — the same module AppContext.tsx
+// notifyPieceStatusChange stores (English) and sends (English + Arabic) from.
+// Titles mirror notifyPieceStatusChange exactly, including the display label for
+// 'First Burn and Colored' ("Kiln Time").
 const enPieceTitle = (s: string, code?: string) =>
   s === 'Ready for Pickup' ? 'Piece Ready for Pickup!'
   : s === 'Broken' ? `Piece ${code} marked as broken`
+  : `Piece Status Update: ${enumLabel('pieceStatus', s, 'en')}`;
+
+/** Every current template a stored message for status `s` could have been built from. */
+function currentPieceTexts(s: string, code: string): PieceText[] {
+  if (s === 'First Burn and Colored') return Object.values(KILN_TEXTS);
+  const text = pieceStatusText(s, code);
+  return text ? [text] : [];
+}
+
+// Rows written before the bilingual templates (pieceSmsTemplates.ts) keep their
+// Arabic rendering through the legacy wording below.
+const legacyEnPieceTitle = (s: string, code?: string) =>
+  s === 'Ready for Pickup' ? 'Piece Ready for Pickup!'
+  : s === 'Broken' ? `Piece ${code} marked as broken`
   : `Piece Status Update: ${s}`;
-const enPieceMsg = (s: string, n: string, code?: string, date?: string) =>
+const legacyEnPieceMsg = (s: string, n: string, code?: string, date?: string) =>
   s === 'Ready for Pickup' ? `Your beautiful pottery piece "${n}" is ready for pickup! Please come pick it up at the café shelf.`
   : s === 'Collected' ? `Thank you for picking up your piece "${n}"! We hope you loved crafting it at Arty Café.`
   : s === 'First Burn and Colored' ? `Your piece "${n}" has been through its first burn and is now being coloured.`
@@ -57,7 +75,7 @@ const arPieceTitle = (s: string, code?: string) =>
   s === 'Ready for Pickup' ? 'قطعتك جاهزة للاستلام!'
   : s === 'Broken' ? `تم تسجيل القطعة ${code} كمكسورة`
   : `تحديث حالة القطعة: ${enumLabel('pieceStatus', s, 'ar')}`;
-export const arPieceMsg = (s: string, n: string, code?: string, date?: string) =>
+const legacyArPieceMsg = (s: string, n: string, code?: string, date?: string) =>
   s === 'Ready for Pickup' ? `قطعتك الخزفية الجميلة "${n}" جاهزة للاستلام! تفضّل باستلامها من رف المقهى.`
   : s === 'Collected' ? `شكرًا لاستلامك قطعتك "${n}"! نتمنى أن تكون قد استمتعت بصناعتها في Arty Café.`
   : s === 'First Burn and Colored' ? `اجتازت قطعتك "${n}" الحرق الأول وهي الآن قيد التلوين.`
@@ -72,11 +90,19 @@ function localizePiece(n: Input): Result | null {
   if (!s || !name) return null;
   const code = s === 'Broken' ? /^Piece (.+) marked as broken$/.exec(n.title)?.[1] : undefined;
   if (s === 'Broken' && !code) return null;
+
+  // Current bilingual templates: the stored English must equal one of them exactly.
+  if (enPieceTitle(s, code) === n.title) {
+    const match = currentPieceTexts(s, code ?? '').find(text => text.en.normalize('NFC') === n.message);
+    if (match) return { title: arPieceTitle(s, code), message: match.ar };
+  }
+
+  // Older rows, stored before the bilingual templates.
   const dateEn = s === 'Created' ? /We expect it to be ready around (.+)\.$/.exec(n.message)?.[1] : undefined;
   const dateA = dateEn ? dateAr(dateEn) : undefined;
   if (dateEn && !dateA) return null;
-  if (enPieceTitle(s, code) !== n.title || enPieceMsg(s, name, code, dateEn) !== n.message) return null;
-  return { title: arPieceTitle(s, code), message: arPieceMsg(s, name, code, dateA ?? undefined) };
+  if (legacyEnPieceTitle(s, code) !== n.title || legacyEnPieceMsg(s, name, code, dateEn) !== n.message) return null;
+  return { title: arPieceTitle(s, code), message: legacyArPieceMsg(s, name, code, dateA ?? undefined) };
 }
 
 // ----------------------------------------------------------- cancellations

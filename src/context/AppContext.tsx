@@ -74,7 +74,8 @@ import {
 } from '../utils/dateUtils';
 import { validateSaudiPhone, normaliseSaudiPhone, normalisePhone } from '../utils/phoneUtils';
 import { formatDate, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
-import { pieceSmsText } from '../utils/pieceSmsText';
+import { pieceStatusText, bilingualSms, PICKUP_REMINDER_TEXT } from '../utils/pieceSmsTemplates';
+import { enumLabel } from '../utils/enumLabels';
 import { cancellationMessage } from '../../supabase/functions/notify-own-booking/logic';
 import { getConfiguredTables, computeTableStates, validateTableSelection } from '../utils/tableSeatingUtils';
 
@@ -2844,31 +2845,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     performerUser: string = 'Staff',
     reason?: string
   ) => {
-    // Generate CUSTOMER notification
-    let friendlyMsg = `Your piece "${piece.name}" has been updated to "${status}".`;
-    if (status === 'Ready for Pickup') {
-      friendlyMsg = `Your beautiful pottery piece "${piece.name}" is ready for pickup! Please come pick it up at the café shelf.`;
-    } else if (status === 'Collected') {
-      friendlyMsg = `Thank you for picking up your piece "${piece.name}"! We hope you loved crafting it at Arty Café.`;
-    } else if (status === 'First Burn and Colored') {
-      friendlyMsg = `Your piece "${piece.name}" has been through its first burn and is now being coloured.`;
-    } else if (status === 'Created') {
-      // expected_ready_date is a required field on the "Log Piece
-      // Manually" form, but degrade gracefully rather than trust that
-      // unconditionally — a missing/invalid value (data predating the
-      // field, or any future bypass of that form) falls back to the
-      // original date-less sentence instead of interpolating "" or
-      // "Invalid Date" into it.
-      const formattedReadyDate = piece.expectedReadyDate
-        ? formatDate(piece.expectedReadyDate, { year: 'numeric', month: 'long', day: 'numeric', timeZone: RIYADH_TIME_ZONE })
-        : '';
-      friendlyMsg = formattedReadyDate
-        ? `Your piece "${piece.name}" has been created and is now resting before its first burn. We expect it to be ready around ${formattedReadyDate}.`
-        : `Your piece "${piece.name}" has been created and is now resting before its first burn.`;
-    } else if (status === 'Broken') {
-      // States the outcome plainly, without exposing the internal damage note.
-      friendlyMsg = `Unfortunately, your pottery piece ${piece.pieceCode || piece.id} was damaged and has been marked as broken. Please contact Arty Café so our team can assist you with a replacement.`;
-    }
+    // Generate CUSTOMER notification. The text comes from pieceSmsTemplates.ts:
+    // the bell stores its English (notificationText.ts renders the Arabic from
+    // the same template), and the SMS sends English + Arabic together. Broken
+    // states the outcome plainly, never the internal damage note.
+    const pieceText = pieceStatusText(status, piece.pieceCode || piece.id);
+    const friendlyMsg = pieceText?.en ?? `Your piece "${piece.name}" has been updated to "${status}".`;
 
     // Stages can be configured not to notify the customer at all.
     const stageConfig = (await db.pipelineStages.toArray()).find(x => x.name === status);
@@ -2904,7 +2886,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? 'Piece Ready for Pickup!'
         : status === 'Broken'
           ? `Piece ${piece.pieceCode || piece.id} marked as broken`
-          : `Piece Status Update: ${status}`,
+          // Display label: 'First Burn and Colored' reads "Kiln Time".
+          : `Piece Status Update: ${enumLabel('pieceStatus', status, 'en')}`,
       message: friendlyMsg,
       pieceId: piece.id,
       pieceName: piece.name,
@@ -2967,10 +2950,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } else {
           (async () => {
             try {
-              // Arabic only for a customer who chose it; the English text and the in-app message are unchanged.
-              const smsText = (await customerPrefersArabic(piece.customerPhone))
-                ? pieceSmsText(piece, status, 'ar') ?? friendlyMsg
-                : friendlyMsg;
+              // Always English then Arabic, whatever the customer's language preference.
+              const smsText = pieceText ? bilingualSms(pieceText) : friendlyMsg;
               const { data: smsData, error: smsError } = await smsClient.functions.invoke('send-sms', {
                 body: { phone: piece.customerPhone, message: smsText }
               });
@@ -3612,7 +3593,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { outcome: 'sent', smsSent: false, smsError: SUPABASE_NOT_CONFIGURED };
     }
 
-    const message = `Hi ${piece.customerName}, this is a reminder that your pottery piece "${piece.name}" is ready for pickup at Arty Café! Please come collect it at the café shelf.`;
+    // English then Arabic, from pieceSmsTemplates.ts like every piece SMS.
+    const message = bilingualSms(PICKUP_REMINDER_TEXT);
 
     try {
       const { data: smsData, error: smsError } = await supabaseStaff.functions.invoke('send-sms', {
