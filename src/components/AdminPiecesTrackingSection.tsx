@@ -434,7 +434,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
     triggerToast(
       isReady ? t('Ready for Pickup!', 'جاهزة للاستلام!') : t('Status Shipped Successfully', 'تم تحديث الحالة بنجاح'),
       t(
-        `Piece ${piece.pieceCode || pieceId} (${piece.customerName}) has been updated to "${status}" by ${user}.${reason ? ` Reason: ${reason}` : ''}`,
+        `Piece ${piece.pieceCode || pieceId} (${piece.customerName}) has been updated to "${enumLabel('pieceStatus', status, 'en')}" by ${user}.${reason ? ` Reason: ${reason}` : ''}`,
         `تم تحديث القطعة ${piece.pieceCode || pieceId} (${piece.customerName}) إلى "${enumLabel('pieceStatus', status, lang)}" بواسطة ${user === 'Staff' ? 'الموظف' : user}.${reason ? ` السبب: ${displayReason(reason, t, lang)}` : ''}`
       ),
       isReady
@@ -1431,7 +1431,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
             <p className="text-xs text-brand-charcoal/70 leading-relaxed font-semibold">
               {lang === 'ar'
                 ? <>تحذير: أنت تنقل القطعة <span className="font-mono font-bold text-brand-terracotta">{backwardMoveTarget.pieceId}</span> إلى الخلف من <span className="font-bold uppercase text-brand-charcoal">{enumLabel('pieceStatus', backwardMoveTarget.currentStatus, lang)}</span> إلى <span className="font-bold uppercase text-brand-terracotta">{enumLabel('pieceStatus', backwardMoveTarget.targetStatus, lang)}</span>. يتطلب إرجاع المراحل تحققًا ومبررًا مسجَّلًا.</>
-                : <>Warning: You are moving piece <span className="font-mono font-bold text-brand-terracotta">{backwardMoveTarget.pieceId}</span> backward from <span className="font-bold uppercase text-brand-charcoal">{backwardMoveTarget.currentStatus}</span> to <span className="font-bold uppercase text-brand-terracotta">{backwardMoveTarget.targetStatus}</span>. Reverting stages requires validation and a recorded justification.</>}
+                : <>Warning: You are moving piece <span className="font-mono font-bold text-brand-terracotta">{backwardMoveTarget.pieceId}</span> backward from <span className="font-bold uppercase text-brand-charcoal">{enumLabel('pieceStatus', backwardMoveTarget.currentStatus, lang)}</span> to <span className="font-bold uppercase text-brand-terracotta">{enumLabel('pieceStatus', backwardMoveTarget.targetStatus, lang)}</span>. Reverting stages requires validation and a recorded justification.</>}
             </p>
 
             <div className="space-y-3.5 text-xs">

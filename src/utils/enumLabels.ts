@@ -3,7 +3,8 @@ import type { Lang } from '../context/LanguageContext';
 /**
  * Arabic display labels for the fixed values the console stores and compares.
  * DISPLAY ONLY: the stored/compared value is never changed. English mode and any
- * value not listed here come back exactly as given.
+ * value not listed here come back exactly as given, except for the few values in
+ * EN_LABELS below that are shown under a different English name.
  */
 const LABELS: Record<string, Record<string, string>> = {
   bookingStatus: { 'Pending': 'قيد الانتظار', 'Checked In': 'تم تسجيل الحضور', 'In Progress': 'جارٍ الآن',
@@ -18,7 +19,7 @@ const LABELS: Record<string, Record<string, string>> = {
   resourceStatus: { 'Active': 'نشط', 'Inactive': 'غير نشط', 'Maintenance': 'قيد الصيانة' },
   // Making stages of a pottery piece (pipeline_stages.name). Stage names are
   // renamable in Settings, so a renamed or custom stage falls through as typed.
-  pieceStatus:   { 'Created': 'تم الإنشاء', 'First Burn and Colored': 'الحرق الأول والتلوين',
+  pieceStatus:   { 'Created': 'تم الإنشاء', 'First Burn and Colored': 'وقت الفرن',
                    'Ready for Pickup': 'جاهزة للاستلام', 'Collected': 'تم الاستلام', 'Broken': 'مكسورة' },
   // How a broken piece was resolved; stored inside the reason text ("Resolved: Replaced").
   resolutionType: { 'Replaced': 'تم الاستبدال', 'Refunded': 'تم الاسترداد', 'Other': 'أخرى' },
@@ -56,7 +57,16 @@ const LABELS: Record<string, Record<string, string>> = {
   resourceType:   { 'Studio Room': 'قاعة استوديو', 'Table Station': 'محطة طاولة' }
 };
 
+/**
+ * English display names that differ from the stored value. DISPLAY ONLY: the
+ * piece status stays 'First Burn and Colored' in the data, the DB check, the SMS
+ * gates and every comparison; staff just see it as "Kiln Time".
+ */
+const EN_LABELS: Partial<Record<keyof typeof LABELS, Record<string, string>>> = {
+  pieceStatus: { 'First Burn and Colored': 'Kiln Time' }
+};
+
 export function enumLabel(group: keyof typeof LABELS, value: string, lang: Lang): string {
-  if (lang !== 'ar') return value;
+  if (lang !== 'ar') return EN_LABELS[group]?.[value] ?? value;
   return LABELS[group]?.[value] ?? value;
 }
