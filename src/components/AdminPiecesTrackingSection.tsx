@@ -89,7 +89,7 @@ import { ConsoleModal } from './ui/ConsoleModal';
 import { useLanguage } from '../context/LanguageContext';
 import type { Lang } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
-import { pieceDaysWaiting, OVERDUE_PIECE_DAYS } from '../utils/pieceDays';
+import { pieceDaysWaiting, OVERDUE_PIECE_DAYS, canBeOverdue } from '../utils/pieceDays';
 import { KILN_TEXTS, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 
 /** Stored status of the stage staff see as "Kiln Time" (see enumLabels.ts). */
@@ -625,7 +625,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
     }
 
     if (overdueOnly) {
-      result = result.filter(p => p.status !== 'Collected' && pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS);
+      result = result.filter(p => canBeOverdue(p.status) && pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS);
     }
 
     if (awaitingCollectionOnly) {
@@ -890,7 +890,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                 {/* Column Cards */}
                 <div className="flex-1 overflow-y-auto pr-1 py-1 mt-3 space-y-3 flex flex-col no-scrollbar">
                   {columnPieces.map((p) => {
-                    const isOverdue = pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS && col !== 'Collected';
+                    const isOverdue = pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS && canBeOverdue(col);
                     return (
                       <div
                         key={p.id}
@@ -979,7 +979,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-brand-clay/30">
                 {tablePager.pageItems.map((p) => {
-                  const isOverdue = pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS && p.status !== 'Collected';
+                  const isOverdue = pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS && canBeOverdue(p.status);
                   return (
                     <tr 
                       key={p.id}
