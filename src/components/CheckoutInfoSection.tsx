@@ -22,6 +22,8 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { bookingTitleLabel } from '../utils/bookingTitleLabel';
 import { timeLabel } from '../utils/availabilityLabel';
 import { durationLabel } from '../utils/workshopMetaLabel';
+import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
+import { PhoneOtpFlow } from './PhoneOtpFlow';
 
 export const CheckoutInfoSection: React.FC = () => {
   const {
@@ -68,6 +70,15 @@ export const CheckoutInfoSection: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [formGlobalError, setFormGlobalError] = useState<string | null>(null);
+
+  // Phone sign-in (VITE_PHONE_AUTH only). A guest verifies their phone inline
+  // instead of creating an email + password account here; a signed-in
+  // customer's phone is their account's, read-only. Both stay inert while the
+  // flag is off: `phoneFlowActive` stays false and `effectivePhone` is `phone`.
+  const [phoneFlowActive, setPhoneFlowActive] = useState(false);
+  const showGuestPhoneFlow = PHONE_AUTH_ENABLED && (!currentUser || phoneFlowActive);
+  const phoneLocked = PHONE_AUTH_ENABLED && !!currentUser && !phoneFlowActive;
+  const effectivePhone = phoneLocked ? (currentUser!.phone || phone) : phone;
   
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
@@ -83,11 +94,13 @@ export const CheckoutInfoSection: React.FC = () => {
     // must not be reported as a duplicate; a guest is creating a new account,
     // where an existing phone or email genuinely is a clash.
     const errs = await validateCustomerForm(
-      { name, email, phone, password, confirmPassword },
+      { name, email, phone: effectivePhone, password, confirmPassword },
       {
         requirePassword: !currentUser,
         excludeId: currentUser?.id,
         allowExistingCustomer: !!currentUser,
+        // Email is optional for phone accounts; unchanged (required) otherwise.
+        requireEmail: !PHONE_AUTH_ENABLED,
         lang
       }
     );
@@ -102,7 +115,7 @@ export const CheckoutInfoSection: React.FC = () => {
     if (!(await validate())) return;
 
     // One canonical stored format everywhere.
-    const normPhone = canonicalPhone(phone);
+    const normPhone = canonicalPhone(effectivePhone);
     const normEmail = canonicalEmail(email);
 
     // If currentUser is not logged in, register account explicitly
@@ -306,10 +319,33 @@ export const CheckoutInfoSection: React.FC = () => {
           ) : (
             <div className="mb-6 p-3.5 bg-brand-sage/10 rounded-2xl border border-brand-sage/30 flex items-center gap-3 text-xs text-brand-charcoal">
               <CheckCircle2 className="h-4 w-4 text-brand-sage shrink-0" />
-              <span>Signed in as <strong>{currentUser.name}</strong> ({currentUser.email})</span>
+              <span>Signed in as <strong>{currentUser.name}</strong> ({PHONE_AUTH_ENABLED && !currentUser.email ? currentUser.phone : currentUser.email})</span>
             </div>
           )}
 
+          {/* Guest + phone sign-in: verify the phone inline (send code -> verify
+              -> set password); once signed in, the form below takes over with
+              the account's details and the customer continues to payment. */}
+          {showGuestPhoneFlow ? (
+            <div className="space-y-5">
+              <PhoneOtpFlow
+                purpose="checkout"
+                initialPhone={phone}
+                onActiveChange={setPhoneFlowActive}
+                onDone={() => setPhoneFlowActive(false)}
+              />
+              <details className="group lg:hidden rounded-2xl border border-brand-clay bg-brand-sand/30">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden">
+                  <span className="min-w-0 truncate text-sm font-semibold text-brand-charcoal">{titleLabel}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="font-serif text-lg font-semibold text-brand-terracotta">{pendingBooking.totalPrice} {t('SAR', 'ريال')}</span>
+                    <ChevronDown className="h-4 w-4 text-brand-muted transition-transform group-[[open]]:rotate-180" />
+                  </span>
+                </summary>
+                <div className="space-y-4 border-t border-brand-clay p-4">{summaryBody}</div>
+              </details>
+            </div>
+          ) : (
           <form onSubmit={handleContinue} className="space-y-5">
             <div>
               <label className="block text-xs font-semibold text-brand-ink uppercase tracking-wider mb-2">
@@ -330,7 +366,10 @@ export const CheckoutInfoSection: React.FC = () => {
 
             <div>
               <label className="block text-xs font-semibold text-brand-ink uppercase tracking-wider mb-2">
-                {t('Email Address', 'البريد الإلكتروني')} <span className="text-brand-terracotta">*</span>
+                {t('Email Address', 'البريد الإلكتروني')}{' '}
+                {PHONE_AUTH_ENABLED
+                  ? <span className="normal-case tracking-normal text-brand-muted">{t('(optional)', '(اختياري)')}</span>
+                  : <span className="text-brand-terracotta">*</span>}
               </label>
               <div className="relative">
                 <Mail className="absolute start-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-charcoal/40" />
@@ -369,10 +408,16 @@ export const CheckoutInfoSection: React.FC = () => {
             */}
             <PhoneInput
               label={`${t('Saudi Mobile Phone Number', 'رقم الجوال السعودي')} *`}
-              value={phone}
+              value={effectivePhone}
               onChange={val => { setPhone(val); if (errors.phone) setErrors({...errors, phone: ''}); }}
               error={errors.phone}
+              disabled={phoneLocked}
             />
+            {phoneLocked && (
+              <p className="-mt-3 text-[11px] text-brand-muted">
+                {t('This is the number on your account. To change it, contact the studio.', 'هذا هو الرقم المسجّل في حسابك. لتغييره، تواصل مع الاستوديو.')}
+              </p>
+            )}
 
             {!currentUser && (
               <>
@@ -460,6 +505,7 @@ export const CheckoutInfoSection: React.FC = () => {
               <span>{t('Your contact details are encrypted and used solely for workshop management.', 'بياناتك مشفّرة وتُستخدم فقط لإدارة حجوزات الورش.')}</span>
             </div>
           </form>
+          )}
 
         </div>
 
