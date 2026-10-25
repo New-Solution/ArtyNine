@@ -9,8 +9,9 @@
  * `supabase secrets set`, read here via Deno.env.get()) — never hardcoded,
  * never returned to a caller, never logged. The constructed request URL
  * (which embeds both credentials as query parameters, per mShastra's own
- * API design) is likewise never logged; only the phone number and the
- * success/failure outcome are.
+ * API design) is likewise never logged — nor is a network error's message,
+ * which can quote that URL — and neither is the message text. Logs carry only
+ * the masked phone number (9665****994) and the success/failure outcome.
  *
  * Deliberately generic — `sendSms(phone, message)` sends whatever message
  * text it's given to whatever phone number it's given. It has no notion of
@@ -18,7 +19,7 @@
  * notifications work (Chunk 2) and the later OTP work can call it as-is.
  */
 
-import { toSaudiInternational, type SendSmsResult } from './smsLogic.ts';
+import { maskPhone, toSaudiInternational, type SendSmsResult } from './smsLogic.ts';
 
 export type { SendSmsResult };
 
@@ -48,6 +49,8 @@ export async function sendSms(phone: string, message: string): Promise<SendSmsRe
   }
 
   const mobileno = normalizePhoneForMshastra(phone);
+  // Logs only ever carry this masked form (9665****994), never the full number.
+  const masked = maskPhone(mobileno);
 
   // URLSearchParams handles URL-encoding (including UTF-8/Arabic message
   // text) correctly on its own — no manual encodeURIComponent needed.
@@ -66,24 +69,26 @@ export async function sendSms(phone: string, message: string): Promise<SendSmsRe
     // account password in plain text.
     res = await fetch(`${MSHASTRA_ENDPOINT}?${params.toString()}`);
   } catch (err) {
-    console.error(`sendSms: network error sending to ${mobileno}:`, err instanceof Error ? err.message : String(err));
+    // Only the error's type: its message can quote the request URL, which
+    // carries the account password.
+    console.error(`sendSms: network error sending to ${masked} (${err instanceof Error ? err.name : 'unknown error'}).`);
     return { success: false, error: 'Could not reach the SMS provider.' };
   }
 
   const body = await res.text();
 
   if (!res.ok) {
-    console.error(`sendSms: mShastra returned HTTP ${res.status} for ${mobileno}.`);
+    console.error(`sendSms: mShastra returned HTTP ${res.status} for ${masked}.`);
     return { success: false, rawResponse: body, error: `SMS provider returned HTTP ${res.status}.` };
   }
 
   // Case-sensitive, per mShastra's own documented success signal.
   const ok = body.includes('Success');
   if (!ok) {
-    console.error(`sendSms: mShastra response for ${mobileno} did not contain "Success".`);
+    console.error(`sendSms: mShastra response for ${masked} did not contain "Success".`);
     return { success: false, rawResponse: body, error: 'SMS provider did not confirm delivery.' };
   }
 
-  console.log(`sendSms: delivered to ${mobileno}.`);
+  console.log(`sendSms: delivered to ${masked}.`);
   return { success: true };
 }
