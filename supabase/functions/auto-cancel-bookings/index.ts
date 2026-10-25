@@ -41,7 +41,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
-import { sendSms } from '../_shared/mshastra.ts';
+import { sendSms } from '../_shared/sms.ts';
 import { bookingCancellationSms } from '../_shared/bookingSmsTemplates.ts';
 import {
   isNoShow,

@@ -18,37 +18,18 @@
  * notifications work (Chunk 2) and the later OTP work can call it as-is.
  */
 
+import { toSaudiInternational, type SendSmsResult } from './smsLogic.ts';
+
+export type { SendSmsResult };
+
 const MSHASTRA_ENDPOINT = 'https://mshastra.com/sendurl.aspx';
 
-export interface SendSmsResult {
-  success: boolean;
-  /** Only set on failure, for debugging — the response body, never the request. */
-  rawResponse?: string;
-  error?: string;
-}
-
 /**
- * Normalizes a phone number to mShastra's required format: international,
- * digits only, no leading '+' (e.g. "966501234567").
- *
- * Mirrors normalizeCustomerPhone() (src/utils/customerIdentity.ts) and its
- * SQL counterpart normalize_customer_phone() (0001_init.sql) exactly: strip
- * everything but digits, then drop a leading "00", then a leading "966",
- * then a leading "0" — leaving the bare national number — then prepend
- * "966". Not imported from the frontend (this function runs under Deno,
- * a separate toolchain with no access to src/), so this is a deliberate,
- * intentionally-kept-in-sync mirror, not a shortcut.
- *
- * KSA-specific by design, matching the rest of this app's phone handling —
- * every customer/staff phone in this system is already assumed Saudi.
+ * mShastra's required format: international, digits only, no leading '+'
+ * (e.g. "966501234567") — the shared normalization in smsLogic.ts, also used
+ * by meertek.ts.
  */
-function normalizePhoneForMshastra(phone: string): string {
-  let digits = String(phone ?? '').replace(/\D/g, '');
-  if (digits.startsWith('00')) digits = digits.slice(2);
-  if (digits.startsWith('966')) digits = digits.slice(3);
-  if (digits.startsWith('0')) digits = digits.slice(1);
-  return `966${digits}`;
-}
+const normalizePhoneForMshastra = toSaudiInternational;
 
 /**
  * Sends a single SMS via mShastra. Never throws — every failure path

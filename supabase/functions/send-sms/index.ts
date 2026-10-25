@@ -4,7 +4,7 @@
  *
  * send-sms — SMS integration audit, Chunk 1 (backend foundation only).
  *
- * Sends a single SMS via mShastra (_shared/mshastra.ts) to any phone
+ * Sends a single SMS via the active provider (_shared/sms.ts) to any phone
  * number, on behalf of any currently-active staff session. Not wired to
  * any UI trigger yet — that's Chunk 2. Not deployed by this chunk.
  *
@@ -24,7 +24,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
-import { sendSms } from '../_shared/mshastra.ts';
+import { sendSms } from '../_shared/sms.ts';
 import { validateSendSmsInput } from './logic.ts';
 import type { SendSmsRequest, SendSmsResponse } from './contract.ts';
 
