@@ -293,7 +293,7 @@ export const AdminTopBar: React.FC = () => {
                           {formatTime(n.timestamp)}
                         </span>
                       </div>
-                      <p dir="auto" className="font-semibold text-brand-charcoal/90">{localizeStaffNotification(n, lang).message}</p>
+                      <p dir="auto" className="font-semibold text-brand-charcoal/90 whitespace-pre-line">{localizeStaffNotification(n, lang).message}</p>
                       {n.highlighted && (
                         <span className="inline-block mt-1 text-[9px] uppercase font-bold text-brand-terracotta bg-brand-terracotta/10 px-1.5 py-0.5 rounded">
                           <Megaphone className="inline h-3 w-3 me-1 align-[-2px]" />

@@ -148,7 +148,7 @@ export const CustomerNotificationBell: React.FC = () => {
                   >
                     {localizeNotification(n, lang).title}
                   </h4>
-                  <p className="mt-1 text-[11px] leading-relaxed text-brand-ink">{localizeNotification(n, lang).message}</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-brand-ink whitespace-pre-line">{localizeNotification(n, lang).message}</p>
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <span className="text-[9px] font-semibold text-brand-charcoal/45">
                       {formatDateTime(n.timestamp)}
