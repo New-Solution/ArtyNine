@@ -77,6 +77,8 @@ import { formatDate, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
 import { pieceStatusText, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 import { enumLabel } from '../utils/enumLabels';
 import { bookingCancellationSms } from '../../supabase/functions/_shared/bookingSmsTemplates';
+import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
+import { toE164Saudi } from '../utils/phoneAuth';
 import { getConfiguredTables, computeTableStates, validateTableSelection } from '../utils/tableSeatingUtils';
 
 export {
@@ -905,6 +907,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const typedEmail = canonicalEmail(input);
     const looksLikeEmail = typedEmail.includes('@');
+
+    // Phone accounts (VITE_PHONE_AUTH only): a phone-like identifier is tried
+    // as a Supabase phone sign-in first. Any failure falls through to the
+    // unchanged path below, which ends in the same "Incorrect phone number or
+    // password." — so the two cannot be told apart.
+    if (PHONE_AUTH_ENABLED && !looksLikeEmail) {
+      const e164 = toE164Saudi(input);
+      if (e164) {
+        const { data: phoneData, error: phoneError } = await supabase.auth.signInWithPassword({ phone: e164, password });
+        if (!phoneError && phoneData.user) {
+          let customer = (await db.customers.toArray()).find(c => c.userId === phoneData.user.id);
+          if (!customer) {
+            // Verified phone, not yet linked: link_customer_by_verified_phone()
+            // reads the phone from this session (migration 0041).
+            const { data: link, error: linkError } = await supabase.rpc('link_customer_by_verified_phone', { p_name: null });
+            if (linkError) console.error('link_customer_by_verified_phone failed:', linkError.message);
+            const linkedId = (link as { customer_id?: string } | null)?.customer_id;
+            if (linkedId) customer = await db.customers.get(linkedId);
+          }
+          if (!customer) {
+            return { success: false, error: 'No customer record is linked to this account yet.' };
+          }
+          signInCustomerRecord(customer);
+          return { success: true };
+        }
+      }
+    }
 
     // Step 1 — which route? An unclaimed record is offered the claim flow
     // before any credential is tried, so it never sees a password error.
@@ -3307,7 +3336,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // when auth.uid() matches AND the target record's own stored email
         // already equals this address, so this cannot attach somebody else's
         // record, only complete a legitimate one.
-        if (!row && customerAuthEmail && supabase) {
+        // Phone accounts (VITE_PHONE_AUTH only): a session whose phone Supabase
+        // has confirmed is linked by that verified phone instead — the
+        // email-only heal below cannot match it, and would create a phoneless
+        // "Guest" row. link_customer_by_verified_phone() (migration 0041) reads
+        // the phone from the session itself; nothing is passed in.
+        let linkedByPhone = false;
+        if (!row && PHONE_AUTH_ENABLED && supabase) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const sessionUser = sessionData.session?.user;
+          if (sessionUser?.id === customerAuthId && sessionUser.phone && sessionUser.phone_confirmed_at) {
+            linkedByPhone = true;
+            const { data: link, error: linkError } = await supabase.rpc('link_customer_by_verified_phone', { p_name: null });
+            if (linkError) console.error('link_customer_by_verified_phone failed:', linkError.message);
+            if (cancelled) return;
+            const linkedId = (link as { customer_id?: string } | null)?.customer_id;
+            if (linkedId) {
+              const linkedRows = await fetchTable<CustomerAccount>('customers');
+              if (cancelled) return;
+              row = linkedRows.find(c => c.id === linkedId);
+            }
+          }
+        }
+
+        if (!row && !linkedByPhone && customerAuthEmail && supabase) {
           const { data: healedId, error: healError } = await supabase.rpc('resolve_customer_record', {
             p_name: null,
             p_phone: null,
