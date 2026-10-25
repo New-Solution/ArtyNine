@@ -44,7 +44,8 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
 import { sendSms } from '../_shared/mshastra.ts';
-import { cancellationMessage, ownsBooking, wasRefunded, type BookingRow, type Lang } from './logic.ts';
+import { bookingCancellationSms } from '../_shared/bookingSmsTemplates.ts';
+import { ownsBooking, wasRefunded, type BookingRow } from './logic.ts';
 import type { NotifyOwnBookingRequest, NotifyOwnBookingResponse } from './contract.ts';
 
 const CORS_HEADERS = {
@@ -145,8 +146,12 @@ Deno.serve(async (req: Request) => {
     return json({ success: true }, 200);
   }
 
-  const lang: Lang = (booking as BookingRow).customers?.preferred_lang === 'ar' ? 'ar' : 'en';
-  const message = cancellationMessage(booking as BookingRow, wasRefunded(booking as BookingRow), lang);
+  // Always English then Arabic, whatever the customer's language preference.
+  const message = bookingCancellationSms(wasRefunded(booking as BookingRow) ? 'refunded' : 'notRefunded', {
+    workshopTitle: booking.workshop_title,
+    date: booking.date,
+    amount: booking.total_price
+  });
   const result = await sendSms(booking.customer_phone, message);
 
   return json(

@@ -42,6 +42,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
 import { sendSms } from '../_shared/mshastra.ts';
+import { bookingCancellationSms } from '../_shared/bookingSmsTemplates.ts';
 import {
   isNoShow,
   NO_SHOW_TIMELINE_ACTION,
@@ -251,7 +252,13 @@ Deno.serve(async (req: Request) => {
       if (!booking.customer_phone) {
         console.error(`auto-cancel-bookings: SMS for ${booking.id} not sent — no phone on file.`);
       } else {
-        const result = await sendSms(booking.customer_phone, message);
+        // The SMS has its own bilingual text (English, blank line, Arabic);
+        // `message` above stays the in-app notification's wording.
+        const smsText = bookingCancellationSms('noShow', {
+          workshopTitle: booking.workshop_title,
+          date: booking.date
+        });
+        const result = await sendSms(booking.customer_phone, smsText);
         smsSent = result.success;
         if (!result.success) {
           console.error(`auto-cancel-bookings: SMS for ${booking.id} failed:`, result.error);
