@@ -6,7 +6,7 @@
  *   npx tsx src/utils/phoneAuth.test.ts
  */
 
-import { toE164Saudi, requestPhoneCode, verifyPhoneCode, setPassword, type PhoneAuthClient } from './phoneAuth';
+import { toE164Saudi, maskE164Saudi, requestPhoneCode, verifyPhoneCode, setPassword, type PhoneAuthClient } from './phoneAuth';
 
 let passed = 0;
 let failed = 0;
@@ -61,6 +61,11 @@ async function main() {
   assertEqual(toE164Saudi('05012345'), null, 'too short -> null');
   assertEqual(toE164Saudi(''), null, 'empty -> null');
   assertEqual(toE164Saudi(null), null, 'null -> null');
+
+  console.log('maskE164Saudi()');
+  assertEqual(maskE164Saudi('0501234594'), '+966 5•• ••• •94', 'first digit and last two shown');
+  assertEqual(maskE164Saudi('+966 55 000 0012'), '+966 5•• ••• •12', 'any input form');
+  assertEqual(maskE164Saudi('12345'), '', 'invalid number -> empty');
 
   console.log('requestPhoneCode()');
   {

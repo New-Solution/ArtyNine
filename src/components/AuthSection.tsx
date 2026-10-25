@@ -20,6 +20,9 @@ import {
 } from '../utils/validation';
 import { STUDIO_PHONE } from '../utils/studioConfig';
 import { bookingTitleLabel } from '../utils/bookingTitleLabel';
+import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
+import { PhoneOtpFlow } from './PhoneOtpFlow';
+import { toE164Saudi } from '../utils/phoneAuth';
 
 /** Staggered fade-up for the title block over the photograph. */
 const textVariants = {
@@ -143,6 +146,35 @@ export const AuthSection: React.FC = () => {
     }
   };
 
+  // Phone sign-in by SMS code (VITE_PHONE_AUTH only; all three stay false/empty while it is off).
+  /** "Get a code instead" opened from Sign In. */
+  const [phoneCodeOpen, setPhoneCodeOpen] = useState(false);
+  /** Pre-fills the phone step when the visitor already typed a number. */
+  const [phoneCodeInitial, setPhoneCodeInitial] = useState('');
+  /**
+   * True while the phone flow holds a fresh session but has not finished. The
+   * account page would otherwise replace the flow the moment currentUser is set,
+   * before the password step.
+   */
+  const [phoneFlowActive, setPhoneFlowActive] = useState(false);
+  /** Sign In found a studio-made record: offer the code flow instead of the old claim form. */
+  const [offerPhoneCode, setOfferPhoneCode] = useState(false);
+
+  const openPhoneCode = (identifier?: string) => {
+    setErrorMsg(null);
+    setOfferPhoneCode(false);
+    setPhoneCodeInitial(identifier && toE164Saudi(identifier) ? identifier : '');
+    setPhoneCodeOpen(true);
+  };
+
+  /** Where a finished phone flow goes — the same places a password sign-in goes. */
+  const handlePhoneFlowDone = () => {
+    setPhoneCodeOpen(false);
+    setPhoneFlowActive(false);
+    if (pendingBooking) setCustomerTab('checkout-info');
+    else setCustomerTab('my-bookings');
+  };
+
   // Password Recovery States
   const [forgotMethod, setForgotMethod] = useState<'email' | 'phone'>('email');
   /** The non-committal confirmation shown after a reset request. */
@@ -158,6 +190,16 @@ export const AuthSection: React.FC = () => {
     setIsSubmitting(false);
 
     if (!res.success) {
+      // Phone sign-in on: a studio-made record is claimed with a texted code,
+      // not the old email-confirmation claim form.
+      if (PHONE_AUTH_ENABLED && (res.needsPasswordSetup || res.awaitingPhoneVerification)) {
+        setOfferPhoneCode(true);
+        setErrorMsg(t(
+          'This account was set up at the studio and has no password yet. Get a code by text message to choose one.',
+          'تم إنشاء هذا الحساب في الاستوديو ولا توجد له كلمة مرور بعد. احصل على رمز برسالة نصية لاختيار كلمة مرور.'
+        ));
+        return;
+      }
       // The record exists but was created at the counter without a password.
       // Offer to claim it rather than leaving them stuck.
       if (res.needsPasswordSetup) {
@@ -276,7 +318,7 @@ export const AuthSection: React.FC = () => {
   return (
     <div
       className={
-        currentUser
+        currentUser && !phoneFlowActive
           ? 'mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 animate-in fade-in duration-300'
           : // Signed out, the page is a split screen and each half sets its own
             // padding — no shared gutter here.
@@ -285,8 +327,9 @@ export const AuthSection: React.FC = () => {
     >
 
       {/* ACCOUNT DETAILS — read-only profile; the only thing changeable
-          here is the password. */}
-      {currentUser ? (
+          here is the password. Held back while a phone flow is mid-way
+          (phoneFlowActive is always false without VITE_PHONE_AUTH). */}
+      {currentUser && !phoneFlowActive ? (
         <div className="mx-auto max-w-2xl space-y-6">
 
           <ScrollReveal
@@ -707,8 +750,19 @@ export const AuthSection: React.FC = () => {
               </div>
             )}
 
+            {/* PHONE CODE FLOW opened from Sign In (VITE_PHONE_AUTH only). */}
+            {PHONE_AUTH_ENABLED && authScreen === 'login' && phoneCodeOpen && (
+              <PhoneOtpFlow
+                purpose="account"
+                initialPhone={phoneCodeInitial}
+                onActiveChange={setPhoneFlowActive}
+                onDone={handlePhoneFlowDone}
+                onCancel={() => { setPhoneCodeOpen(false); setPhoneFlowActive(false); setErrorMsg(null); }}
+              />
+            )}
+
             {/* 1. LOGIN SCREEN */}
-            {authScreen === 'login' && (
+            {authScreen === 'login' && !phoneCodeOpen && (
               <div className="space-y-6">
                 <div>
                   <h2 className="font-display text-3xl font-semibold text-brand-charcoal">{t('Welcome back', 'مرحبًا بعودتك')}</h2>
@@ -764,10 +818,26 @@ export const AuthSection: React.FC = () => {
                   </button>
                 </form>
 
+                {/* Phone sign-in on: a code instead of a password — first-time
+                    set-up, a studio-made record, or a forgotten password. */}
+                {PHONE_AUTH_ENABLED && (
+                  <button
+                    type="button"
+                    onClick={() => openPhoneCode(loginIdentifier)}
+                    className={offerPhoneCode
+                      ? 'w-full cursor-pointer rounded-full bg-brand-charcoal py-3.5 text-sm font-semibold text-brand-cream hover:bg-brand-charcoal/90 transition-colors flex items-center justify-center gap-2'
+                      : 'w-full cursor-pointer rounded-full border border-brand-clay py-3 text-sm font-semibold text-brand-charcoal hover:bg-brand-sand/40 transition-colors flex items-center justify-center gap-2'}
+                  >
+                    <KeyRound className="h-4 w-4" />
+                    <span>{t('Get a code instead', 'احصل على رمز بدلًا من ذلك')}</span>
+                  </button>
+                )}
+
                 {/* Claim an account created at the counter. The password is
                     attached to that existing record, so their bookings, visits
-                    and pottery stay on one customer. */}
-                {claimIdentifier && (
+                    and pottery stay on one customer. Replaced by the code flow
+                    when phone sign-in is on. */}
+                {!PHONE_AUTH_ENABLED && claimIdentifier && (
                   <form onSubmit={handleClaimAccount} className="space-y-3 p-4 bg-brand-sand/30 border border-brand-clay rounded-2xl">
                     <div>
                       <h3 className="text-sm font-semibold text-brand-charcoal">{t('Set up your password', 'إعداد كلمة المرور')}</h3>
@@ -879,8 +949,30 @@ export const AuthSection: React.FC = () => {
               </div>
             )}
 
+            {/* 2. REGISTRATION — phone sign-in on: new accounts start with a
+                texted code (the same flow claims a studio-made record). */}
+            {PHONE_AUTH_ENABLED && authScreen === 'register' && (
+              <div className="space-y-6">
+                <PhoneOtpFlow
+                  purpose="account"
+                  onActiveChange={setPhoneFlowActive}
+                  onDone={handlePhoneFlowDone}
+                />
+                <p className="text-center text-xs font-medium text-brand-ink">
+                  {t('Already have an account?', 'لديك حساب بالفعل؟')}{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setErrorMsg(null); setAuthScreen('login'); }}
+                    className="text-brand-terracotta font-semibold hover:underline cursor-pointer"
+                  >
+                    {t('Sign in', 'تسجيل الدخول')}
+                  </button>
+                </p>
+              </div>
+            )}
+
             {/* 2. REGISTRATION SCREEN */}
-            {authScreen === 'register' && (
+            {!PHONE_AUTH_ENABLED && authScreen === 'register' && (
               <div className="space-y-6">
                 <div>
                   <h2 className="font-display text-3xl font-semibold text-brand-charcoal">{t('Join the Café', 'انضم إلى المقهى')}</h2>
@@ -1065,6 +1157,13 @@ export const AuthSection: React.FC = () => {
                       <span>{isSubmitting ? t('Sending reset link...', 'جارٍ إرسال رابط إعادة التعيين...') : t('Email me a reset link', 'أرسل لي رابط إعادة التعيين')}</span>
                     </button>
                   </form>
+                ) : PHONE_AUTH_ENABLED ? (
+                  /* PHONE RECOVERY — a texted code proves the number, then a new password. */
+                  <PhoneOtpFlow
+                    purpose="reset"
+                    onActiveChange={setPhoneFlowActive}
+                    onDone={handlePhoneFlowDone}
+                  />
                 ) : (
                   /*
                    * PHONE RECOVERY — deliberately not implemented.

@@ -15,8 +15,8 @@
  * Failures come back as a `reason` code, not a sentence, so the screen can
  * show it in either language.
  *
- * NOT YET USED — wired up in a later phase (AuthSection, CheckoutInfoSection,
- * AppContext).
+ * Used by PhoneOtpFlow (AuthSection, CheckoutInfoSection) and AppContext's
+ * loginCustomer(), all behind VITE_PHONE_AUTH (utils/featureFlags.ts).
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -50,6 +50,18 @@ const LINK_STATUSES: readonly PhoneLinkStatus[] = ['linked', 'created', 'already
 export function toE164Saudi(input?: string | null): string | null {
   const national = normalizeCustomerPhone(parseArabicDigits(String(input ?? '')));
   return /^5\d{8}$/.test(national) ? `+966${national}` : null;
+}
+
+/**
+ * "+966 5•• ••• •94" — what the screen shows after a code is sent. Only the
+ * first national digit and the last two are visible. Render it inside a
+ * left-to-right span so it reads the same in Arabic.
+ */
+export function maskE164Saudi(input?: string | null): string {
+  const e164 = toE164Saudi(input);
+  if (!e164) return '';
+  const national = e164.slice(4);
+  return `+966 ${national[0]}•• ••• •${national.slice(-2)}`;
 }
 
 /**
