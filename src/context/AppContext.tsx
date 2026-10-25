@@ -74,7 +74,7 @@ import {
 } from '../utils/dateUtils';
 import { validateSaudiPhone, normaliseSaudiPhone, normalisePhone } from '../utils/phoneUtils';
 import { formatDate, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
-import { pieceStatusText, bilingualSms, PICKUP_REMINDER_TEXT } from '../utils/pieceSmsTemplates';
+import { pieceStatusText, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 import { enumLabel } from '../utils/enumLabels';
 import { cancellationMessage } from '../../supabase/functions/notify-own-booking/logic';
 import { getConfiguredTables, computeTableStates, validateTableSelection } from '../utils/tableSeatingUtils';
@@ -408,7 +408,7 @@ interface AppContextType {
     opts: { hours: number; participants: number; tableIds: string[] }
   ) => Promise<{ success: boolean; message?: string; newId?: string }>;
   reorderQueue: (newQueue: QueueItem[]) => void;
-  updatePieceStatus: (id: string, status: PotteryPiece['status'], performerUser?: string, reason?: string) => void;
+  updatePieceStatus: (id: string, status: PotteryPiece['status'], performerUser?: string, reason?: string, smsVariant?: KilnSmsVariant) => void;
   addPiece: (piece: Omit<PotteryPiece, 'id' | 'daysElapsed' | 'expectedCompletion' | 'notes'> & Partial<Pick<PotteryPiece, 'expectedCompletion' | 'notes'>>) => void;
   updatePiece: (id: string, updates: Partial<PotteryPiece>) => Promise<void>;
   /** Dashboard "Pottery Awaiting Pickup" widget data (audit finding C-4) — fed by get_overdue_pickup_pieces(), works for any console-access staff member regardless of the pieces-admin permission. */
@@ -2843,13 +2843,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     piece: Pick<PotteryPiece, 'id' | 'name' | 'pieceCode' | 'customerName' | 'customerPhone' | 'expectedReadyDate'>,
     status: PotteryPiece['status'],
     performerUser: string = 'Staff',
-    reason?: string
+    reason?: string,
+    // Which 'First Burn and Colored' message to send; ignored for other
+    // statuses, and 'kiln' when not given.
+    smsVariant?: KilnSmsVariant
   ) => {
     // Generate CUSTOMER notification. The text comes from pieceSmsTemplates.ts:
     // the bell stores its English (notificationText.ts renders the Arabic from
     // the same template), and the SMS sends English + Arabic together. Broken
     // states the outcome plainly, never the internal damage note.
-    const pieceText = pieceStatusText(status, piece.pieceCode || piece.id);
+    const pieceText = pieceStatusText(status, piece.pieceCode || piece.id, smsVariant);
     const friendlyMsg = pieceText?.en ?? `Your piece "${piece.name}" has been updated to "${status}".`;
 
     // Stages can be configured not to notify the customer at all.
@@ -2978,7 +2981,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updatePieceStatus = async (id: string, status: PotteryPiece['status'], performerUser: string = 'Staff', reason?: string) => {
+  const updatePieceStatus = async (id: string, status: PotteryPiece['status'], performerUser: string = 'Staff', reason?: string, smsVariant?: KilnSmsVariant) => {
     const piece = await db.pieces.get(id);
     if (piece) {
       const historyEntry = {
@@ -3000,7 +3003,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // overwritten by a concurrent update the way a JSON column could.
       await db.pieceHistory.add({ pieceId: id, ...historyEntry });
 
-      await notifyPieceStatusChange(piece, status, performerUser, reason);
+      await notifyPieceStatusChange(piece, status, performerUser, reason, smsVariant);
     }
   };
 

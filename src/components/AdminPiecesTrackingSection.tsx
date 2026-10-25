@@ -89,6 +89,16 @@ import { ConsoleModal } from './ui/ConsoleModal';
 import { useLanguage } from '../context/LanguageContext';
 import type { Lang } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
+import { KILN_TEXTS, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
+
+/** Stored status of the stage staff see as "Kiln Time" (see enumLabels.ts). */
+const KILN_STAGE: PotteryPiece['status'] = 'First Burn and Colored';
+
+/** The opening of a message's English text, without the shared greeting, for the picker. */
+const messagePreview = (en: string) => {
+  const body = en.replace(/^Dear Arty artist,\n/, '');
+  return body.length > 90 ? `${body.slice(0, 90).trimEnd()}…` : body;
+};
 import { localizedText } from '../utils/localizedText';
 
 /**
@@ -238,6 +248,8 @@ export const AdminPiecesTrackingSection: React.FC = () => {
 
   // Mark-as-Broken Modal State
   const [brokenTargetId, setBrokenTargetId] = useState<string | null>(null);
+  // A piece waiting on the Kiln Time message choice before it moves forward.
+  const [kilnPromptPieceId, setKilnPromptPieceId] = useState<string | null>(null);
   const [brokenPerformer, setBrokenPerformer] = useState('');
   const [brokenReason, setBrokenReason] = useState('');
   const [brokenError, setBrokenError] = useState('');
@@ -464,11 +476,11 @@ export const AdminPiecesTrackingSection: React.FC = () => {
   };
 
   // Helper wrapper to handle piece status updates & trigger toast notices
-  const handleUpdatePieceStatus = async (pieceId: string, status: PotteryPiece['status'], user: string, reason?: string) => {
+  const handleUpdatePieceStatus = async (pieceId: string, status: PotteryPiece['status'], user: string, reason?: string, smsVariant?: KilnSmsVariant) => {
     const piece = pieces.find(p => p.id === pieceId);
     if (!piece) return;
 
-    await updatePieceStatus(pieceId, status, user, reason);
+    await updatePieceStatus(pieceId, status, user, reason, smsVariant);
 
     const isReady = status === 'Ready for Pickup';
     triggerToast(
@@ -514,6 +526,14 @@ export const AdminPiecesTrackingSection: React.FC = () => {
       });
       setBackwardPerformer('');
       setBackwardReason('');
+    } else if (
+      targetStatus === KILN_STAGE &&
+      orderedStages.find(stage => stage.name === KILN_STAGE)?.notifyCustomer !== false
+    ) {
+      // Forward into Kiln Time: staff choose which message the customer gets
+      // first. Backward moves and a stage that doesn't notify skip this and
+      // use the default ('kiln').
+      setKilnPromptPieceId(pieceId);
     } else {
       handleUpdatePieceStatus(pieceId, targetStatus, 'Staff');
     }
@@ -1236,6 +1256,63 @@ export const AdminPiecesTrackingSection: React.FC = () => {
 
         </ConsoleModal>
       )}
+
+      {/* ================= KILN TIME MESSAGE PICKER ================= */}
+      {kilnPromptPieceId && (() => {
+        const target = pieces.find(p => p.id === kilnPromptPieceId);
+        if (!target) return null;
+
+        const choices: { variant: KilnSmsVariant; label: string }[] = [
+          { variant: 'color', label: t('Ready to color (ask them to come color it)', 'جاهزة للتلوين (ندعوه يجي يلونها)') },
+          { variant: 'kiln', label: t('In the kiln', 'داخل الفرن') }
+        ];
+
+        return (
+          <div className="fixed inset-0 bg-brand-charcoal/60 backdrop-blur-xs z-60 flex items-center justify-center p-4">
+            <div className="bg-white border border-brand-clay rounded-3xl p-6 shadow-2xl max-w-md w-full space-y-4 text-left animate-in zoom-in-95 duration-150">
+
+              <div className="flex items-start gap-3 border-b border-brand-clay/60 pb-3">
+                <div className="h-10 w-10 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                  <Flame className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-display text-base font-bold text-brand-charcoal">{t('Which message should the customer get?', 'أي رسالة نرسل للعميل؟')}</h3>
+                  <p className="text-[11px] font-semibold text-brand-charcoal/60">
+                    {target.pieceCode || target.id} · {target.customerName} · {enumLabel('pieceStatus', KILN_STAGE, lang)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                {choices.map(choice => (
+                  <button
+                    key={choice.variant}
+                    type="button"
+                    onClick={async () => {
+                      setKilnPromptPieceId(null);
+                      await handleUpdatePieceStatus(target.id, KILN_STAGE, 'Staff', undefined, choice.variant);
+                    }}
+                    className="w-full text-left bg-brand-cream/60 hover:bg-brand-sand border border-brand-clay rounded-2xl p-3 cursor-pointer transition-colors space-y-1"
+                  >
+                    <span className="block text-xs font-bold text-brand-charcoal">{choice.label}</span>
+                    <span className="block text-[11px] font-semibold text-brand-charcoal/55" dir="ltr">
+                      {messagePreview(KILN_TEXTS[choice.variant].en)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setKilnPromptPieceId(null)}
+                className="w-full bg-brand-sand/60 hover:bg-brand-sand text-brand-charcoal font-bold text-xs py-3 rounded-xl cursor-pointer transition-colors"
+              >
+                {t('Cancel', 'إلغاء')}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Backward Move Confirmation Modal */}
       {/* ================= MARK AS BROKEN MODAL ================= */}
