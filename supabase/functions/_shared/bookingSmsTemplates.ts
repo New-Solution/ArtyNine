@@ -14,7 +14,9 @@
  * (notificationText.ts matches those), so nothing here is stored or compared.
  *
  * Every message is bilingual, regardless of the customer's language: English,
- * a blank line, then Arabic. {workshopTitle} is the English title in both lines,
+ * a single line break ("\n", no blank line — that is how these templates are
+ * registered with the SMS provider), then Arabic. {workshopTitle} is the
+ * English title in both lines,
  * {date} is DD/MM/YYYY in both, and {amount} is the number alone — the currency
  * is part of the template.
  */
@@ -71,8 +73,8 @@ export function bookingCancellationText(kind: BookingCancellationKind, input: Bo
   }
 }
 
-/** The SMS body: English, a blank line, then Arabic. */
+/** The SMS body: English, a single "\n", then Arabic — matching the registered templates. */
 export function bookingCancellationSms(kind: BookingCancellationKind, input: BookingSmsInput): string {
   const text = bookingCancellationText(kind, input);
-  return `${text.en}\n\n${text.ar}`;
+  return `${text.en}\n${text.ar}`;
 }
