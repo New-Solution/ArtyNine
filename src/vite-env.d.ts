@@ -9,6 +9,8 @@ interface ImportMetaEnv {
   readonly VITE_STAFF_SITE_URL?: string;
   /** "true" turns on phone sign-in by SMS code (src/utils/featureFlags.ts). Unset = off. */
   readonly VITE_PHONE_AUTH?: string;
+  /** Cloudflare Turnstile site key for Supabase Auth CAPTCHA (src/utils/captcha.ts). Unset = no CAPTCHA. */
+  readonly VITE_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {
