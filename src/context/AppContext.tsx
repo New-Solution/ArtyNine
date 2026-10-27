@@ -939,7 +939,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Step 1 — which route? An unclaimed record is offered the claim flow
     // before any credential is tried, so it never sees a password error.
-    const { route, emailHint } = await resolveSignInRoute(input);
+    // Phone sign-in on: no lookup at all — nothing is said about whether a
+    // number or address is on file until a password has been checked. A
+    // studio-made record is claimed with "Get a code instead".
+    const { route, emailHint } = PHONE_AUTH_ENABLED
+      ? { route: 'password' as const, emailHint: undefined }
+      : await resolveSignInRoute(input);
 
     if (route === 'claim_email') {
       // 'claim_email' means the customers ROW is unclaimed

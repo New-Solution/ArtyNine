@@ -158,12 +158,9 @@ export const AuthSection: React.FC = () => {
    * before the password step.
    */
   const [phoneFlowActive, setPhoneFlowActive] = useState(false);
-  /** Sign In found a studio-made record: offer the code flow instead of the old claim form. */
-  const [offerPhoneCode, setOfferPhoneCode] = useState(false);
 
   const openPhoneCode = (identifier?: string) => {
     setErrorMsg(null);
-    setOfferPhoneCode(false);
     setPhoneCodeInitial(identifier && toE164Saudi(identifier) ? identifier : '');
     setPhoneCodeOpen(true);
   };
@@ -215,16 +212,6 @@ export const AuthSection: React.FC = () => {
     setIsSubmitting(false);
 
     if (!res.success) {
-      // Phone sign-in on: a studio-made record is claimed with a texted code,
-      // not the old email-confirmation claim form.
-      if (PHONE_AUTH_ENABLED && (res.needsPasswordSetup || res.awaitingPhoneVerification)) {
-        setOfferPhoneCode(true);
-        setErrorMsg(t(
-          'This account was set up at the studio and has no password yet. Get a code by text message to choose one.',
-          'تم إنشاء هذا الحساب في الاستوديو ولا توجد له كلمة مرور بعد. احصل على رمز برسالة نصية لاختيار كلمة مرور.'
-        ));
-        return;
-      }
       // The record exists but was created at the counter without a password.
       // Offer to claim it rather than leaving them stuck.
       if (res.needsPasswordSetup) {
@@ -894,9 +881,7 @@ export const AuthSection: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => openPhoneCode(loginIdentifier)}
-                    className={offerPhoneCode
-                      ? 'w-full cursor-pointer rounded-full bg-brand-charcoal py-3.5 text-sm font-semibold text-brand-cream hover:bg-brand-charcoal/90 transition-colors flex items-center justify-center gap-2'
-                      : 'w-full cursor-pointer rounded-full border border-brand-clay py-3 text-sm font-semibold text-brand-charcoal hover:bg-brand-sand/40 transition-colors flex items-center justify-center gap-2'}
+                    className="w-full cursor-pointer rounded-full border border-brand-clay py-3 text-sm font-semibold text-brand-charcoal hover:bg-brand-sand/40 transition-colors flex items-center justify-center gap-2"
                   >
                     <KeyRound className="h-4 w-4" />
                     <span>{t('Get a code instead', 'احصل على رمز بدلًا من ذلك')}</span>
