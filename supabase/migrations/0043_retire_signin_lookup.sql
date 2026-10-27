@@ -1,6 +1,4 @@
--- STATUS: NOT YET APPLIED — READY TO APPLY. VITE_PHONE_AUTH is live in
--- production and the startup probes for both functions have been removed from
--- src/lib/migrationCheck.ts. Deploy that change before (or with) applying this.
+-- STATUS: APPLIED
 -- =============================================================================
 -- 0043 — RETIRE THE SIGN-IN LOOKUP
 --
