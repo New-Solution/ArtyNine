@@ -74,8 +74,8 @@ import {
 } from '../utils/dateUtils';
 import { validateSaudiPhone, normaliseSaudiPhone, normalisePhone } from '../utils/phoneUtils';
 import { formatDate, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
-import { pieceStatusText, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
-import { enumLabel } from '../utils/enumLabels';
+import { pieceTextForKey, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
+import { customerPieceTitle, staffPieceTitle } from '../utils/pieceNotifications';
 import { bookingCancellationSms } from '../../supabase/functions/_shared/bookingSmsTemplates';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
 import { toE164Saudi, isPhoneSetupPending } from '../utils/phoneAuth';
@@ -2899,19 +2899,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     status: PotteryPiece['status'],
     performerUser: string = 'Staff',
     reason?: string,
-    // Which 'First Burn and Colored' message to send; ignored for other
-    // statuses, and 'kiln' when not given.
-    smsVariant?: KilnSmsVariant
+    // Which Kiln Time message to send; ignored for other stages, and 'kiln'
+    // when not given.
+    smsVariant?: KilnSmsVariant,
+    // The stage moved into, when the caller knows it (0045).
+    stageId?: string
   ) => {
-    // Generate CUSTOMER notification. The text comes from pieceSmsTemplates.ts:
-    // the bell stores its English (notificationText.ts renders the Arabic from
-    // the same template), and the SMS sends English + Arabic together. Broken
-    // states the outcome plainly, never the internal damage note.
-    const pieceText = pieceStatusText(status, piece.pieceCode || piece.id, smsVariant);
+    // Which stage this is: by id, then by exact name. Never the legacy-name
+    // fallback, which would turn an unknown name into Created and send its
+    // SMS. If the stage list can't be read, the five system names still
+    // resolve through DEFAULT_PIPELINE_STAGES, so a failed read sends exactly
+    // what it always did.
+    const stages = await db.pipelineStages.toArray();
+    const stageConfig = (stageId ? stages.find(x => x.id === stageId) : undefined)
+      ?? stages.find(x => x.name === status);
+    const systemKey = stageConfig
+      ? stageConfig.systemKey ?? null
+      : DEFAULT_PIPELINE_STAGES.find(x => x.name === status)?.systemKey ?? null;
+
+    // Generate CUSTOMER notification. The text comes from pieceSmsTemplates.ts,
+    // by system key: the bell stores its English (notificationText.ts renders
+    // the Arabic from the same template), and the SMS sends English + Arabic
+    // together. Broken states the outcome plainly, never the internal damage
+    // note. A custom stage has no template and gets the generic line.
+    const pieceText = pieceTextForKey(systemKey, piece.pieceCode || piece.id, smsVariant);
     const friendlyMsg = pieceText?.en ?? `Your piece "${piece.name}" has been updated to "${status}".`;
 
     // Stages can be configured not to notify the customer at all.
-    const stageConfig = (await db.pipelineStages.toArray()).find(x => x.name === status);
     if (stageConfig && stageConfig.notifyCustomer === false) {
       return;
     }
@@ -2940,30 +2954,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       type: 'customer',
       customerPhone: piece.customerPhone,
-      title: status === 'Ready for Pickup'
-        ? 'Piece Ready for Pickup!'
-        : status === 'Broken'
-          ? `Piece ${piece.pieceCode || piece.id} marked as broken`
-          // Display label: 'First Burn and Colored' reads "Kiln Time".
-          : `Piece Status Update: ${enumLabel('pieceStatus', status, 'en')}`,
+      // Display label: 'First Burn and Colored' reads "Kiln Time".
+      title: customerPieceTitle(systemKey, piece.pieceCode || piece.id, status),
       message: friendlyMsg,
       pieceId: piece.id,
       pieceName: piece.name,
       newStatus: status,
       timestamp: new Date().toISOString(),
       isRead: false,
-      highlighted: status === 'Ready for Pickup'
+      highlighted: systemKey === 'ready'
     });
 
     // Generate STAFF notification
     await db.notifications.add({
       id: `NOTIF-STAFF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       type: 'staff',
-      title: status === 'Ready for Pickup'
-        ? 'Piece Ready for Pickup Alert'
-        : status === 'Broken'
-          ? 'Piece Marked Broken'
-          : 'Piece Status Shifted',
+      title: staffPieceTitle(systemKey),
       message: `Piece ${piece.id} (${piece.customerName}) moved to "${status}" by ${performerUser}.${reason ? ` Reason: ${reason}` : ''}`,
       pieceId: piece.id,
       pieceName: piece.name,
@@ -2971,7 +2977,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       performedBy: performerUser,
       timestamp: new Date().toISOString(),
       isRead: false,
-      highlighted: status === 'Ready for Pickup'
+      highlighted: systemKey === 'ready'
     });
 
     // SMS (SMS integration, Chunk 3 + 4 + 6) — every status now:
@@ -2994,11 +3000,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // both notification writes above have already committed regardless
     // of what happens next; failures here are logged, never thrown,
     // never surfaced as a rolled-back status change.
-    if (
-      status === 'Ready for Pickup' || status === 'Broken' ||
-      status === 'Created' || status === 'First Burn and Colored' ||
-      status === 'Collected'
-    ) {
+    //
+    // Only the five system stages send SMS: every text must match a template
+    // registered with meertek, and a custom stage has none.
+    if (systemKey) {
       if (!piece.customerPhone) {
         console.error(`notifyPieceStatusChange: SMS for piece ${piece.id} (${status}) not sent — no phone number on file.`);
       } else {
@@ -3069,7 +3074,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // overwritten by a concurrent update the way a JSON column could.
       await db.pieceHistory.add({ pieceId: id, stageId, ...historyEntry });
 
-      await notifyPieceStatusChange(piece, status, performerUser, reason, smsVariant);
+      await notifyPieceStatusChange(piece, status, performerUser, reason, smsVariant, stageId);
     }
   };
 
@@ -3150,7 +3155,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // via the same shared helper updatePieceStatus() uses. Does not
     // duplicate the piece_history entry above; the helper only handles
     // notifications and SMS.
-    await notifyPieceStatusChange(newPiece, newPiece.status);
+    await notifyPieceStatusChange(newPiece, newPiece.status, undefined, undefined, undefined, stageId);
   };
 
   const updatePiece = async (id: string, updates: Partial<PotteryPiece>) => {

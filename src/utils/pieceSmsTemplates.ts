@@ -2,10 +2,13 @@
  * The one source of truth for customer-facing piece texts: the SMS body, the stored
  * (English) bell notification, and the Arabic bell rendering in notificationText.ts.
  *
- * Keyed on the STORED status value ('First Burn and Colored' stays the stored name;
- * staff see it as "Kiln Time" — see enumLabels.ts). Nothing here changes what is
- * stored or compared.
+ * Keyed on the stage's system key (pipeline_stages.system_key, 0045), so renaming a
+ * stage never changes which text is sent. pieceStatusText() still answers by the
+ * stored name, for notificationText.ts matching rows already written. Every text
+ * here is a registered SMS template — pinned in pieceSmsTemplates.test.ts.
  */
+
+import type { StageSystemKey } from '../types';
 
 export interface PieceText { en: string; ar: string }
 
@@ -53,19 +56,41 @@ export const PICKUP_REMINDER_TEXT: PieceText = {
 };
 
 /**
- * Customer text for a piece entering `status`, or null for a status with no
- * template. `code` is the piece code (falling back to the piece id) — only the
- * Broken message uses it.
+ * Customer text for a piece entering the system stage `key`, or null for a
+ * custom stage (no key), which has no registered template. `code` is the piece
+ * code (falling back to the piece id) — only the Broken message uses it.
  */
-export function pieceStatusText(status: string, code: string, variant: KilnSmsVariant = DEFAULT_KILN_VARIANT): PieceText | null {
-  switch (status) {
-    case 'Created': return CREATED;
-    case 'First Burn and Colored': return KILN_TEXTS[variant] ?? KILN_TEXTS[DEFAULT_KILN_VARIANT];
-    case 'Ready for Pickup': return READY;
-    case 'Collected': return COLLECTED;
-    case 'Broken': return broken(code);
+export function pieceTextForKey(
+  key: StageSystemKey | null | undefined,
+  code: string,
+  variant: KilnSmsVariant = DEFAULT_KILN_VARIANT
+): PieceText | null {
+  switch (key) {
+    case 'created': return CREATED;
+    case 'kiln': return KILN_TEXTS[variant] ?? KILN_TEXTS[DEFAULT_KILN_VARIANT];
+    case 'ready': return READY;
+    case 'collected': return COLLECTED;
+    case 'broken': return broken(code);
     default: return null;
   }
+}
+
+/** The names the five system stages had when their notifications were stored. */
+const STORED_NAME_KEYS: Record<string, StageSystemKey> = {
+  'Created': 'created',
+  'First Burn and Colored': 'kiln',
+  'Ready for Pickup': 'ready',
+  'Collected': 'collected',
+  'Broken': 'broken'
+};
+
+/**
+ * Customer text by a stored status NAME, or null for any other name. For
+ * matching notification rows already written; new notifications use
+ * pieceTextForKey().
+ */
+export function pieceStatusText(status: string, code: string, variant: KilnSmsVariant = DEFAULT_KILN_VARIANT): PieceText | null {
+  return pieceTextForKey(STORED_NAME_KEYS[status], code, variant);
 }
 
 /** Every piece SMS is sent in both languages, English first, regardless of the customer's language. */
