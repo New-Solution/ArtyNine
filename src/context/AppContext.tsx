@@ -1525,6 +1525,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const list = byPiece.get(entry.pieceId) || [];
       list.push({
         status: entry.status,
+        stageId: entry.stageId || undefined,
         timestamp: entry.timestamp,
         riyadhTime: entry.riyadhTime,
         user: entry.user,
@@ -3035,9 +3036,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  /**
+   * The id of the stage named exactly `status`, so a piece write carries
+   * stage_id as well as the name (0045). Exact match only: a name no stage has
+   * is sent without an id and the database refuses it just as it does today,
+   * instead of being mapped onto some other stage here. A failed read also
+   * sends no id; the database then fills it in from the name.
+   */
+  const stageIdForStatus = async (status: string): Promise<string | undefined> =>
+    (await db.pipelineStages.toArray()).find(stage => stage.name === status)?.id;
+
   const updatePieceStatus = async (id: string, status: PotteryPiece['status'], performerUser: string = 'Staff', reason?: string, smsVariant?: KilnSmsVariant) => {
     const piece = await db.pieces.get(id);
     if (piece) {
+      const stageId = await stageIdForStatus(status);
       const historyEntry = {
         status,
         timestamp: new Date().toISOString(),
@@ -3046,7 +3058,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         user: performerUser,
         reason: reason || undefined
       };
-      const pieceUpdates: Partial<PotteryPiece> = { status };
+      const pieceUpdates: Partial<PotteryPiece> = { status, stageId };
       // Broken keeps the internal damage note on the piece; it never leaves the console.
       if (status === 'Broken' && reason) {
         pieceUpdates.damageNote = reason;
@@ -3055,7 +3067,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // History is its own append-only table now, so the trail cannot be
       // overwritten by a concurrent update the way a JSON column could.
-      await db.pieceHistory.add({ pieceId: id, ...historyEntry });
+      await db.pieceHistory.add({ pieceId: id, stageId, ...historyEntry });
 
       await notifyPieceStatusChange(piece, status, performerUser, reason, smsVariant);
     }
@@ -3099,6 +3111,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error(`Piece code "${requestedCode}" is already in use.`);
     }
 
+    // Never a legacy or hand-typed stage name — the column's check constraint
+    // only accepts the six current ones.
+    const status = migrateLegacyPieceStatus(piece.status);
+    const stageId = await stageIdForStatus(status);
+
     const newPiece: PotteryPiece = {
       name: 'Ceramic Piece',
       workshopName: 'Freestyle Handbuilding',
@@ -3108,9 +3125,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       dateCreated: new Date().toISOString().split('T')[0],
       assignedStaff: 'Lina',
       ...piece,
-      // Never a legacy or hand-typed stage name — the column's check constraint
-      // only accepts the six current ones.
-      status: migrateLegacyPieceStatus(piece.status),
+      status,
+      stageId,
       pieceCode: requestedCode || (await allocatePieceIdentifier('AC', taken)),
       id,
       daysElapsed: 0
@@ -3121,6 +3137,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await db.pieceHistory.add({
       pieceId: id,
       status: newPiece.status,
+      stageId,
       timestamp: new Date().toISOString(),
       riyadhTime: `${getRiyadhDateString()} ${getRiyadhNow().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`,
       user: 'Staff',
