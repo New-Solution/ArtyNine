@@ -36,7 +36,9 @@ import { customerPhoneKey, findCustomerMatch, normalizeCustomerPhone } from './c
 import { validateWorkshopForm, validateEventForm, validateStaffForm } from './validation';
 import { canAccessPage, isSuperAdmin, ADMIN_PAGE_IDS, defaultPermissionsForRole } from './adminAccess';
 import { isStageEnabled, DEFAULT_PIPELINE_STAGES, WORKSHOP_OPTION_LISTS } from '../types';
-import { TestResult, Booking, QueueItem, PotteryPiece, StaffMember, AppEvent } from '../types';
+import { TestResult, Booking, QueueItem, PotteryPiece, StaffMember, AppEvent, PipelineStage } from '../types';
+import { stageOf, stageByKey, isEndState } from './pipelineStages';
+import { canBeOverdue } from './pieceDays';
 
 export type TestCategory = TestResult['category'];
 
@@ -90,6 +92,13 @@ const check = (
   actual: string,
   failureMessage: string
 ): TestOutcome => (condition ? pass(expected, actual) : fail(expected, actual, failureMessage));
+
+/**
+ * Whether the database follows a stage rename (migration M2 of the stage-id
+ * plan: rename trigger, pieces_status_valid dropped). Until then SET-04 reports
+ * its database half as pending. Switch on when M2 is applied (plan step A8).
+ */
+const STAGE_RENAMES_ENFORCED = false;
 
 /** Formats a handful of offending ids for a failure message. */
 const listSome = (items: string[], limit = 5): string =>
@@ -159,7 +168,7 @@ const LEGACY_TEST_IDS = [
  * violated during cleanup.
  */
 const WRITTEN_TABLES: Array<keyof typeof sdb> = [
-  'pieceHistory', 'notifications', 'queue', 'pieces', 'bookings',
+  'pieceHistory', 'notifications', 'queue', 'pieces', 'pipelineStages', 'bookings',
   'workshopSessions', 'workshops', 'customers', 'staff', 'events', 'categories'
 ];
 
@@ -595,9 +604,16 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
     category: 'Pieces',
     kind: 'audit',
     run: async ({ live }) => {
-      const pieces: PotteryPiece[] = await live.pieces.toArray();
-      const moved = pieces.filter(p => p.status && p.status !== 'Created');
-      const missing = moved.filter(p => !(p.history || []).some(h => h.status === p.status));
+      const [pieces, stages]: [PotteryPiece[], PipelineStage[]] = await Promise.all([
+        live.pieces.toArray(), live.pipelineStages.toArray()
+      ]);
+      const created = stageByKey(stages, 'created');
+      const moved = pieces.filter(p => p.status && stageOf(p, stages)?.id !== created?.id);
+      // By stage id, so a stage renamed since the entry was written still matches.
+      const missing = moved.filter(p => {
+        const current = stageOf(p, stages)?.id;
+        return !(p.history || []).some(h => stageOf(h, stages)?.id === current);
+      });
 
       return check(
         missing.length === 0,
@@ -621,7 +637,7 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
       ]);
 
       // A stage can be configured not to notify; that is not a failure.
-      const readyStage = stages.find(s => s.name === 'Ready for Pickup');
+      const readyStage = stageByKey(stages, 'ready');
       if (readyStage && readyStage.notifyCustomer === false) {
         return pass(
           'Skipped — the stage is configured not to notify customers',
@@ -629,9 +645,11 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
         );
       }
 
-      const ready = pieces.filter(p => p.status === 'Ready for Pickup');
+      // Notifications store the stage name as it was when they were written.
+      const readyName = readyStage?.name ?? 'Ready for Pickup';
+      const ready = pieces.filter(p => stageOf(p, stages)?.systemKey === 'ready');
       const notNotified = ready.filter(p => !notifications.some(
-        n => n.type === 'customer' && n.pieceId === p.id && n.newStatus === 'Ready for Pickup'
+        n => n.type === 'customer' && n.pieceId === p.id && n.newStatus === readyName
       ));
 
       return check(
@@ -777,16 +795,17 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
     kind: 'scenario',
     run: async ({ temp }) => {
       await seedTemp(temp);
+      // Only the Ready for Pickup stage counts, by its system key.
       const isOverdue = (piece: any) => {
-        if (piece.status !== 'Ready for Pickup') return false;
+        if (stageOf(piece, DEFAULT_PIPELINE_STAGES)?.systemKey !== 'ready') return false;
         return (piece.daysElapsed || 0) >= 7;
       };
       const cases = [
-        { id: 'p6', status: 'Ready for Pickup', daysElapsed: 6, want: false },
-        { id: 'p7', status: 'Ready for Pickup', daysElapsed: 7, want: true },
-        { id: 'p9', status: 'Ready for Pickup', daysElapsed: 9, want: true },
-        { id: 'pd', status: 'Drying', daysElapsed: 30, want: false },
-        { id: 'pc', status: 'Collected', daysElapsed: 30, want: false }
+        { id: 'p6', stageId: 'stage-ready', status: 'Ready for Pickup', daysElapsed: 6, want: false },
+        { id: 'p7', stageId: 'stage-ready', status: 'Ready for Pickup', daysElapsed: 7, want: true },
+        { id: 'p9', stageId: 'stage-ready', status: 'Ready for Pickup', daysElapsed: 9, want: true },
+        { id: 'pd', stageId: 'stage-greenware', status: 'Created', daysElapsed: 30, want: false },
+        { id: 'pc', stageId: 'stage-collected', status: 'Collected', daysElapsed: 30, want: false }
       ];
       const wrong = cases.filter(c => isOverdue(c) !== c.want);
 
@@ -1465,8 +1484,8 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
         { id: 'TEST-B-B', customerPhone: '0559998888', customerName: 'Other Person', workshopId: 'w', date: '2026-12-01', time: '1', participants: 1, status: 'Pending' }
       ] as any);
       await temp.pieces.bulkPut([
-        { id: 'TEST-P-A', name: 'Bowl', status: 'Drying', customerId: FIXTURE_CUSTOMER.id, customerPhone: '0501234567', customerName: 'Fixture Customer' },
-        { id: 'TEST-P-B', name: 'Mug', status: 'Drying', customerId: 'TEST-CUST-2', customerPhone: '0559998888', customerName: 'Other Person' }
+        { id: 'TEST-P-A', name: 'Bowl', status: 'Created', customerId: FIXTURE_CUSTOMER.id, customerPhone: '0501234567', customerName: 'Fixture Customer' },
+        { id: 'TEST-P-B', name: 'Mug', status: 'Created', customerId: 'TEST-CUST-2', customerPhone: '0559998888', customerName: 'Other Person' }
       ] as any);
 
       const [customers, bookings, pieces] = await Promise.all([
@@ -1497,28 +1516,34 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
     description: 'Moves a piece forward and then back, checking both are appended with a timestamp and a user.',
     category: 'Pieces',
     kind: 'scenario',
-    run: async ({ temp }) => {
+    run: async ({ temp, live }) => {
       await seedTemp(temp);
+      // The real stages, read-only: a piece can only be in a configured stage.
+      const stages: PipelineStage[] = await live.pipelineStages.toArray();
+      const created = stageByKey(stages, 'created');
+      const kiln = stageByKey(stages, 'kiln');
+      if (!created || !kiln) return fail('The Created and Kiln Time stages exist', 'A system stage is missing', 'The pipeline is missing a system stage.');
+
       await temp.pieces.put({
-        id: 'TEST-PC-1', name: 'Bowl', status: 'Created', customerId: FIXTURE_CUSTOMER.id,
+        id: 'TEST-PC-1', name: 'Bowl', status: created.name, stageId: created.id, customerId: FIXTURE_CUSTOMER.id,
         customerName: 'Fixture Customer', customerPhone: '+966501234567'
       } as any);
       // History lives in its own append-only table.
       await temp.pieceHistory.add({
-        pieceId: 'TEST-PC-1', status: 'Created',
+        pieceId: 'TEST-PC-1', status: created.name, stageId: created.id,
         timestamp: new Date().toISOString(), user: 'Staff'
       } as any);
 
-      const move = async (to: string, user: string, reason?: string) => {
-        await temp.pieces.update('TEST-PC-1', { status: to } as any);
+      const move = async (to: PipelineStage, user: string, reason?: string) => {
+        await temp.pieces.update('TEST-PC-1', { status: to.name, stageId: to.id } as any);
         await temp.pieceHistory.add({
-          pieceId: 'TEST-PC-1', status: to,
+          pieceId: 'TEST-PC-1', status: to.name, stageId: to.id,
           timestamp: new Date().toISOString(), user, reason
         } as any);
       };
 
-      await move('First Burn and Colored', 'Staff');
-      await move('Drying', 'Manager', 'Needed more drying time');
+      await move(kiln, 'Staff');
+      await move(created, 'Manager', 'Needed more drying time');
 
       const final = await temp.pieces.get('TEST-PC-1');
       const trail = (await temp.pieceHistory.toArray())
@@ -1527,8 +1552,8 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
       const backward = trail[trail.length - 1];
 
       return check(
-        trail.length === 3 && final!.status === 'Drying' &&
-          backward.status === 'Drying' && !!backward.timestamp && backward.user === 'Manager',
+        trail.length === 3 && final!.stageId === created.id &&
+          backward.stageId === created.id && !!backward.timestamp && backward.user === 'Manager',
         'Three history entries, the last a backward move stamped with its user',
         `Status "${final!.status}", ${trail.length} entries: ${trail.map(h => h.status).join(' → ')}`,
         'A piece was moved backwards without leaving a record of who did it or why.'
@@ -1541,21 +1566,26 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
     description: 'Applies the board’s status and created-date filters to a mixed set of pieces.',
     category: 'Pieces',
     kind: 'scenario',
-    run: async ({ temp }) => {
+    run: async ({ temp, live }) => {
       await seedTemp(temp);
+      const stages: PipelineStage[] = await live.pipelineStages.toArray();
+      const [created, ready, collected] = (['created', 'ready', 'collected'] as const).map(k => stageByKey(stages, k));
+      if (!created || !ready || !collected) return fail('The system stages exist', 'A system stage is missing', 'The pipeline is missing a system stage.');
+
       await temp.pieces.bulkPut([
-        { id: 'TEST-F1', name: 'A', status: 'Drying', dateCreated: '2026-03-01', customerName: 'X', daysElapsed: 2 },
-        { id: 'TEST-F2', name: 'B', status: 'Drying', dateCreated: '2026-03-15', customerName: 'X', daysElapsed: 2 },
-        { id: 'TEST-F3', name: 'C', status: 'Ready for Pickup', dateCreated: '2026-03-10', customerName: 'X', daysElapsed: 12 },
-        { id: 'TEST-F4', name: 'D', status: 'Collected', dateCreated: '2026-04-01', customerName: 'X', daysElapsed: 40 }
+        { id: 'TEST-F1', name: 'A', status: created.name, stageId: created.id, dateCreated: '2026-03-01', customerName: 'X', daysElapsed: 2 },
+        { id: 'TEST-F2', name: 'B', status: created.name, stageId: created.id, dateCreated: '2026-03-15', customerName: 'X', daysElapsed: 2 },
+        { id: 'TEST-F3', name: 'C', status: ready.name, stageId: ready.id, dateCreated: '2026-03-10', customerName: 'X', daysElapsed: 12 },
+        { id: 'TEST-F4', name: 'D', status: collected.name, stageId: collected.id, dateCreated: '2026-04-01', customerName: 'X', daysElapsed: 40 }
       ] as any);
 
-      const pieces = await temp.pieces.toArray();
-      const byStatus = pieces.filter(p => p.status === 'Drying').map(p => p.id);
+      // The board's own rules: stage by id, overdue never for an end-state.
+      const pieces = (await temp.pieces.toArray()).sort((a, b) => a.id.localeCompare(b.id));
+      const byStatus = pieces.filter(p => stageOf(p, stages)?.id === created.id).map(p => p.id);
       const inMarch = pieces
         .filter(p => p.dateCreated >= '2026-03-01' && p.dateCreated <= '2026-03-31')
         .map(p => p.id);
-      const overdue = pieces.filter(p => p.status !== 'Collected' && p.daysElapsed >= 10).map(p => p.id);
+      const overdue = pieces.filter(p => canBeOverdue(stageOf(p, stages)) && p.daysElapsed >= 10).map(p => p.id);
 
       const problems: string[] = [];
       if (byStatus.join() !== 'TEST-F1,TEST-F2') problems.push(`status filter returned ${byStatus.join(', ') || 'nothing'}`);
@@ -1567,6 +1597,56 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
         'Status returns 2, the March range returns 3, overdue returns 1',
         problems.length === 0 ? 'All three filters returned the right pieces' : problems.join('; '),
         'A filter on the pottery board hides pieces that match or shows ones that do not.'
+      );
+    }
+  },
+  {
+    id: 'PCS-07',
+    name: 'The database keeps a piece’s stage id and status in step',
+    description: 'Writes a piece by status only, then by stage id only, adds history without a stage id, and tries a status no stage has (the 0045 triggers).',
+    category: 'Pieces',
+    kind: 'scenario',
+    run: async ({ temp, live }) => {
+      await seedTemp(temp);
+      const stages: PipelineStage[] = await live.pipelineStages.toArray();
+      const created = stageByKey(stages, 'created');
+      const kiln = stageByKey(stages, 'kiln');
+      if (!created || !kiln) return fail('The Created and Kiln Time stages exist', 'A system stage is missing', 'The pipeline is missing a system stage.');
+
+      const problems: string[] = [];
+
+      // Status only, as an app version from before 0045 writes it.
+      await temp.pieces.put({ id: 'TEST-PC-SYNC', name: 'Bowl', status: created.name, customerName: 'X' } as any);
+      let row = await temp.pieces.get('TEST-PC-SYNC');
+      if (row?.stageId !== created.id) problems.push(`a status-only write left stage_id ${row?.stageId ?? 'empty'}`);
+
+      // Stage id only.
+      await temp.pieces.update('TEST-PC-SYNC', { stageId: kiln.id } as any);
+      row = await temp.pieces.get('TEST-PC-SYNC');
+      if (row?.status !== kiln.name) problems.push(`a stage-id-only write left status "${row?.status}"`);
+
+      // History without a stage id.
+      await temp.pieceHistory.add({
+        pieceId: 'TEST-PC-SYNC', status: kiln.name, timestamp: new Date().toISOString(), user: 'Staff'
+      } as any);
+      const entry = (await temp.pieceHistory.toArray()).find((h: any) => h.pieceId === 'TEST-PC-SYNC');
+      if (entry?.stageId !== kiln.id) problems.push(`a history entry without a stage id kept ${entry?.stageId ?? 'none'}`);
+
+      // A name no stage has is refused, and the piece is left as it was.
+      let refused = false;
+      try {
+        await temp.pieces.update('TEST-PC-SYNC', { status: 'TEST Not A Stage' } as any);
+      } catch {
+        refused = true;
+      }
+      row = await temp.pieces.get('TEST-PC-SYNC');
+      if (!refused || row?.status !== kiln.name) problems.push('a status no stage has was accepted');
+
+      return check(
+        problems.length === 0,
+        'Stage id and status always agree, and a status no stage has is refused',
+        problems.length === 0 ? 'All four writes behaved' : problems.join('; '),
+        'A piece written by an older app version, or a history row, can lose track of its stage, so the board and the customer tracker disagree.'
       );
     }
   },
@@ -1694,28 +1774,28 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
   {
     id: 'SET-01',
     name: 'Pipeline stages drive the pottery board',
-    description: 'Renames, reorders and disables a stage, then rebuilds the board columns and the selectable list.',
+    description: 'Builds a stage list with a custom, a disabled and an end-state stage, then derives the board columns, the selectable list and the customer tracker the way the board does.',
     category: 'Settings',
     kind: 'scenario',
-    run: async ({ temp }) => {
-      await seedTemp(temp);
-      await temp.pipelineStages.clear();
-      await temp.pipelineStages.bulkPut([
-        { id: 'TEST-st-1', name: 'Created', color: '#a', order: 0, visibleToCustomer: true, enabled: true },
-        { id: 'TEST-st-2', name: 'Kiln Drying', color: '#b', order: 1, visibleToCustomer: false, enabled: true },
-        { id: 'TEST-st-3', name: 'Retired Stage', color: '#c', order: 2, visibleToCustomer: false, enabled: false }
-      ] as any);
+    run: async () => {
+      // In memory, deliberately: stage rows written to the real table would
+      // appear as columns on every open board while the test ran.
+      const stages: PipelineStage[] = ([
+        { id: 'TEST-st-4', name: 'Collected', color: '#d', order: 3, visibleToCustomer: false, enabled: true, systemKey: 'collected' },
+        { id: 'TEST-st-2', name: 'Kiln Drying', color: '#b', order: 1, visibleToCustomer: false, enabled: true, systemKey: null },
+        { id: 'TEST-st-1', name: 'Created', color: '#a', order: 0, visibleToCustomer: true, enabled: true, systemKey: 'created' },
+        { id: 'TEST-st-3', name: 'Retired Stage', color: '#c', order: 2, visibleToCustomer: false, enabled: false, systemKey: null }
+      ] as PipelineStage[]).sort((a, b) => a.order - b.order);
 
-      const stages = (await temp.pipelineStages.toArray()).sort((a, b) => a.order - b.order);
-      const columns = stages.map(s => s.name);
+      const columns = stages.filter(s => !isEndState(s)).map(s => s.name);
       const selectable = stages.filter(isStageEnabled).map(s => s.name);
       const customerVisible = stages.filter(s => s.visibleToCustomer).map(s => s.name);
 
       return check(
         columns.join() === 'Created,Kiln Drying,Retired Stage' &&
-          selectable.join() === 'Created,Kiln Drying' &&
+          selectable.join() === 'Created,Kiln Drying,Collected' &&
           customerVisible.join() === 'Created',
-        'Board shows all three in order; only two are selectable; one is customer-visible',
+        'Three columns in order (the end-state is not one); the disabled stage is not selectable; one is customer-visible',
         `Columns: ${columns.join(', ')} | Selectable: ${selectable.join(', ')} | Customer: ${customerVisible.join(', ')}`,
         'The pottery board or the customer tracker is not following the stages configured in Settings.'
       );
@@ -1727,31 +1807,84 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
     description: 'Applies the delete guard to a stage used by a piece, one used only in history, and an unused one.',
     category: 'Settings',
     kind: 'scenario',
-    run: async ({ temp }) => {
+    run: async ({ temp, live }) => {
       await seedTemp(temp);
+      const stages: PipelineStage[] = await live.pipelineStages.toArray();
+      const created = stageByKey(stages, 'created');
+      const kiln = stageByKey(stages, 'kiln');
+      if (!created || !kiln) return fail('The Created and Kiln Time stages exist', 'A system stage is missing', 'The pipeline is missing a system stage.');
+
       await temp.pieces.put({
-        id: 'TEST-PC-S', name: 'Bowl', status: 'Drying', customerName: 'X'
+        id: 'TEST-PC-S', name: 'Bowl', status: created.name, stageId: created.id, customerName: 'X'
       } as any);
       await temp.pieceHistory.add({
-        pieceId: 'TEST-PC-S', status: 'First Burn and Colored',
+        pieceId: 'TEST-PC-S', status: kiln.name, stageId: kiln.id,
         timestamp: '2026-01-01T00:00:00.000Z', user: 'Staff'
       } as any);
 
+      // By stage id: a renamed stage is still recognised as in use.
       const pieces = await temp.pieces.toArray();
       const history = await temp.pieceHistory.toArray();
-      const canDelete = (stageName: string) =>
-        !pieces.some(p => p.status === stageName) &&
-        !history.some((h: any) => h.status === stageName);
+      const canDelete = (stageId: string) =>
+        !pieces.some(p => p.stageId === stageId) &&
+        !history.some((h: any) => h.stageId === stageId);
 
-      const inUse = canDelete('Drying');
-      const inHistory = canDelete('First Burn and Colored');
-      const unused = canDelete('Never Used Stage');
+      const inUse = canDelete(created.id);
+      const inHistory = canDelete(kiln.id);
+      const unused = canDelete('TEST-stage-never-used');
 
       return check(
         !inUse && !inHistory && unused,
         'A current stage and a historical stage are protected; an unused one can be deleted',
         `Current: ${!inUse ? 'protected' : 'DELETABLE'}, historical: ${!inHistory ? 'protected' : 'DELETABLE'}, unused: ${unused ? 'deletable' : 'blocked'}`,
         'A stage still referenced by pottery records could be deleted, making those records unreadable.'
+      );
+    }
+  },
+  {
+    id: 'SET-04',
+    name: 'Renaming a stage does not move its pieces',
+    description: 'Renames a stage and checks each piece stays in the same column. The database half (status follows the rename) is pending until migration M2.',
+    category: 'Settings',
+    kind: 'scenario',
+    run: async ({ temp }) => {
+      // App side, in memory: the column a piece lands in comes from its stage id.
+      const before = DEFAULT_PIPELINE_STAGES;
+      const after = before.map(s => (s.systemKey === 'kiln' ? { ...s, name: 'Kiln Time' } : s));
+      const pieces = before.map(s => ({ id: `TEST-${s.id}`, stageId: s.id, status: s.name }));
+      const moved = pieces.filter(p => stageOf(p, after)?.id !== stageOf(p, before)?.id);
+      if (moved.length > 0) {
+        return fail(
+          'Every piece stays in its column after a rename',
+          `Moved: ${listSome(moved.map(p => p.id))}`,
+          'Renaming a stage in Settings moves its pieces to another column on the board.'
+        );
+      }
+
+      if (!STAGE_RENAMES_ENFORCED) {
+        return pass(
+          'Pending until migration M2 — the board keeps pieces in place on rename; the database half runs once renames are enabled',
+          'App side: all 5 pieces stay in their columns. Database side: not run (M2 not applied)'
+        );
+      }
+
+      // Database side (after M2): a TEST stage is renamed and its piece's
+      // status follows while its stage id stays. Purged with the other TEST rows.
+      await seedTemp(temp);
+      const stageId = 'TEST-stage-rename';
+      await temp.pipelineStages.put({
+        id: stageId, name: 'TEST Rename Before', color: '#999999', order: 99,
+        visibleToCustomer: false, enabled: true, notifyCustomer: false, systemKey: null
+      } as any);
+      await temp.pieces.put({ id: 'TEST-PC-RENAME', name: 'Bowl', stageId, status: 'TEST Rename Before', customerName: 'X' } as any);
+      await temp.pipelineStages.update(stageId, { name: 'TEST Rename After' });
+      const row = await temp.pieces.get('TEST-PC-RENAME');
+
+      return check(
+        row?.stageId === stageId && row?.status === 'TEST Rename After',
+        'The piece keeps its stage id and its status shows the new name',
+        `stage_id ${row?.stageId ?? 'empty'}, status "${row?.status}"`,
+        'Renaming a stage left its pieces on the old name, so they drop off the board.'
       );
     }
   },
