@@ -3856,6 +3856,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { customer: (cached || { id: '', name: input.name || 'Guest' }) as CustomerAccount, created: false, matchedOn: reason };
     }
 
+    // Nothing to match on: the RPC would only create an empty 'Guest' row
+    // (0042 makes it return null instead). Same result as a failed call.
+    if (!String(input.phone ?? '').trim() && !String(input.email ?? '').trim()) {
+      return { customer: (cached || { id: '', name: input.name || 'Guest' }) as CustomerAccount, created: false, matchedOn: reason };
+    }
+
     const { data: id, error } = await supabase.rpc('resolve_customer_record', {
       p_name: input.name ?? null,
       p_phone: input.phone ?? null,

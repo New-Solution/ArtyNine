@@ -9,7 +9,8 @@
  * Each expected object is probed by name so the message can say which file to
  * run.
  *
- * Read-only: every probe is a call that changes nothing.
+ * Read-only: every probe is a call that changes nothing. Never probe a
+ * function that can insert or update — this runs on every page load.
  */
 
 import { getDataClient } from './supabase';
@@ -93,18 +94,13 @@ export const MIGRATION_REQUIREMENTS: MigrationRequirement[] = [
     probe: rpcExists('session_seats_remaining', { p_session_id: '__probe__' })
   },
 
-  // 0003 — the customer site's write path.
-  {
-    name: 'resolve_customer_record()',
-    migration: '0003_customer_write_access.sql',
-    probe: rpcExists('resolve_customer_record', { p_name: null, p_phone: null, p_email: null, p_auth_id: null, p_source: null })
-  },
-  // get_customer_summary() is intentionally not probed here: migration 0011
-  // revoked EXECUTE on it from anon to close a PII-enumeration hole, so an
-  // anonymous probe call gets refused by design — a genuine HTTP 403 the
-  // browser's own network panel logs regardless of how the app handles it,
-  // on every anonymous page load. resolve_customer_record() above is from
-  // the same file and already proves this migration ran.
+  // 0003 — the customer site's write path. Not probed: neither of its
+  // functions can be called safely on every page load.
+  // resolve_customer_record() is a find-or-create — the old empty-args probe
+  // inserted a 'Guest' customer row on every visit (stopped server-side by
+  // 0042). get_customer_summary() had EXECUTE revoked from anon by 0011, so an
+  // anonymous probe is refused by design — a genuine HTTP 403 the browser's
+  // network panel logs on every anonymous page load.
 
   // 0004 — staff assignment on a booking.
   {
