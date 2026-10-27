@@ -801,6 +801,13 @@ export const AuthSection: React.FC = () => {
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
                 <div className="flex-1">
                   <p>{errorMsg}</p>
+                  {/* A failed email sign-in, whatever the reason, so it reveals
+                      nothing: a phone account's email is not a sign-in. */}
+                  {PHONE_AUTH_ENABLED && authScreen === 'login' && !phoneCodeOpen && (loginIdentifier || email).includes('@') && (
+                    <p className="mt-1 font-medium">
+                      {t('Signed up with your phone? Sign in with your phone number instead.', 'سجلت برقم جوالك؟ سجّل الدخول برقم الجوال بدلًا من الإيميل.')}
+                    </p>
+                  )}
                   {errorMsg.includes('already exists') && (
                     <button
                       type="button"

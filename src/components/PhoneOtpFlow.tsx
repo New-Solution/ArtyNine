@@ -445,11 +445,17 @@ export const PhoneSetupForm: React.FC<PhoneSetupFormProps> = ({ askName: askName
               inputMode="email"
               autoComplete="email"
               dir="ltr"
+              aria-describedby="phone-otp-email-help"
               value={email}
               onChange={e => { setEmail(e.target.value); setError(null); }}
               placeholder="noura@example.com"
               className={inputClass}
             />
+            {/* Saved to the customer record only, not the auth account: the
+                phone number stays the sign-in. */}
+            <p id="phone-otp-email-help" className="text-[11px] font-semibold text-brand-charcoal/55">
+              {t("For booking updates only — you'll sign in with your phone number.", 'للتواصل وتحديثات الحجز فقط — تسجيل الدخول يكون برقم جوالك.')}
+            </p>
           </div>
         </>
       )}
