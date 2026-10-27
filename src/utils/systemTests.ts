@@ -1765,7 +1765,7 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
         phone: '+966533337777', email: 'busy@test.com'
       } as any);
       await temp.workshopSessions.put({
-        id: 'TEST-SESS-HELD', workshopId: FIXTURE_WORKSHOP.id, date: '2099-12-01',
+        id: 'TEST-SESS-HELD', workshopId: FIXTURE_WORKSHOP.id, date: '2099-12-03',
         startTime: '11:00 AM', staffId: 'TEST-STF-C', capacity: 6, status: 'Published'
       } as any);
       await temp.workshops.update(FIXTURE_WORKSHOP.id, { staffId: 'TEST-STF-C' } as any);
