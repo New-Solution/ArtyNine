@@ -38,7 +38,7 @@ import { canAccessPage, isSuperAdmin, ADMIN_PAGE_IDS, defaultPermissionsForRole 
 import { isStageEnabled, DEFAULT_PIPELINE_STAGES, WORKSHOP_OPTION_LISTS } from '../types';
 import { TestResult, Booking, QueueItem, PotteryPiece, StaffMember, AppEvent, PipelineStage } from '../types';
 import { stageOf, stageByKey, isEndState } from './pipelineStages';
-import { canBeOverdue } from './pieceDays';
+import { canBeOverdue, pieceDaysWaiting, OVERDUE_PIECE_DAYS } from './pieceDays';
 
 export type TestCategory = TestResult['category'];
 
@@ -125,7 +125,7 @@ const FIXTURE_WORKSHOP = {
 const FIXTURE_SESSION = {
   id: 'TEST-SESS-1',
   workshopId: 'TEST-WS-1',
-  date: '2026-12-01',
+  date: '2099-12-01',
   startTime: '11:00 AM',
   capacity: 6,
   status: 'Published' as const
@@ -604,15 +604,24 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
     category: 'Pieces',
     kind: 'audit',
     run: async ({ live }) => {
-      const [pieces, stages]: [PotteryPiece[], PipelineStage[]] = await Promise.all([
-        live.pieces.toArray(), live.pipelineStages.toArray()
+      // History is its own table: rows read through `live` carry no `history`
+      // (only AppContext stitches it on), so it is read and grouped here.
+      const [pieces, stages, history]: [PotteryPiece[], PipelineStage[], any[]] = await Promise.all([
+        live.pieces.toArray(), live.pipelineStages.toArray(), live.pieceHistory.toArray()
       ]);
+      const historyByPiece = new Map<string, any[]>();
+      for (const entry of history) {
+        const list = historyByPiece.get(entry.pieceId) || [];
+        list.push(entry);
+        historyByPiece.set(entry.pieceId, list);
+      }
+
       const created = stageByKey(stages, 'created');
       const moved = pieces.filter(p => p.status && stageOf(p, stages)?.id !== created?.id);
       // By stage id, so a stage renamed since the entry was written still matches.
       const missing = moved.filter(p => {
         const current = stageOf(p, stages)?.id;
-        return !(p.history || []).some(h => stageOf(h, stages)?.id === current);
+        return !(historyByPiece.get(p.id) || []).some(h => stageOf(h, stages)?.id === current);
       });
 
       return check(
@@ -770,10 +779,10 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
     run: async ({ temp }) => {
       await seedTemp(temp);
       await temp.bookings.bulkPut([
-        { id: 'TEST-U1', workshopId: 'w', date: '2026-12-01', time: '1', participants: 1, status: 'Pending', paymentStatus: 'Unpaid', customerName: 'A' },
-        { id: 'TEST-U2', workshopId: 'w', date: '2026-12-01', time: '1', participants: 1, status: 'Completed', paymentStatus: 'Unpaid', customerName: 'B' },
-        { id: 'TEST-U3', workshopId: 'w', date: '2026-12-01', time: '1', participants: 1, status: 'Cancelled', paymentStatus: 'Unpaid', customerName: 'C' },
-        { id: 'TEST-U4', workshopId: 'w', date: '2026-12-01', time: '1', participants: 1, status: 'Pending', paymentStatus: 'Paid', customerName: 'D' }
+        { id: 'TEST-U1', workshopId: 'w', date: '2099-12-01', time: '1', participants: 1, status: 'Pending', paymentStatus: 'Unpaid', customerName: 'A' },
+        { id: 'TEST-U2', workshopId: 'w', date: '2099-12-01', time: '1', participants: 1, status: 'Completed', paymentStatus: 'Unpaid', customerName: 'B' },
+        { id: 'TEST-U3', workshopId: 'w', date: '2099-12-01', time: '1', participants: 1, status: 'Cancelled', paymentStatus: 'Unpaid', customerName: 'C' },
+        { id: 'TEST-U4', workshopId: 'w', date: '2099-12-01', time: '1', participants: 1, status: 'Pending', paymentStatus: 'Paid', customerName: 'D' }
       ] as any);
 
       const bookings = await temp.bookings.toArray();
@@ -789,29 +798,37 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
   },
   {
     id: 'DSH-03',
-    name: 'Overdue pickup uses the 7-day threshold',
-    description: 'Checks the boundary: 6 days waiting is not overdue, 7 days is, and only ready pieces count.',
+    name: `Overdue pickup uses the shared ${OVERDUE_PIECE_DAYS}-day threshold`,
+    description: `Checks the boundary with the Dashboard's own rule (pieceDaysWaiting ≥ OVERDUE_PIECE_DAYS): ${OVERDUE_PIECE_DAYS - 1} days waiting is not overdue, ${OVERDUE_PIECE_DAYS} is, and only ready pieces count.`,
     category: 'Dashboard',
     kind: 'scenario',
-    run: async ({ temp }) => {
-      await seedTemp(temp);
-      // Only the Ready for Pickup stage counts, by its system key.
-      const isOverdue = (piece: any) => {
-        if (stageOf(piece, DEFAULT_PIPELINE_STAGES)?.systemKey !== 'ready') return false;
-        return (piece.daysElapsed || 0) >= 7;
+    run: async () => {
+      // A fixed "today", so the boundary does not move with the calendar.
+      const today = '2099-06-30';
+      const daysBefore = (n: number) => {
+        const d = new Date(`${today}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() - n);
+        return d.toISOString().split('T')[0];
       };
+      // The Dashboard's rule: ready pieces only (get_overdue_pickup_pieces
+      // returns nothing else), waiting OVERDUE_PIECE_DAYS or more by the shared
+      // pieceDaysWaiting().
+      const isOverdue = (piece: any) =>
+        stageOf(piece, DEFAULT_PIPELINE_STAGES)?.systemKey === 'ready' &&
+        pieceDaysWaiting(piece, today) >= OVERDUE_PIECE_DAYS;
+      const T = OVERDUE_PIECE_DAYS;
       const cases = [
-        { id: 'p6', stageId: 'stage-ready', status: 'Ready for Pickup', daysElapsed: 6, want: false },
-        { id: 'p7', stageId: 'stage-ready', status: 'Ready for Pickup', daysElapsed: 7, want: true },
-        { id: 'p9', stageId: 'stage-ready', status: 'Ready for Pickup', daysElapsed: 9, want: true },
-        { id: 'pd', stageId: 'stage-greenware', status: 'Created', daysElapsed: 30, want: false },
-        { id: 'pc', stageId: 'stage-collected', status: 'Collected', daysElapsed: 30, want: false }
+        { id: 'under', stageId: 'stage-ready', status: 'Ready for Pickup', expectedReadyDate: daysBefore(T - 1), want: false },
+        { id: 'at', stageId: 'stage-ready', status: 'Ready for Pickup', expectedReadyDate: daysBefore(T), want: true },
+        { id: 'over', stageId: 'stage-ready', status: 'Ready for Pickup', expectedReadyDate: daysBefore(T + 5), want: true },
+        { id: 'created', stageId: 'stage-greenware', status: 'Created', expectedReadyDate: daysBefore(T + 30), want: false },
+        { id: 'collected', stageId: 'stage-collected', status: 'Collected', expectedReadyDate: daysBefore(T + 30), want: false }
       ];
       const wrong = cases.filter(c => isOverdue(c) !== c.want);
 
       return check(
         wrong.length === 0,
-        'Only ready pieces waiting 7+ days are overdue',
+        `Only ready pieces waiting ${T}+ days are overdue`,
         wrong.length === 0 ? 'All 5 boundary cases correct' : `Wrong for: ${listSome(wrong.map(c => c.id))}`,
         'The overdue-pickup figure counts the wrong pieces, so staff chase the wrong customers.'
       );
@@ -1009,7 +1026,7 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
       const wrong = cases.filter(c => c.got !== c.want);
 
       await temp.bookings.put({
-        id: 'TEST-REF', workshopId: 'w', date: '2026-12-01', time: '11:00 AM',
+        id: 'TEST-REF', workshopId: 'w', date: '2099-12-01', time: '11:00 AM',
         participants: 1, status: 'Pending', paymentStatus: 'Paid', customerName: 'A'
       } as any);
       await temp.bookings.update('TEST-REF', { status: 'Cancelled', paymentStatus: 'Refunded' });
@@ -1425,7 +1442,7 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
         { id: 'TEST-EV-FREE', title: 'Unbooked', status: 'Published', capacity: 10, spotsLeft: 10 }
       ] as any);
       await temp.bookings.put({
-        id: 'TEST-EVBK', workshopId: 'TEST-EV-BOOKED', date: '2026-12-01', time: '1',
+        id: 'TEST-EVBK', workshopId: 'TEST-EV-BOOKED', date: '2099-12-01', time: '1',
         participants: 1, status: 'Pending', customerName: 'A'
       } as any);
 
@@ -1480,8 +1497,8 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
       } as any);
 
       await temp.bookings.bulkPut([
-        { id: 'TEST-B-A', customerPhone: '+966501234567', customerName: 'Fixture Customer', workshopId: 'w', date: '2026-12-01', time: '1', participants: 1, status: 'Pending' },
-        { id: 'TEST-B-B', customerPhone: '0559998888', customerName: 'Other Person', workshopId: 'w', date: '2026-12-01', time: '1', participants: 1, status: 'Pending' }
+        { id: 'TEST-B-A', customerPhone: '+966501234567', customerName: 'Fixture Customer', workshopId: 'w', date: '2099-12-01', time: '1', participants: 1, status: 'Pending' },
+        { id: 'TEST-B-B', customerPhone: '0559998888', customerName: 'Other Person', workshopId: 'w', date: '2099-12-01', time: '1', participants: 1, status: 'Pending' }
       ] as any);
       await temp.pieces.bulkPut([
         { id: 'TEST-P-A', name: 'Bowl', status: 'Created', customerId: FIXTURE_CUSTOMER.id, customerPhone: '0501234567', customerName: 'Fixture Customer' },
@@ -1706,7 +1723,7 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
       } as any;
 
       const existingSession = {
-        id: 'TEST-SESS-BUSY', workshopId: FIXTURE_WORKSHOP.id, date: '2026-12-01',
+        id: 'TEST-SESS-BUSY', workshopId: FIXTURE_WORKSHOP.id, date: '2099-12-01',
         startTime: '11:00', endTime: '13:00', staffId: member.id, capacity: 6, status: 'Published'
       };
       const sources = {
@@ -1718,13 +1735,13 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
       };
 
       const clash = checkStaffMemberAvailability({
-        staff: member, date: '2026-12-01', startTime: '11:30', endTime: '12:30', sources
+        staff: member, date: '2099-12-01', startTime: '11:30', endTime: '12:30', sources
       });
       const free = checkStaffMemberAvailability({
-        staff: member, date: '2026-12-01', startTime: '13:00', endTime: '14:00', sources
+        staff: member, date: '2099-12-01', startTime: '13:00', endTime: '14:00', sources
       });
       const otherDay = checkStaffMemberAvailability({
-        staff: member, date: '2026-12-02', startTime: '11:30', endTime: '12:30', sources
+        staff: member, date: '2099-12-02', startTime: '11:30', endTime: '12:30', sources
       });
 
       return check(
@@ -1748,7 +1765,7 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
         phone: '+966533337777', email: 'busy@test.com'
       } as any);
       await temp.workshopSessions.put({
-        id: 'TEST-SESS-HELD', workshopId: FIXTURE_WORKSHOP.id, date: '2026-12-01',
+        id: 'TEST-SESS-HELD', workshopId: FIXTURE_WORKSHOP.id, date: '2099-12-01',
         startTime: '11:00 AM', staffId: 'TEST-STF-C', capacity: 6, status: 'Published'
       } as any);
       await temp.workshops.update(FIXTURE_WORKSHOP.id, { staffId: 'TEST-STF-C' } as any);
@@ -2243,7 +2260,7 @@ export const SYSTEM_TESTS: SystemTestDefinition[] = [
       const client = getDataClient();
       if (!client) return pass('Skipped — Supabase is not configured', 'No client to test with');
 
-      const day = '2026-12-02';
+      const day = '2099-12-02';
       const before = await client.rpc('next_queue_number', { p_date: day });
 
       // The number, not the id, is what the generator reads now — a row with no
