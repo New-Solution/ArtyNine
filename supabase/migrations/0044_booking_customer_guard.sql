@@ -1,4 +1,4 @@
--- STATUS: NOT YET APPLIED — requires manual review
+-- STATUS: APPLIED
 -- =============================================================================
 -- 0044 — SIGNED-IN CUSTOMERS' BOOKINGS ALWAYS USE THEIR OWN RECORD
 --
