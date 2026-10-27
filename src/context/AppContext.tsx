@@ -79,6 +79,7 @@ import { enumLabel } from '../utils/enumLabels';
 import { bookingCancellationSms } from '../../supabase/functions/_shared/bookingSmsTemplates';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
 import { toE164Saudi, isPhoneSetupPending } from '../utils/phoneAuth';
+import { isCaptchaError, CAPTCHA_FAILED_MESSAGE, type CaptchaProvider } from '../utils/captcha';
 import { getConfiguredTables, computeTableStates, validateTableSelection } from '../utils/tableSeatingUtils';
 
 export {
@@ -192,13 +193,15 @@ interface AppContextType {
   setCurrentUser: (user: { id?: string; name: string; email: string; phone: string } | null) => void;
   authScreen: 'login' | 'register' | 'forgot';
   setAuthScreen: (screen: 'login' | 'register' | 'forgot') => void;
-  registerCustomer: (data: { name: string; email: string; phone: string; password?: string }) => Promise<{ success: boolean; error?: string }>;
+  // `captcha` (all auth calls below): a fresh Turnstile token per Supabase Auth
+  // call — components/Turnstile.tsx. Optional; no token is sent without it.
+  registerCustomer: (data: { name: string; email: string; phone: string; password?: string }, captcha?: CaptchaProvider) => Promise<{ success: boolean; error?: string }>;
   /**
    * Signs a customer in with EITHER their phone number or their email address.
    * `needsPasswordSetup` means the identifier matched an unclaimed record and
    * the claim flow should be offered instead of a password error.
    */
-  loginCustomer: (emailOrPhone: string, password?: string) =>
+  loginCustomer: (emailOrPhone: string, password?: string, captcha?: CaptchaProvider) =>
     Promise<{
       success: boolean;
       error?: string;
@@ -214,7 +217,7 @@ interface AppContextType {
    * is created against an address, and the record's own address is never
    * disclosed to the browser.
    */
-  claimCustomerAccount: (emailOrPhone: string, password: string, email?: string) =>
+  claimCustomerAccount: (emailOrPhone: string, password: string, email?: string, captcha?: CaptchaProvider) =>
     Promise<{
       success: boolean;
       error?: string;
@@ -222,7 +225,7 @@ interface AppContextType {
       needsEmailConfirmation?: boolean;
     }>;
   /** Sends a reset link. The reply never reveals whether the email exists. */
-  requestPasswordReset: (email: string) =>
+  requestPasswordReset: (email: string, captcha?: CaptchaProvider) =>
     Promise<{ success: boolean; error?: string; message?: string }>;
   /** True once the emailed link's recovery session has been established. */
   hasRecoverySession: () => Promise<boolean>;
@@ -276,7 +279,7 @@ interface AppContextType {
   /** The signed-in staff member, or null. Never defaults to a staff record. */
   currentStaff: StaffMember | null;
   staffAuthChecked: boolean;
-  loginStaff: (emailOrPhone: string, password: string) =>
+  loginStaff: (emailOrPhone: string, password: string, captcha?: CaptchaProvider) =>
     Promise<{ success: boolean; error?: string; mustChangePassword?: boolean }>;
   /** Replaces the signed-in staff member's password (Supabase Auth). */
   changeStaffPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
@@ -542,6 +545,7 @@ function friendlyAuthError(message: string): string {
   if (m.includes('email not confirmed')) {
     return 'Please confirm your email address first — check your inbox for the link.';
   }
+  if (isCaptchaError({ message })) return CAPTCHA_FAILED_MESSAGE;
   return message || 'Sign-in failed. Please try again.';
 }
 
@@ -690,7 +694,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<{ id?: string; name: string; email: string; phone: string } | null>(null);
   const [authScreen, setAuthScreen] = useState<'login' | 'register' | 'forgot'>('login');
 
-  const registerCustomer = async (data: { name: string; email: string; phone: string; password?: string }) => {
+  const registerCustomer = async (data: { name: string; email: string; phone: string; password?: string }, captcha?: CaptchaProvider) => {
     // The same shared rules the forms use, enforced again here so no caller can
     // write an invalid record by skipping a form.
     const nameCheck = validateRequired(data.name, 'Full name');
@@ -732,7 +736,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // written to a customer record.
     const { data: signUp, error: signUpError } = await supabase.auth.signUp({
       email: normEmail,
-      password: data.password!
+      password: data.password!,
+      options: { captchaToken: await captcha?.() }
     });
 
     if (signUpError) {
@@ -901,7 +906,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return customer;
   };
 
-  const loginCustomer = async (emailOrPhone: string, password?: string) => {
+  const loginCustomer = async (emailOrPhone: string, password?: string, captcha?: CaptchaProvider) => {
     const input = String(emailOrPhone || '').trim();
     if (!input) return { success: false, error: 'Email or phone number is required.' };
     if (!password) return { success: false, error: 'Enter your password.' };
@@ -917,7 +922,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (PHONE_AUTH_ENABLED && !looksLikeEmail) {
       const e164 = toE164Saudi(input);
       if (e164) {
-        const { data: phoneData, error: phoneError } = await supabase.auth.signInWithPassword({ phone: e164, password });
+        const { data: phoneData, error: phoneError } = await supabase.auth.signInWithPassword({
+          phone: e164, password, options: { captchaToken: await captcha?.() }
+        });
+        // Refused before the password was looked at, so saying so reveals nothing.
+        if (isCaptchaError(phoneError)) return { success: false, error: CAPTCHA_FAILED_MESSAGE };
         if (!phoneError && phoneData.user) {
           let customer = (await db.customers.toArray()).find(c => c.userId === phoneData.user.id);
           if (!customer) {
@@ -967,7 +976,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (looksLikeEmail) {
         const { data: attemptData, error: attemptError } = await supabase.auth.signInWithPassword({
           email: typedEmail,
-          password
+          password,
+          options: { captchaToken: await captcha?.() }
         });
 
         if (!attemptError && attemptData.user) {
@@ -1038,7 +1048,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       email = canonicalEmail(resolvedEmail);
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email, password, options: { captchaToken: await captcha?.() }
+    });
     if (error || !data.user) {
       // Route resolution already handled the unclaimed case, so a failure here
       // is a genuinely wrong credential and says so plainly.
@@ -1065,7 +1077,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    * completes once Supabase Auth has proven the caller controls the address
    * (the email confirmation link). Knowing a phone number must never be enough.
    */
-  const claimCustomerAccount = async (emailOrPhone: string, password: string, email?: string) => {
+  const claimCustomerAccount = async (emailOrPhone: string, password: string, email?: string, captcha?: CaptchaProvider) => {
     const input = String(emailOrPhone || '').trim();
     if (!input) return { success: false, error: 'Email or phone number is required.' };
     if (!supabase) return { success: false, error: SUPABASE_NOT_CONFIGURED };
@@ -1140,7 +1152,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // phone number, when that is what was typed — so a walk-in's bookings,
     // queue visits and pottery all stay on the one record. The typed email only
     // ever names the auth account.
-    const { data, error } = await supabase.auth.signUp({ email: claimEmail, password });
+    const { data, error } = await supabase.auth.signUp({
+      email: claimEmail, password, options: { captchaToken: await captcha?.() }
+    });
     if (error) return { success: false, error: friendlyAuthError(error.message) };
 
     const authId = data.user?.id;
@@ -1184,7 +1198,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    * The response is deliberately identical whether or not the address is on
    * file, so this cannot be used to discover which emails are registered.
    */
-  const requestPasswordReset = async (email: string) => {
+  const requestPasswordReset = async (email: string, captcha?: CaptchaProvider) => {
     const address = canonicalEmail(email);
     const generic = 'If an account exists for that address, a reset link is on its way. Check your inbox and spam folder.';
 
@@ -1199,11 +1213,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // produced "#reset-password#access_token=..." — unparseable, so no
       // session was ever created and every link looked expired.
       // The reset screen is reached from `type=recovery` / PASSWORD_RECOVERY.
-      redirectTo: `${window.location.origin}${window.location.pathname}`
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+      captchaToken: await captcha?.()
     });
 
     if (error) {
       console.error('Password reset request failed:', error.message);
+
+      // Refused before any account was looked up, so this is safe to name —
+      // and the generic "on its way" would be untrue.
+      if (isCaptchaError(error)) return { success: false, error: CAPTCHA_FAILED_MESSAGE };
 
       // Two kinds of failure, and only one of them is safe to describe.
       //
@@ -3687,7 +3706,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    * Signs a staff member in with an email address or a phone number in any
    * format. There is no default staff account: a failed match signs nobody in.
    */
-  const loginStaff = async (emailOrPhone: string, password: string) => {
+  const loginStaff = async (emailOrPhone: string, password: string, captcha?: CaptchaProvider) => {
     const input = String(emailOrPhone || '').trim();
     if (!input) return { success: false, error: 'Enter your email address or phone number.' };
     if (!password) return { success: false, error: 'Enter your password.' };
@@ -3701,7 +3720,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 1. Supabase Auth verifies the credential, on the console's own session
     //    so signing in as a customer elsewhere does not sign staff out.
-    const { data, error } = await supabaseStaff.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabaseStaff.auth.signInWithPassword({
+      email, password, options: { captchaToken: await captcha?.() }
+    });
     if (error || !data.user) {
       // The real reason, so "email not confirmed" is not reported as a wrong
       // password.

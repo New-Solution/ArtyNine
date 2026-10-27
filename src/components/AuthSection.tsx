@@ -24,6 +24,7 @@ import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
 import { PhoneOtpFlow, PhoneSetupForm } from './PhoneOtpFlow';
 import { toE164Saudi, needsCustomerName } from '../utils/phoneAuth';
 import { supabase } from '../lib/supabase';
+import { useTurnstile } from './Turnstile';
 
 /** Staggered fade-up for the title block over the photograph. */
 const textVariants = {
@@ -107,6 +108,12 @@ export const AuthSection: React.FC = () => {
   const clearError = (key: string) =>
     setErrors(prev => (prev[key] ? { ...prev, [key]: '' } : prev));
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Supabase Auth CAPTCHA — one widget per form (inactive without VITE_TURNSTILE_SITE_KEY).
+  const loginCaptcha = useTurnstile();
+  const claimCaptcha = useTurnstile();
+  const registerCaptcha = useTurnstile();
+  const resetCaptcha = useTurnstile();
 
   // Change-password state for the account page.
   const prefersReducedMotion = useReducedMotion();
@@ -208,7 +215,7 @@ export const AuthSection: React.FC = () => {
     setIsSubmitting(true);
 
     const loginInput = loginIdentifier || email;
-    const res = await loginCustomer(loginInput, password);
+    const res = await loginCustomer(loginInput, password, loginCaptcha.getToken);
     setIsSubmitting(false);
 
     if (!res.success) {
@@ -246,7 +253,7 @@ export const AuthSection: React.FC = () => {
     setIsSubmitting(true);
     // Claiming by phone needs an address for the confirmation link; claiming by
     // email already has one.
-    const res = await claimCustomerAccount(claimIdentifier || '', claimPassword, claimEmail || undefined);
+    const res = await claimCustomerAccount(claimIdentifier || '', claimPassword, claimEmail || undefined, claimCaptcha.getToken);
     setIsSubmitting(false);
 
     if (!res.success) {
@@ -285,7 +292,7 @@ export const AuthSection: React.FC = () => {
       email: canonicalEmail(email),
       phone: canonicalPhone(phone),
       password: registerPassword
-    });
+    }, registerCaptcha.getToken);
     setIsSubmitting(false);
 
     if (!res.success) {
@@ -317,7 +324,7 @@ export const AuthSection: React.FC = () => {
     setResetSent(null);
     setIsSubmitting(true);
 
-    const res = await requestPasswordReset(email);
+    const res = await requestPasswordReset(email, resetCaptcha.getToken);
     setIsSubmitting(false);
 
     if (!res.success) {
@@ -865,6 +872,8 @@ export const AuthSection: React.FC = () => {
                     />
                   </div>
 
+                  {loginCaptcha.widget}
+
                   <button
                     type="submit"
                     disabled={isSubmitting}
@@ -970,6 +979,8 @@ export const AuthSection: React.FC = () => {
                         className="w-full bg-brand-cream border border-brand-clay rounded-xl py-3 px-4 text-sm font-semibold text-brand-charcoal"
                       />
                     </div>
+
+                    {claimCaptcha.widget}
 
                     <div className="flex gap-2">
                       <button
@@ -1116,6 +1127,8 @@ export const AuthSection: React.FC = () => {
                     )}
                   </div>
 
+                  {registerCaptcha.widget}
+
                   <button
                     type="submit"
                     disabled={isSubmitting}
@@ -1202,6 +1215,8 @@ export const AuthSection: React.FC = () => {
                         <span className="leading-relaxed">{resetSent}</span>
                       </div>
                     )}
+
+                    {resetCaptcha.widget}
 
                     <button
                       type="submit"

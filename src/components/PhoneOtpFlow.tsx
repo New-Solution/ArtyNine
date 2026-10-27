@@ -18,6 +18,7 @@ import {
   canonicalEmail, passwordChecklist, validateEmailRule, validatePasswordConfirmation,
   validatePasswordRule, validateRequired
 } from '../utils/validation';
+import { useTurnstile } from './Turnstile';
 
 /** Seconds before "Resend code" is offered again. */
 const RESEND_SECONDS = 60;
@@ -38,6 +39,8 @@ function phoneFailureText(reason: PhoneAuthFailure, t: (en: string, ar: string) 
       return t('We could not send the code right now. Please try again in a moment.', 'تعذّر إرسال الرمز حاليًا. يرجى المحاولة بعد قليل.');
     case 'invalid_code':
       return t('That code is incorrect or has expired. Check it, or send a new one.', 'الرمز غير صحيح أو انتهت صلاحيته. تحقّق منه أو اطلب رمزًا جديدًا.');
+    case 'captcha_failed':
+      return t('Please complete the security check, then try again.', 'يرجى إكمال التحقق الأمني ثم المحاولة مرة أخرى.');
     case 'link_failed':
       return t('Your number is verified, but we could not open your account. Please try again.', 'تم التحقق من رقمك، لكن تعذّر فتح حسابك. يرجى المحاولة مرة أخرى.');
     case 'weak_password':
@@ -78,6 +81,7 @@ interface PhoneOtpFlowProps {
 export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhone, onActiveChange, onDone, onCancel }) => {
   const { setCurrentUser, logoutCustomer } = useApp();
   const { t } = useLanguage();
+  const captcha = useTurnstile();
 
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState(initialPhone || '');
@@ -117,7 +121,7 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
     setError(null);
     if (!supabase) return notConfigured();
     setBusy(true);
-    const res = await requestPhoneCode(supabase, target);
+    const res = await requestPhoneCode(supabase, target, captcha.getToken);
     setBusy(false);
     if ('reason' in res) {
       setError(failureText(res.reason));
@@ -143,7 +147,7 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
     // app's own session listener can set currentUser before this call returns.
     // The parent must already be holding this flow on screen by then.
     onActiveChange?.(true);
-    const res = await verifyPhoneCode(supabase, sentTo, code);
+    const res = await verifyPhoneCode(supabase, sentTo, code, undefined, captcha.getToken);
     if ('reason' in res) {
       // A failed verify after a successful sign-in (link_failed) leaves a
       // session behind; a wrong code does not, and logging out is harmless.
@@ -247,6 +251,7 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
             value={phone}
             onChange={v => { setPhone(v); setError(null); }}
           />
+          {captcha.widget}
           <button type="submit" disabled={busy} className={buttonClass}>
             <MessageSquare className="h-4 w-4" />
             <span>{busy ? t('Sending code...', 'جارٍ إرسال الرمز...') : t('Text me a code', 'أرسل لي رمزًا')}</span>
@@ -277,6 +282,8 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
               placeholder="••••••"
             />
           </div>
+          {/* Verify and "Resend code" each use a token. */}
+          {captcha.widget}
           <button type="submit" disabled={busy} className={buttonClass}>
             <Check className="h-4 w-4" />
             <span>{busy ? t('Checking...', 'جارٍ التحقق...') : t('Verify code', 'تحقّق من الرمز')}</span>

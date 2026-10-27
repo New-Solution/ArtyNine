@@ -9,6 +9,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { KeyRound, CheckCircle2, AlertCircle , Check } from 'lucide-react';
 import { PasswordField } from './PasswordField';
 import { passwordChecklist, validatePasswordRule, validatePasswordConfirmation } from '../utils/validation';
+import { useTurnstile } from './Turnstile';
 
 /**
  * The screen the emailed reset link lands on.
@@ -35,6 +36,8 @@ export const ResetPasswordSection: React.FC = () => {
   // Requesting a fresh link from here, when the old one has expired.
   const [resendEmail, setResendEmail] = useState('');
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+  // Supabase Auth CAPTCHA for the new-link request (inactive without VITE_TURNSTILE_SITE_KEY).
+  const resendCaptcha = useTurnstile();
 
   /**
    * Reading the token out of the URL is asynchronous. Waiting for it before
@@ -121,7 +124,7 @@ export const ResetPasswordSection: React.FC = () => {
   const handleResend = async (e: React.FormEvent) => {
     e.preventDefault();
     setResendMessage(null);
-    const result = await requestPasswordReset(resendEmail);
+    const result = await requestPasswordReset(resendEmail, resendCaptcha.getToken);
     // Same message either way — see requestPasswordReset.
     setResendMessage(result.message || result.error || null);
   };
@@ -231,6 +234,7 @@ export const ResetPasswordSection: React.FC = () => {
                   onChange={e => { setResendEmail(e.target.value); setResendMessage(null); }}
                   className={inputClass}
                 />
+                {resendCaptcha.widget}
                 <button
                   type="submit"
                   className="w-full cursor-pointer rounded-xl border border-brand-clay bg-brand-cream py-2.5 text-xs font-bold text-brand-charcoal hover:bg-brand-sand/40"

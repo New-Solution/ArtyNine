@@ -98,6 +98,20 @@ async function main() {
     const { client } = fakeClient({ otpError: { message: 'hook failed', status: 500 } });
     assertEqual(await requestPhoneCode(client, '0501234567'), { ok: false, reason: 'send_failed' }, 'other error -> send_failed');
   }
+  {
+    const { client, calls } = fakeClient({});
+    await requestPhoneCode(client, '0501234567', async () => 'cf-token');
+    assertEqual(calls[0].args[0], { phone: '+966501234567', options: { shouldCreateUser: true, captchaToken: 'cf-token' } }, 'captcha token sent with the code request');
+  }
+  {
+    const { client, calls } = fakeClient({});
+    await requestPhoneCode(client, '0501234567', async () => undefined);
+    assertEqual(calls[0].args[0], { phone: '+966501234567', options: { shouldCreateUser: true } }, 'no token (CAPTCHA off) -> request unchanged');
+  }
+  {
+    const { client } = fakeClient({ otpError: { message: 'captcha protection: request disallowed (no captcha response)', status: 400 } });
+    assertEqual(await requestPhoneCode(client, '0501234567'), { ok: false, reason: 'captcha_failed' }, 'captcha refusal -> captcha_failed');
+  }
 
   console.log('verifyPhoneCode()');
   {
@@ -135,6 +149,21 @@ async function main() {
   {
     const { client } = fakeClient({ verify: { session: {} }, link: { data: { status: 'something_else' } } });
     assertEqual(await verifyPhoneCode(client, '0501234567', '123456'), { ok: false, reason: 'link_failed' }, 'unknown status -> link_failed');
+  }
+  {
+    const { client, calls } = fakeClient({ verify: { session: {} }, link: { data: { status: 'linked', customer_id: 'CUST-1' } } });
+    await verifyPhoneCode(client, '0501234567', '123456', undefined, async () => 'cf-token');
+    assertEqual(calls[0].args[0], { phone: '+966501234567', token: '123456', type: 'sms', options: { captchaToken: 'cf-token' } }, 'captcha token sent with verify');
+  }
+  {
+    let asked = 0;
+    const { client } = fakeClient({});
+    await verifyPhoneCode(client, '0501234567', '12345', undefined, async () => { asked++; return 'cf-token'; });
+    assertEqual(asked, 0, 'bad code format does not use up a captcha token');
+  }
+  {
+    const { client } = fakeClient({ verify: { session: null, error: { message: 'captcha protection: request disallowed', status: 400 } } });
+    assertEqual(await verifyPhoneCode(client, '0501234567', '123456'), { ok: false, reason: 'captcha_failed' }, 'captcha refusal on verify -> captcha_failed');
   }
 
   console.log('setPassword()');

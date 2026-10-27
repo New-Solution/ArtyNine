@@ -13,6 +13,7 @@ import React, { useState } from 'react';
 import { PasswordField } from './PasswordField';
 import { useApp } from '../context/AppContext';
 import { Lock, LogIn, ShieldAlert, AlertCircle, Mail } from 'lucide-react';
+import { useTurnstile } from './Turnstile';
 
 export const AdminLoginSection: React.FC = () => {
   const { loginStaff, requestPasswordReset, viewCustomerSite, staff } = useApp();
@@ -30,6 +31,10 @@ export const AdminLoginSection: React.FC = () => {
   const [forgotEmail, setForgotEmail] = useState('');
   const [resetSent, setResetSent] = useState<string | null>(null);
   const [isSendingReset, setIsSendingReset] = useState(false);
+  // Supabase Auth CAPTCHA (inactive without VITE_TURNSTILE_SITE_KEY). Both
+  // panels can be open at once, so each has its own widget.
+  const loginCaptcha = useTurnstile();
+  const resetCaptcha = useTurnstile();
 
   /** Sends a reset link. Wording never reveals whether the address exists. */
   const handleForgotPassword = async () => {
@@ -43,7 +48,7 @@ export const AdminLoginSection: React.FC = () => {
     }
 
     setIsSendingReset(true);
-    const res = await requestPasswordReset(forgotEmail);
+    const res = await requestPasswordReset(forgotEmail, resetCaptcha.getToken);
     setIsSendingReset(false);
 
     if (!res.success) {
@@ -60,7 +65,7 @@ export const AdminLoginSection: React.FC = () => {
     setError(null);
     setIsSubmitting(true);
 
-    const result = await loginStaff(identifier, password);
+    const result = await loginStaff(identifier, password, loginCaptcha.getToken);
     if (!result.success) {
       setError(result.error || 'Sign in failed.');
       setIsSubmitting(false);
@@ -130,6 +135,8 @@ export const AdminLoginSection: React.FC = () => {
             </div>
           )}
 
+          {loginCaptcha.widget}
+
           <button
             type="submit"
             disabled={isSubmitting}
@@ -182,6 +189,7 @@ export const AdminLoginSection: React.FC = () => {
               }}
               className="w-full bg-white border border-brand-clay rounded-xl py-2.5 px-3 text-xs font-semibold text-brand-charcoal"
             />
+            {resetCaptcha.widget}
             <button
               type="button"
               disabled={isSendingReset}

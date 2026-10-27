@@ -25,6 +25,7 @@ import { durationLabel } from '../utils/workshopMetaLabel';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
 import { PhoneOtpFlow, PhoneSetupForm } from './PhoneOtpFlow';
 import { needsCustomerName } from '../utils/phoneAuth';
+import { useTurnstile } from './Turnstile';
 
 export const CheckoutInfoSection: React.FC = () => {
   const {
@@ -105,6 +106,11 @@ export const CheckoutInfoSection: React.FC = () => {
   const [resetSent, setResetSent] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Supabase Auth CAPTCHA (inactive without VITE_TURNSTILE_SITE_KEY): the guest
+  // account form, and the sign-in box (sign in and reset link share one).
+  const registerCaptcha = useTurnstile();
+  const loginCaptcha = useTurnstile();
+
   const validate = async () => {
     // A signed-in customer is editing their own details, so their own record
     // must not be reported as a duplicate; a guest is creating a new account,
@@ -141,7 +147,7 @@ export const CheckoutInfoSection: React.FC = () => {
         email: normEmail,
         phone: normPhone,
         password: password
-      });
+      }, registerCaptcha.getToken);
 
       if (!regRes.success) {
         if (regRes.error?.includes('already exists')) {
@@ -180,7 +186,7 @@ export const CheckoutInfoSection: React.FC = () => {
     setModalError(null);
     setResetSent(null);
 
-    const res = await requestPasswordReset(loginEmail || email);
+    const res = await requestPasswordReset(loginEmail || email, loginCaptcha.getToken);
     if (!res.success) {
       setModalError(res.error || t('Could not send the reset link.', 'تعذّر إرسال رابط إعادة التعيين.'));
       return;
@@ -193,7 +199,7 @@ export const CheckoutInfoSection: React.FC = () => {
     setModalError(null);
     if (!loginEmail.trim()) return;
 
-    const res = await loginCustomer(loginEmail, loginPassword);
+    const res = await loginCustomer(loginEmail, loginPassword, loginCaptcha.getToken);
     if (!res.success) {
       setModalError(res.error || t('Login failed.', 'فشل تسجيل الدخول.'));
       // The record exists but has no password. Sending them to the Login page
@@ -504,6 +510,8 @@ export const CheckoutInfoSection: React.FC = () => {
                   </div>
                   {errors.confirmPassword && <p className="text-xs text-red-500 mt-1 font-medium">{errors.confirmPassword}</p>}
                 </div>
+
+                {registerCaptcha.widget}
               </>
             )}
 
@@ -606,6 +614,8 @@ export const CheckoutInfoSection: React.FC = () => {
                   className="w-full bg-brand-sand/20 border border-brand-clay rounded-xl py-2.5 px-3 text-sm font-semibold text-brand-charcoal"
                 />
               </div>
+
+              {loginCaptcha.widget}
 
               <div className="flex gap-2 pt-2">
                 <button

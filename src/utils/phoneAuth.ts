@@ -22,6 +22,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeCustomerPhone } from './customerIdentity';
 import { parseArabicDigits } from './phoneUtils';
+import { isCaptchaError, type CaptchaProvider } from './captcha';
 
 /** Just the two surfaces these wrappers use. */
 export type PhoneAuthClient = Pick<SupabaseClient, 'auth' | 'rpc'>;
@@ -34,6 +35,7 @@ export type PhoneAuthFailure =
   | 'rate_limited'      // too many codes requested; try again later
   | 'send_failed'       // the code could not be sent
   | 'invalid_code'      // not 6 digits, wrong, or expired
+  | 'captcha_failed'    // Supabase Auth CAPTCHA refused the request (utils/captcha.ts)
   | 'link_failed'       // verified, but the customer record could not be linked
   | 'weak_password'     // Supabase refused the password
   | 'update_failed'     // the password could not be saved
@@ -73,12 +75,19 @@ export function maskE164Saudi(input?: string | null): string {
  */
 export async function requestPhoneCode(
   client: PhoneAuthClient,
-  phone: string
+  phone: string,
+  captcha?: CaptchaProvider
 ): Promise<{ ok: true; phone: string } | Failure> {
   const e164 = toE164Saudi(phone);
   if (!e164) return { ok: false, reason: 'invalid_phone' };
 
-  const { error } = await client.auth.signInWithOtp({ phone: e164, options: { shouldCreateUser: true } });
+  // No token, no key: the request is exactly what it was before CAPTCHA.
+  const captchaToken = await captcha?.();
+  const { error } = await client.auth.signInWithOtp({
+    phone: e164,
+    options: { shouldCreateUser: true, ...(captchaToken ? { captchaToken } : {}) }
+  });
+  if (isCaptchaError(error)) return { ok: false, reason: 'captcha_failed' };
   if (error) {
     // The status only — never the number.
     console.error(`requestPhoneCode failed (status ${(error as { status?: number }).status ?? 'unknown'}).`);
@@ -96,7 +105,8 @@ export async function verifyPhoneCode(
   client: PhoneAuthClient,
   phone: string,
   code: string,
-  name?: string
+  name?: string,
+  captcha?: CaptchaProvider
 ): Promise<{ ok: true; status: PhoneLinkStatus; customerId?: string } | Failure> {
   const e164 = toE164Saudi(phone);
   if (!e164) return { ok: false, reason: 'invalid_phone' };
@@ -104,7 +114,11 @@ export async function verifyPhoneCode(
   const token = parseArabicDigits(String(code ?? '')).replace(/\s/g, '');
   if (!/^\d{6}$/.test(token)) return { ok: false, reason: 'invalid_code' };
 
-  const { data, error } = await client.auth.verifyOtp({ phone: e164, token, type: 'sms' });
+  const captchaToken = await captcha?.();
+  const { data, error } = await client.auth.verifyOtp({
+    phone: e164, token, type: 'sms', ...(captchaToken ? { options: { captchaToken } } : {})
+  });
+  if (isCaptchaError(error)) return { ok: false, reason: 'captcha_failed' };
   if (error || !data?.session) return { ok: false, reason: 'invalid_code' };
 
   const { data: link, error: linkError } = await client.rpc('link_customer_by_verified_phone', {
