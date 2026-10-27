@@ -72,7 +72,7 @@ begin
   v_key := public.normalize_customer_phone(v_phone);
 
   -- A confirmed Saudi mobile only — the same numbers the send-sms-hook accepts.
-  if v_confirmed is null or v_key !~ '^5[0-9]{8}$' then
+  if v_confirmed is null or coalesce(v_key, '') !~ '^5[0-9]{8}$' then
     return jsonb_build_object('status', 'not_verified');
   end if;
 
@@ -297,8 +297,7 @@ insert into public.customers (id, user_id, name, phone, display_phone, normalize
   ('TEST-WALKIN-A', null,                                   'Walk-in A', '+966500000901', '+966500000901', '500000901', false),
   ('TEST-HELD-B',   '00000000-0000-4000-8000-0000000000b2', 'Held B',    '+966500000902', '+966500000902', '500000902', true);
 
--- Calls run as `authenticated`; the checks after them run as the editor's own
--- role (reset role), because RLS lets `authenticated` see only its own row.
+-- Calls run as `authenticated`; the checks after them run as the editor's own role (reset role), because RLS lets `authenticated` see only its own row.
 
 -- A: unclaimed walk-in with the same phone -------------------------------------
 set local role authenticated;
@@ -306,18 +305,15 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select public.link_customer_by_verified_phone();         -- {"status":"linked","customer_id":"TEST-WALKIN-A"}
 select public.link_customer_by_verified_phone();         -- {"status":"already_linked","customer_id":"TEST-WALKIN-A"}
 reset role;
-select user_id, has_account, name from public.customers where id = 'TEST-WALKIN-A';
-                                                         -- …a1 / true / 'Walk-in A' (name untouched)
+select user_id, has_account, name from public.customers where id = 'TEST-WALKIN-A';  -- …a1 / true / 'Walk-in A' (name untouched)
 
 -- B: the row with this phone belongs to another account ------------------------
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b1","role":"authenticated"}', true);
 select public.link_customer_by_verified_phone();         -- {"status":"phone_in_use"}  (no customer_id)
 reset role;
-select user_id from public.customers where id = 'TEST-HELD-B';
-                                                         -- still …b2 (never re-pointed)
-select count(*) from public.customers where user_id = '00000000-0000-4000-8000-0000000000b1';
-                                                         -- 0 (no second row for that phone)
+select user_id from public.customers where id = 'TEST-HELD-B';  -- still …b2 (never re-pointed)
+select count(*) from public.customers where user_id = '00000000-0000-4000-8000-0000000000b1';  -- 0 (no second row for that phone)
 
 -- C: no row with this phone ----------------------------------------------------
 set local role authenticated;
@@ -325,9 +321,7 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 select public.link_customer_by_verified_phone('Noura');  -- {"status":"created","customer_id":"CUST-…"}
 select public.link_customer_by_verified_phone('Other');  -- {"status":"already_linked","customer_id":<same id>}
 reset role;
-select name, normalized_phone, display_phone, user_id, has_account
-  from public.customers where user_id = '00000000-0000-4000-8000-0000000000c1';
-                                                         -- one row: 'Noura' / 500000903 / +966500000903 / …c1 / true
+select name, normalized_phone, display_phone, user_id, has_account from public.customers where user_id = '00000000-0000-4000-8000-0000000000c1';  -- one row: 'Noura' / 500000903 / +966500000903 / …c1 / true
 
 -- D: phone not confirmed -------------------------------------------------------
 set local role authenticated;
@@ -342,16 +336,14 @@ reset role;
 -- Insert guard: anon creating a new row with someone else's auth id -------------
 set local role anon;
 select set_config('request.jwt.claims', '{"role":"anon"}', true);
-select public.resolve_customer_record('Probe', '0500000905', null, '00000000-0000-4000-8000-0000000000a1', null);
-                                                         -- returns a new CUST-… id
+select public.resolve_customer_record('Probe', '0500000905', null, '00000000-0000-4000-8000-0000000000a1', null);  -- returns a new CUST-… id
 reset role;
-select user_id, has_account from public.customers where normalized_phone = '500000905';
-                                                         -- null / false (not attached)
+select user_id, has_account from public.customers where normalized_phone = '500000905';  -- null / false (not attached)
 
--- anon may not call the link function at all ------------------------------------
-set local role anon;
-select public.link_customer_by_verified_phone();         -- ERROR: permission denied for function
-                                                         -- (this aborts the block — run it last)
+-- Grants: anon may not call the link function; signed-in users may ---------------
+select has_function_privilege('anon', 'public.link_customer_by_verified_phone(text)', 'execute');      -- false
+select has_function_privilege('authenticated', 'public.link_customer_by_verified_phone(text)', 'execute'); -- true
+
 rollback;
 */
 -- Race (two simultaneous calls for the same new phone) needs two sessions: open
