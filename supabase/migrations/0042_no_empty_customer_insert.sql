@@ -1,4 +1,4 @@
--- STATUS: NOT YET APPLIED — requires manual review
+-- STATUS: APPLIED
 -- =============================================================================
 -- 0042 — resolve_customer_record INSERTS NOTHING WHEN PHONE AND EMAIL ARE EMPTY
 --

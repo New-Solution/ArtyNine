@@ -1,4 +1,4 @@
--- STATUS: NOT YET APPLIED — requires manual review
+-- STATUS: APPLIED
 -- =============================================================================
 -- 0041 — CLAIM A CUSTOMER RECORD BY A VERIFIED PHONE, AND GUARD NEW-ROW ATTACH
 --
