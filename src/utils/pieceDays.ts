@@ -1,14 +1,16 @@
-import type { PotteryPiece } from '../types';
+import type { PipelineStage, PotteryPiece } from '../types';
+import { isEndState } from './pipelineStages';
 
 /** Days after which a piece counts as overdue — the Dashboard and the Pottery Pieces page share it. */
 export const OVERDUE_PIECE_DAYS = 14;
 
 /**
- * Whether a piece in this status can be flagged overdue on the Pottery Pieces page:
- * the making stages and Ready for Pickup, never the end-states Collected or Broken.
+ * Whether a piece in this stage can be flagged overdue on the Pottery Pieces page:
+ * the making stages (custom stages included) and Ready for Pickup, never the
+ * end-states Collected or Broken. A piece whose stage can't be found still counts.
  * (The Dashboard list is narrower still — Ready for Pickup only, server-side.)
  */
-export const canBeOverdue = (status: string): boolean => status !== 'Collected' && status !== 'Broken';
+export const canBeOverdue = (stage: PipelineStage | undefined): boolean => !isEndState(stage);
 
 type DatedPiece = Partial<Pick<PotteryPiece, 'expectedReadyDate' | 'actualReadyDate' | 'readyDate' | 'dateCreated' | 'daysElapsed'>>;
 

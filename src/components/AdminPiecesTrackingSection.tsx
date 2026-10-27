@@ -10,7 +10,8 @@ import {
   MapPin, User, Calendar, RefreshCw, ClipboardList, Clock, Sparkles,
   Camera, Hash, Upload
 } from 'lucide-react';
-import { PotteryPiece, isStageEnabled, PIECE_END_STATES, DEFAULT_LOGGING_FIELDS } from '../types';
+import { PotteryPiece, isStageEnabled, DEFAULT_LOGGING_FIELDS, DEFAULT_PIPELINE_STAGES, type StageSystemKey } from '../types';
+import { stageOf, stageByKey, isEndState } from '../utils/pipelineStages';
 import { PieceImage, PiecePhotoError, compressPiecePhoto, uploadPiecePhoto } from '../lib/pieceImages';
 
 /**
@@ -92,9 +93,6 @@ import { enumLabel } from '../utils/enumLabels';
 import { pieceDaysWaiting, OVERDUE_PIECE_DAYS, canBeOverdue } from '../utils/pieceDays';
 import { KILN_TEXTS, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 
-/** Stored status of the stage staff see as "Kiln Time" (see enumLabels.ts). */
-const KILN_STAGE: PotteryPiece['status'] = 'First Burn and Colored';
-
 /** The opening of a message's English text, without the shared greeting, for the picker. */
 const messagePreview = (en: string) => {
   const body = en.replace(/^Dear Arty artist,\n/, '');
@@ -107,7 +105,7 @@ import { localizedText } from '../utils/localizedText';
  * it — two controls for one transition is how a piece ends up marked collected
  * by someone who meant to advance it a stage.
  */
-const DEDICATED_BUTTON_STATUSES: string[] = ['Ready for Pickup', ...PIECE_END_STATES];
+const DEDICATED_BUTTON_KEYS: (StageSystemKey | null | undefined)[] = ['ready', 'collected', 'broken'];
 
 type Translate = (en: string, ar: string) => string;
 
@@ -233,7 +231,6 @@ export const AdminPiecesTrackingSection: React.FC = () => {
   const photoAttemptRef = useRef(0);
   const [dateCreatedInput, setDateCreatedInput] = useState(() => new Date().toISOString().split('T')[0]);
   const [assignedStaffInput, setAssignedStaffInput] = useState('');
-  const [initialStatus, setInitialStatus] = useState<PotteryPiece['status']>('Created');
   const [storageLocationInput, setStorageLocationInput] = useState('Shelf A-1');
   const [expectedCompletionInput, setExpectedCompletionInput] = useState(() => {
     const d = new Date();
@@ -392,6 +389,8 @@ export const AdminPiecesTrackingSection: React.FC = () => {
 
   /**
    * Board columns follow the configured order, minus the two end-states.
+   * Each column is a stage and holds the pieces whose stage id it is, so a
+   * renamed stage keeps its pieces. A custom stage is a making stage.
    *
    * Collected and Broken are outcomes, not queues — a piece leaves the board
    * through them. They stay selectable below (so "mark as collected" and the
@@ -399,29 +398,35 @@ export const AdminPiecesTrackingSection: React.FC = () => {
    * view, which is not column-driven.
    */
   const COLUMNS = useMemo(
-    () => orderedStages
-      .filter(stage => !PIECE_END_STATES.includes(stage.name as any))
-      .map(stage => stage.name as PotteryPiece['status']),
-    [orderedStages]
-  );
-
-  /** Every configured stage name, board column or end-state. */
-  const allStageNames = useMemo(
-    () => orderedStages.map(stage => stage.name as PotteryPiece['status']),
+    () => orderedStages.filter(stage => !isEndState(stage)),
     [orderedStages]
   );
 
   /**
-   * Statuses selectable for a NEW update. Disabled stages are excluded, but a
-   * piece already sitting in one keeps it — history is never rewritten.
+   * The stage a piece (or history entry) is in: by stage id, falling back to
+   * its stored name. Until the stage list has loaded, the default rows (same
+   * ids and names) stand in, as the hard-coded names used to.
    */
-  const selectableStatuses = useMemo(
-    () => orderedStages.filter(isStageEnabled).map(stage => stage.name as PotteryPiece['status']),
-    [orderedStages]
-  );
+  const stageOfPiece = (p: { stageId?: string | null; status?: string | null }) =>
+    stageOf(p, orderedStages.length > 0 ? orderedStages : DEFAULT_PIPELINE_STAGES);
 
-  const stageColor = (name: string) =>
-    orderedStages.find(stage => stage.name === name)?.color;
+  /**
+   * The current name of a system stage, for transitions that still take a name
+   * (updatePieceStatus). While the stage list is loading it falls back to the
+   * default row — the names this screen used to hard-code.
+   */
+  const stageNameFor = (key: StageSystemKey) =>
+    (stageByKey(orderedStages, key) ?? stageByKey(DEFAULT_PIPELINE_STAGES, key))!.name as PotteryPiece['status'];
+
+  /** The system key of the stage named `name`, with the same fallback. */
+  const keyOfStageName = (name: string) =>
+    (orderedStages.find(stage => stage.name === name) ?? DEFAULT_PIPELINE_STAGES.find(stage => stage.name === name))?.systemKey ?? null;
+
+  /** Whether a history entry is for system stage `key`: by its stage id, or by name for an entry without one. */
+  const historyIsStage = (h: { stageId?: string; status: string }, key: StageSystemKey) => {
+    const stage = stageByKey(orderedStages, key);
+    return h.stageId && stage ? h.stageId === stage.id : h.status === stageNameFor(key);
+  };
 
   const clearCustomPhoto = () => {
     photoAttemptRef.current++;
@@ -483,7 +488,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
 
     await updatePieceStatus(pieceId, status, user, reason, smsVariant);
 
-    const isReady = status === 'Ready for Pickup';
+    const isReady = keyOfStageName(status) === 'ready';
     triggerToast(
       isReady ? t('Ready for Pickup!', 'جاهزة للاستلام!') : t('Status Shipped Successfully', 'تم تحديث الحالة بنجاح'),
       t(
@@ -502,22 +507,24 @@ export const AdminPiecesTrackingSection: React.FC = () => {
     const oldStatus = piece.status;
     if (oldStatus === targetStatus) return;
 
+    const oldStage = stageOfPiece(piece);
+    const targetStage = orderedStages.find(stage => stage.name === targetStatus);
+    const targetKey = targetStage ? targetStage.systemKey ?? null : keyOfStageName(targetStatus);
+
     // Broken is not a lifecycle step — it needs a staff member and a damage note.
-    if (targetStatus === 'Broken') {
+    if (targetKey === 'broken') {
       setBrokenTargetId(pieceId);
       setBrokenPerformer('');
       setBrokenReason('');
       return;
     }
 
-    // Progression order comes from the configured pipeline, so a reordered or
-    // renamed stage is still classified correctly. 'Broken' is handled above and
-    // is deliberately excluded from the linear progression.
-    const stages = orderedStages
-      .map(stage => stage.name)
-      .filter(name => name !== 'Broken');
-    const oldIdx = stages.indexOf(oldStatus);
-    const newIdx = stages.indexOf(targetStatus);
+    // Progression order comes from the configured pipeline, by stage id, so a
+    // reordered or renamed stage is still classified correctly. Broken is
+    // handled above and is deliberately excluded from the linear progression.
+    const progression = orderedStages.filter(stage => stage.systemKey !== 'broken');
+    const oldIdx = oldStage ? progression.findIndex(stage => stage.id === oldStage.id) : -1;
+    const newIdx = targetStage ? progression.findIndex(stage => stage.id === targetStage.id) : -1;
 
     if (newIdx < oldIdx) {
       setBackwardMoveTarget({
@@ -527,10 +534,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
       });
       setBackwardPerformer('');
       setBackwardReason('');
-    } else if (
-      targetStatus === KILN_STAGE &&
-      orderedStages.find(stage => stage.name === KILN_STAGE)?.notifyCustomer !== false
-    ) {
+    } else if (targetKey === 'kiln' && targetStage?.notifyCustomer !== false) {
       // Forward into Kiln Time: staff choose which message the customer gets
       // first. Backward moves and a stage that doesn't notify skip this and
       // use the default ('kiln').
@@ -540,13 +544,14 @@ export const AdminPiecesTrackingSection: React.FC = () => {
     }
   };
 
-  const getColumnColorClass = (col: PotteryPiece['status']) => {
-    switch (col) {
-      case 'Created': return 'text-blue-600 border-blue-500 bg-blue-50';
-      case 'First Burn and Colored': return 'text-orange-600 border-orange-500 bg-orange-50';
-      case 'Ready for Pickup': return 'text-emerald-700 border-emerald-500 bg-emerald-50';
-      case 'Collected': return 'text-gray-600 border-gray-400 bg-gray-50';
-      case 'Broken': return 'text-red-700 border-red-500 bg-red-50';
+  /** By system key; a custom stage gets the neutral style plus its own colour as the accent. */
+  const getColumnColorClass = (key: StageSystemKey | null | undefined) => {
+    switch (key) {
+      case 'created': return 'text-blue-600 border-blue-500 bg-blue-50';
+      case 'kiln': return 'text-orange-600 border-orange-500 bg-orange-50';
+      case 'ready': return 'text-emerald-700 border-emerald-500 bg-emerald-50';
+      case 'collected': return 'text-gray-600 border-gray-400 bg-gray-50';
+      case 'broken': return 'text-red-700 border-red-500 bg-red-50';
       default: return 'text-brand-charcoal border-brand-clay bg-brand-sand';
     }
   };
@@ -556,9 +561,9 @@ export const AdminPiecesTrackingSection: React.FC = () => {
       case 'dateCreated': return p.dateCreated;
       case 'expectedCompletion': return p.expectedCompletion || '';
       case 'readyDate':
-        return p.history?.find(h => h.status === 'Ready for Pickup')?.timestamp.split('T')[0] || '';
+        return p.history?.find(h => historyIsStage(h, 'ready'))?.timestamp.split('T')[0] || '';
       case 'collectionDate':
-        return p.history?.find(h => h.status === 'Collected')?.timestamp.split('T')[0] || '';
+        return p.history?.find(h => historyIsStage(h, 'collected'))?.timestamp.split('T')[0] || '';
       default: return p.dateCreated;
     }
   };
@@ -625,11 +630,11 @@ export const AdminPiecesTrackingSection: React.FC = () => {
     }
 
     if (overdueOnly) {
-      result = result.filter(p => canBeOverdue(p.status) && pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS);
+      result = result.filter(p => canBeOverdue(stageOfPiece(p)) && pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS);
     }
 
     if (awaitingCollectionOnly) {
-      result = result.filter(p => p.status === 'Ready for Pickup');
+      result = result.filter(p => stageOfPiece(p)?.systemKey === 'ready');
     }
 
     if (startDate || endDate) {
@@ -643,7 +648,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
     }
 
     return result;
-  }, [pieces, debouncedSearch, overdueOnly, awaitingCollectionOnly, startDate, endDate, dateField, todayDateStr]);
+  }, [pieces, orderedStages, debouncedSearch, overdueOnly, awaitingCollectionOnly, startDate, endDate, dateField, todayDateStr]);
 
   /* Ten rows a page in the table. The board is unaffected — its columns are
      already bounded by their own scroll. */
@@ -862,23 +867,23 @@ export const AdminPiecesTrackingSection: React.FC = () => {
            on the track is what allows it to scroll rather than push the page. */
         <div className="flex flex-row flex-nowrap gap-4 overflow-x-auto overscroll-x-contain pb-4 w-full min-w-0 max-w-full select-none no-scrollbar items-stretch">
           {COLUMNS.map((col) => {
-            const columnPieces = processedPieces.filter(p => p.status === col).sort(comparePiecesByCode);
-            
+            const columnPieces = processedPieces.filter(p => stageOfPiece(p)?.id === col.id).sort(comparePiecesByCode);
+
             return (
-              <div 
-                key={col} 
+              <div
+                key={col.id}
                 className="flex flex-col shrink-0 grow-0 basis-[260px] w-[260px] bg-brand-cream/35 border border-brand-clay rounded-2xl p-3 h-[70vh] min-h-[420px] max-h-[620px]"
               >
                 
                 {/* Column header title. A stage renamed or added in Settings still
                     shows its configured colour via the left accent. */}
                 <div
-                  className={`p-2.5 h-11 rounded-xl border flex items-center justify-between font-bold text-xs shrink-0 ${getColumnColorClass(col)}`}
-                  style={stageColor(col) ? { borderLeft: `4px solid ${stageColor(col)}` } : undefined}
+                  className={`p-2.5 h-11 rounded-xl border flex items-center justify-between font-bold text-xs shrink-0 ${getColumnColorClass(col.systemKey)}`}
+                  style={col.color ? { borderLeft: `4px solid ${col.color}` } : undefined}
                 >
                   <span className="truncate pr-1 uppercase tracking-wider text-[10px] self-center">
-                    {enumLabel('pieceStatus', col, lang)}
-                    {!selectableStatuses.includes(col) && (
+                    {enumLabel('pieceStatus', col.name, lang)}
+                    {!isStageEnabled(col) && (
                       <span className="ml-1 normal-case text-brand-charcoal/40">{t('(disabled)', '(معطّلة)')}</span>
                     )}
                   </span>
@@ -979,7 +984,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-brand-clay/30">
                 {tablePager.pageItems.map((p) => {
-                  const isOverdue = pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS && canBeOverdue(p.status);
+                  const isOverdue = pieceDaysWaiting(p, todayDateStr) >= OVERDUE_PIECE_DAYS && canBeOverdue(stageOfPiece(p));
                   return (
                     <tr 
                       key={p.id}
@@ -1001,7 +1006,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                       <td className="p-4 font-bold text-brand-terracotta">{p.expectedReadyDate || p.expectedCompletion || t('N/A', 'غير متاح')}</td>
                       <td className="p-4 font-bold font-mono">{p.storageLocation || t('Unassigned', 'غير محدد')}</td>
                       <td className="p-4 text-center">
-                        <span className={`inline-flex items-center rounded-lg px-2.5 py-0.5 text-[10px] font-bold border ${getColumnColorClass(p.status)}`}>
+                        <span className={`inline-flex items-center rounded-lg px-2.5 py-0.5 text-[10px] font-bold border ${getColumnColorClass(stageOfPiece(p)?.systemKey)}`}>
                           {enumLabel('pieceStatus', p.status, lang)}
                         </span>
                       </td>
@@ -1039,7 +1044,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
           }
           footer={
             <div className="w-full grid grid-cols-2 gap-3">
-              {selectedPiece.status === 'Broken' ? (
+              {stageOfPiece(selectedPiece)?.systemKey === 'broken' ? (
                 // Broken is an outcome, not a lifecycle step in progress — the
                 // only forward action here is resolving it, so the ordinary
                 // making-stage buttons are replaced rather than shown alongside
@@ -1061,7 +1066,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                 <>
                   <button
                     onClick={() => {
-                      onAttemptStatusChange(selectedPiece.id, 'Ready for Pickup');
+                      onAttemptStatusChange(selectedPiece.id, stageNameFor('ready'));
                       setSelectedPieceId(null);
                     }}
                     className="cursor-pointer bg-green-600 hover:bg-green-700 text-brand-cream font-bold text-xs py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
@@ -1072,7 +1077,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
 
                   <button
                     onClick={() => {
-                      onAttemptStatusChange(selectedPiece.id, 'Collected');
+                      onAttemptStatusChange(selectedPiece.id, stageNameFor('collected'));
                       setSelectedPieceId(null);
                     }}
                     className="cursor-pointer bg-brand-charcoal hover:bg-brand-charcoal/90 text-brand-cream font-bold text-xs py-3 rounded-xl transition-all flex items-center justify-center gap-1.5"
@@ -1082,7 +1087,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => onAttemptStatusChange(selectedPiece.id, 'Broken')}
+                    onClick={() => onAttemptStatusChange(selectedPiece.id, stageNameFor('broken'))}
                     className="col-span-2 cursor-pointer bg-red-50 hover:bg-red-100 border border-red-300 text-red-700 font-bold text-xs py-3 rounded-xl transition-all flex items-center justify-center gap-1.5"
                   >
                     <AlertCircle className="h-4 w-4" />
@@ -1141,7 +1146,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                 </div>
 
                 {/* Broken damage note — internal only, never sent to the customer */}
-                {selectedPiece.status === 'Broken' && (
+                {stageOfPiece(selectedPiece)?.systemKey === 'broken' && (
                   <div className="space-y-1 bg-red-50 border border-red-200 rounded-xl p-2.5">
                     <span className="text-[9px] font-bold text-red-700 uppercase tracking-wider block flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
@@ -1240,12 +1245,12 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                         here as well gave two routes to the same transition.
                         The piece's own stage stays listed even when it is an
                         end-state, so its status is never lost. */}
-                    {allStageNames
-                      .filter(col => !DEDICATED_BUTTON_STATUSES.includes(col) || col === selectedPiece.status)
-                      .filter(col => selectableStatuses.includes(col) || col === selectedPiece.status)
-                      .map(col => (
-                        <option key={col} value={col}>
-                          {enumLabel('pieceStatus', col, lang)}{!selectableStatuses.includes(col) ? t(' (disabled)', ' (معطّلة)') : ''}
+                    {orderedStages
+                      .filter(stage => !DEDICATED_BUTTON_KEYS.includes(stage.systemKey) || stage.id === stageOfPiece(selectedPiece)?.id)
+                      .filter(stage => isStageEnabled(stage) || stage.id === stageOfPiece(selectedPiece)?.id)
+                      .map(stage => (
+                        <option key={stage.id} value={stage.name}>
+                          {enumLabel('pieceStatus', stage.name, lang)}{!isStageEnabled(stage) ? t(' (disabled)', ' (معطّلة)') : ''}
                         </option>
                       ))}
                   </select>
@@ -1279,7 +1284,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                 <div>
                   <h3 className="font-display text-base font-bold text-brand-charcoal">{t('Which message should the customer get?', 'أي رسالة نرسل للعميل؟')}</h3>
                   <p className="text-[11px] font-semibold text-brand-charcoal/60">
-                    {target.pieceCode || target.id} · {target.customerName} · {enumLabel('pieceStatus', KILN_STAGE, lang)}
+                    {target.pieceCode || target.id} · {target.customerName} · {enumLabel('pieceStatus', stageNameFor('kiln'), lang)}
                   </p>
                 </div>
               </div>
@@ -1291,7 +1296,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     type="button"
                     onClick={async () => {
                       setKilnPromptPieceId(null);
-                      await handleUpdatePieceStatus(target.id, KILN_STAGE, 'Staff', undefined, choice.variant);
+                      await handleUpdatePieceStatus(target.id, stageNameFor('kiln'), 'Staff', undefined, choice.variant);
                     }}
                     className="w-full text-left bg-brand-cream/60 hover:bg-brand-sand border border-brand-clay rounded-2xl p-3 cursor-pointer transition-colors space-y-1"
                   >
@@ -1389,7 +1394,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     }
                     await handleUpdatePieceStatus(
                       brokenTargetId,
-                      'Broken',
+                      stageNameFor('broken'),
                       brokenPerformer,
                       brokenReason.trim() || 'Piece reported broken'
                     );
@@ -1513,7 +1518,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                       return;
                     }
                     const formattedReason = `Resolved: ${resolveType}${resolveNote.trim() ? ` — ${resolveNote.trim()}` : ''}`;
-                    await handleUpdatePieceStatus(resolveTargetId, 'Collected', resolvePerformer, formattedReason);
+                    await handleUpdatePieceStatus(resolveTargetId, stageNameFor('collected'), resolvePerformer, formattedReason);
                     setResolveTargetId(null);
                     setResolveType(null);
                     setResolvePerformer('');
@@ -2000,7 +2005,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     // The storage reference, never the photo itself: see
                     // handleCameraCapture. Empty when nothing was uploaded.
                     image: customPhotoRef || '',
-                    status: initialStatus,
+                    status: stageNameFor('created'),
                     assignedStaff: assignedStaffInput,
                     storageLocation: storageLocationInput,
                     notes: manualNotes,
