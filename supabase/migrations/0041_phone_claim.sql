@@ -278,73 +278,103 @@ select
   to_regprocedure('public.resolve_customer_record(text,text,text,uuid,text)')      is not null as resolve_fn_exists;
 
 -- =============================================================================
--- MANUAL TESTS — run in the SQL editor AFTER applying, as one block. Everything
--- happens inside a transaction that ends in ROLLBACK, so nothing is kept.
--- Each SELECT's expected result is in the comment beside it.
+-- MANUAL TESTS — run AFTER applying. Copy everything from the line "DO $$" down to and including the line "END $$;" (inside the comment below), paste it into the Supabase SQL editor, and run it once.
+-- It always ends with an error, on purpose, so nothing is ever kept:
+--   ERROR: ALL 0041 TESTS PASSED — everything rolled back   -> every case passed
+--   ERROR: <case> ...                                         -> that case failed (the message names it and shows the actual value)
 -- =============================================================================
 /*
-begin;
+DO $$
+DECLARE
+  v_editor text := current_user;
+  v_res jsonb;
+  v_c_id text;
+  v_id text;
+  v_user uuid;
+  v_has boolean;
+  v_name text;
+  v_count int;
+BEGIN
+  -- Fixtures, as the editor's own role.
+  INSERT INTO auth.users (id, aud, role, phone, phone_confirmed_at, created_at, updated_at) VALUES
+    ('00000000-0000-4000-8000-0000000000a1', 'authenticated', 'authenticated', '966500000901', now(), now(), now()), -- A: walk-in owner
+    ('00000000-0000-4000-8000-0000000000b1', 'authenticated', 'authenticated', '966500000902', now(), now(), now()), -- B: number held by another account
+    ('00000000-0000-4000-8000-0000000000b2', 'authenticated', 'authenticated', NULL, NULL, now(), now()),            -- B2: that other account
+    ('00000000-0000-4000-8000-0000000000c1', 'authenticated', 'authenticated', '966500000903', now(), now(), now()), -- C: new number
+    ('00000000-0000-4000-8000-0000000000d1', 'authenticated', 'authenticated', '966500000904', NULL, now(), now());  -- D: phone NOT confirmed
 
--- Fixtures (as the SQL editor's own role) -------------------------------------
-insert into auth.users (id, aud, role, phone, phone_confirmed_at, created_at, updated_at) values
-  ('00000000-0000-4000-8000-0000000000a1', 'authenticated', 'authenticated', '966500000901', now(), now(), now()), -- A: walk-in owner
-  ('00000000-0000-4000-8000-0000000000b1', 'authenticated', 'authenticated', '966500000902', now(), now(), now()), -- B: number held by another account
-  ('00000000-0000-4000-8000-0000000000b2', 'authenticated', 'authenticated', null,           null,  now(), now()), -- B2: that other account
-  ('00000000-0000-4000-8000-0000000000c1', 'authenticated', 'authenticated', '966500000903', now(), now(), now()), -- C: new number
-  ('00000000-0000-4000-8000-0000000000d1', 'authenticated', 'authenticated', '966500000904', null,  now(), now()); -- D: phone NOT confirmed
+  INSERT INTO public.customers (id, user_id, name, phone, display_phone, normalized_phone, has_account) VALUES
+    ('TEST-WALKIN-A', NULL, 'Walk-in A', '+966500000901', '+966500000901', '500000901', false),
+    ('TEST-HELD-B', '00000000-0000-4000-8000-0000000000b2', 'Held B', '+966500000902', '+966500000902', '500000902', true);
 
-insert into public.customers (id, user_id, name, phone, display_phone, normalized_phone, has_account) values
-  ('TEST-WALKIN-A', null,                                   'Walk-in A', '+966500000901', '+966500000901', '500000901', false),
-  ('TEST-HELD-B',   '00000000-0000-4000-8000-0000000000b2', 'Held B',    '+966500000902', '+966500000902', '500000902', true);
+  -- A: unclaimed walk-in with the same phone -> linked, then already_linked; name untouched.
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
+  v_res := public.link_customer_by_verified_phone();
+  ASSERT v_res->>'status' = 'linked' AND v_res->>'customer_id' = 'TEST-WALKIN-A', format('A first call: expected linked/TEST-WALKIN-A, got %s', v_res);
+  v_res := public.link_customer_by_verified_phone();
+  ASSERT v_res->>'status' = 'already_linked' AND v_res->>'customer_id' = 'TEST-WALKIN-A', format('A second call: expected already_linked/TEST-WALKIN-A, got %s', v_res);
+  PERFORM set_config('role', v_editor, true);
+  SELECT user_id, has_account, name INTO v_user, v_has, v_name FROM public.customers WHERE id = 'TEST-WALKIN-A';
+  ASSERT v_user = '00000000-0000-4000-8000-0000000000a1' AND v_has AND v_name = 'Walk-in A', format('A row: expected a1/true/Walk-in A, got %s/%s/%s', v_user, v_has, v_name);
 
--- Calls run as `authenticated`; the checks after them run as the editor's own role (reset role), because RLS lets `authenticated` see only its own row.
+  -- B: the row with this phone belongs to another account -> phone_in_use, no id, never re-pointed, no second row.
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b1","role":"authenticated"}', true);
+  v_res := public.link_customer_by_verified_phone();
+  ASSERT v_res->>'status' = 'phone_in_use' AND v_res->>'customer_id' IS NULL, format('B call: expected phone_in_use with no customer_id, got %s', v_res);
+  PERFORM set_config('role', v_editor, true);
+  SELECT user_id INTO v_user FROM public.customers WHERE id = 'TEST-HELD-B';
+  ASSERT v_user = '00000000-0000-4000-8000-0000000000b2', format('B row: expected still owned by b2, got %s', v_user);
+  SELECT count(*) INTO v_count FROM public.customers WHERE user_id = '00000000-0000-4000-8000-0000000000b1';
+  ASSERT v_count = 0, format('B second row: expected 0 rows for b1, got %s', v_count);
 
--- A: unclaimed walk-in with the same phone -------------------------------------
-set local role authenticated;
-select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
-select public.link_customer_by_verified_phone();         -- {"status":"linked","customer_id":"TEST-WALKIN-A"}
-select public.link_customer_by_verified_phone();         -- {"status":"already_linked","customer_id":"TEST-WALKIN-A"}
-reset role;
-select user_id, has_account, name from public.customers where id = 'TEST-WALKIN-A';  -- …a1 / true / 'Walk-in A' (name untouched)
+  -- C: no row with this phone -> created with the name, then already_linked to the same row (second name ignored).
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000c1","role":"authenticated"}', true);
+  v_res := public.link_customer_by_verified_phone('Noura');
+  ASSERT v_res->>'status' = 'created' AND v_res->>'customer_id' LIKE 'CUST-%', format('C first call: expected created/CUST-..., got %s', v_res);
+  v_c_id := v_res->>'customer_id';
+  v_res := public.link_customer_by_verified_phone('Other');
+  ASSERT v_res->>'status' = 'already_linked' AND v_res->>'customer_id' = v_c_id, format('C second call: expected already_linked/%s, got %s', v_c_id, v_res);
+  PERFORM set_config('role', v_editor, true);
+  SELECT count(*) INTO v_count FROM public.customers WHERE user_id = '00000000-0000-4000-8000-0000000000c1';
+  ASSERT v_count = 1, format('C rows: expected exactly 1 row for c1, got %s', v_count);
+  SELECT name INTO v_name FROM public.customers WHERE id = v_c_id;
+  ASSERT v_name = 'Noura', format('C name: expected Noura, got %s', v_name);
+  SELECT count(*) INTO v_count FROM public.customers WHERE id = v_c_id AND normalized_phone = '500000903' AND display_phone = '+966500000903' AND has_account;
+  ASSERT v_count = 1, format('C phone fields: expected 500000903 / +966500000903 / has_account on row %s', v_c_id);
 
--- B: the row with this phone belongs to another account ------------------------
-set local role authenticated;
-select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b1","role":"authenticated"}', true);
-select public.link_customer_by_verified_phone();         -- {"status":"phone_in_use"}  (no customer_id)
-reset role;
-select user_id from public.customers where id = 'TEST-HELD-B';  -- still …b2 (never re-pointed)
-select count(*) from public.customers where user_id = '00000000-0000-4000-8000-0000000000b1';  -- 0 (no second row for that phone)
+  -- D: phone not confirmed -> not_verified.
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000d1","role":"authenticated"}', true);
+  v_res := public.link_customer_by_verified_phone();
+  ASSERT v_res->>'status' = 'not_verified', format('D call: expected not_verified, got %s', v_res);
 
--- C: no row with this phone ----------------------------------------------------
-set local role authenticated;
-select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000c1","role":"authenticated"}', true);
-select public.link_customer_by_verified_phone('Noura');  -- {"status":"created","customer_id":"CUST-…"}
-select public.link_customer_by_verified_phone('Other');  -- {"status":"already_linked","customer_id":<same id>}
-reset role;
-select name, normalized_phone, display_phone, user_id, has_account from public.customers where user_id = '00000000-0000-4000-8000-0000000000c1';  -- one row: 'Noura' / 500000903 / +966500000903 / …c1 / true
+  -- No session (authenticated role, no sub) -> not_verified.
+  PERFORM set_config('request.jwt.claims', '{"role":"authenticated"}', true);
+  v_res := public.link_customer_by_verified_phone();
+  ASSERT v_res->>'status' = 'not_verified', format('No-sub call: expected not_verified, got %s', v_res);
+  PERFORM set_config('role', v_editor, true);
 
--- D: phone not confirmed -------------------------------------------------------
-set local role authenticated;
-select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000d1","role":"authenticated"}', true);
-select public.link_customer_by_verified_phone();         -- {"status":"not_verified"}
+  -- Insert guard: anon creating a new row with someone else's auth id -> row created, but not attached.
+  PERFORM set_config('role', 'anon', true);
+  PERFORM set_config('request.jwt.claims', '{"role":"anon"}', true);
+  v_id := public.resolve_customer_record('Probe', '0500000905', NULL, '00000000-0000-4000-8000-0000000000a1', NULL);
+  PERFORM set_config('role', v_editor, true);
+  ASSERT v_id LIKE 'CUST-%', format('Insert guard: expected a new CUST-... id, got %s', v_id);
+  SELECT user_id, has_account INTO v_user, v_has FROM public.customers WHERE id = v_id;
+  ASSERT v_user IS NULL AND NOT v_has, format('Insert guard: expected user_id null / has_account false, got %s/%s', v_user, v_has);
 
--- No session at all (authenticated role, no sub) --------------------------------
-select set_config('request.jwt.claims', '{"role":"authenticated"}', true);
-select public.link_customer_by_verified_phone();         -- {"status":"not_verified"}
-reset role;
+  -- Grants: anon may not call the link function; signed-in users may.
+  v_has := has_function_privilege('anon', 'public.link_customer_by_verified_phone(text)', 'execute');
+  ASSERT NOT v_has, format('Grant: expected anon execute = false, got %s', v_has);
+  v_has := has_function_privilege('authenticated', 'public.link_customer_by_verified_phone(text)', 'execute');
+  ASSERT v_has, format('Grant: expected authenticated execute = true, got %s', v_has);
 
--- Insert guard: anon creating a new row with someone else's auth id -------------
-set local role anon;
-select set_config('request.jwt.claims', '{"role":"anon"}', true);
-select public.resolve_customer_record('Probe', '0500000905', null, '00000000-0000-4000-8000-0000000000a1', null);  -- returns a new CUST-… id
-reset role;
-select user_id, has_account from public.customers where normalized_phone = '500000905';  -- null / false (not attached)
-
--- Grants: anon may not call the link function; signed-in users may ---------------
-select has_function_privilege('anon', 'public.link_customer_by_verified_phone(text)', 'execute');      -- false
-select has_function_privilege('authenticated', 'public.link_customer_by_verified_phone(text)', 'execute'); -- true
-
-rollback;
+  -- Always roll back, pass or fail.
+  RAISE EXCEPTION 'ALL 0041 TESTS PASSED — everything rolled back';
+END $$;
 */
 -- Race (two simultaneous calls for the same new phone) needs two sessions: open
 -- two SQL editor tabs, run the C setup in both inside BEGIN, call the function in
