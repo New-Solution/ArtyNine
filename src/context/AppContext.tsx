@@ -2072,7 +2072,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // customer_id. Without it the booking is invisible to the person who
       // made it: the customer row-level policy matches on that column, so
       // My Bookings would always be empty.
-      let customerId = newBookingData.customerId;
+      //
+      // A signed-in customer always books on their OWN record — never on
+      // whichever record the phone typed at checkout matches, which may be
+      // someone else's (0044 enforces the same in the database). Staff and
+      // guests still resolve by phone/email below.
+      const ownCustomerId = !isStaffSessionActive() ? currentUser?.id : undefined;
+      let customerId = ownCustomerId || newBookingData.customerId;
       if (!customerId && (newBookingData.customerEmail || newBookingData.customerPhone)) {
         const resolved = await resolveCustomer(
           {
