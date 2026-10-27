@@ -23,12 +23,14 @@ import { bookingTitleLabel } from '../utils/bookingTitleLabel';
 import { timeLabel } from '../utils/availabilityLabel';
 import { durationLabel } from '../utils/workshopMetaLabel';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
-import { PhoneOtpFlow } from './PhoneOtpFlow';
+import { PhoneOtpFlow, PhoneSetupForm } from './PhoneOtpFlow';
+import { needsCustomerName } from '../utils/phoneAuth';
 
 export const CheckoutInfoSection: React.FC = () => {
   const {
     pendingBooking, setPendingBooking, setCustomerTab, currentUser, setCurrentUser,
-    workshops, loginCustomer, registerCustomer, requestPasswordReset, publishedBirthdayPackages, birthdayPackages, categories
+    workshops, loginCustomer, registerCustomer, requestPasswordReset, publishedBirthdayPackages, birthdayPackages, categories,
+    phoneSetupPending
   } = useApp();
   const { lang, t } = useLanguage();
 
@@ -79,7 +81,21 @@ export const CheckoutInfoSection: React.FC = () => {
   const showGuestPhoneFlow = PHONE_AUTH_ENABLED && (!currentUser || phoneFlowActive);
   const phoneLocked = PHONE_AUTH_ENABLED && !!currentUser && !phoneFlowActive;
   const effectivePhone = phoneLocked ? (currentUser!.phone || phone) : phone;
-  
+  /**
+   * A signed-in phone account that left before choosing a password (and name)
+   * finishes that first, as on the account page. While the inline flow is on
+   * screen its own last step does this job.
+   */
+  const showPhoneSetup = PHONE_AUTH_ENABLED && phoneSetupPending && !!currentUser && !phoneFlowActive;
+
+  /** Setup saved: show the new name and email straight away; the form takes over once the session updates. */
+  const handleSetupSaved = (saved: { name: string; email: string }) => {
+    if (!currentUser) return;
+    if (saved.name) setName(saved.name.trim());
+    if (saved.email) setEmail(saved.email);
+    setCurrentUser({ ...currentUser, name: saved.name.trim() || currentUser.name, email: saved.email || currentUser.email });
+  };
+
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -326,7 +342,25 @@ export const CheckoutInfoSection: React.FC = () => {
           {/* Guest + phone sign-in: verify the phone inline (send code -> verify
               -> set password); once signed in, the form below takes over with
               the account's details and the customer continues to payment. */}
-          {showGuestPhoneFlow ? (
+          {showPhoneSetup ? (
+            <div className="space-y-5">
+              <div>
+                <h2 className="font-display text-xl font-semibold text-brand-charcoal">
+                  {t('Finish setting up your account', 'أكمل إعداد حسابك')}
+                </h2>
+                <p className="mt-1.5 text-sm text-brand-ink">
+                  {t('Your number is verified. Choose a password to finish — you will sign in with it and your phone number.',
+                     'تم التحقق من رقمك. اختر كلمة مرور لإكمال الإعداد — ستسجّل الدخول بها مع رقم جوالك.')}
+                </p>
+              </div>
+              <PhoneSetupForm
+                key={currentUser!.id}
+                askName={needsCustomerName(currentUser!.name)}
+                welcomeName={currentUser!.name}
+                onSaved={handleSetupSaved}
+              />
+            </div>
+          ) : showGuestPhoneFlow ? (
             <div className="space-y-5">
               <PhoneOtpFlow
                 purpose="checkout"
