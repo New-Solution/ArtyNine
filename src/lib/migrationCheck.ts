@@ -126,6 +126,14 @@ export const MIGRATION_REQUIREMENTS: MigrationRequirement[] = [
     name: 'pieces.workshop_id column',
     migration: '0006_piece_pipeline_v2.sql',
     probe: columnExists('pieces', 'workshop_id')
+  },
+
+  // 0045 — pieces reference their stage by id. Piece writes send stage_id, so
+  // without it every status change fails.
+  {
+    name: 'pieces.stage_id column',
+    migration: '0045_piece_stage_id.sql',
+    probe: columnExists('pieces', 'stage_id')
   }
 ];
 

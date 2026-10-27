@@ -371,6 +371,12 @@ export interface PotteryPiece {
   dateCreated: string;
   image: string;
   status: PieceStatus;
+  /**
+   * The pipeline_stages row this piece is in (0045). The database keeps
+   * `status` equal to that stage's name, so either can be written; older rows
+   * cached before 0045 may not carry it yet.
+   */
+  stageId?: string;
   daysElapsed: number;
   assignedStaff: string;
   /** Internal-only damage note for a Broken piece. Never sent to the customer. */
@@ -389,7 +395,10 @@ export interface PotteryPiece {
   /** Last pickup reminder sent, so the dashboard does not nag daily. */
   lastNotificationDate?: string;
   history?: {
+    /** The stage's name when the entry was written; kept as written. */
     status: string;
+    /** The stage the entry refers to (0045); absent for a name no stage has. */
+    stageId?: string;
     timestamp: string;
     /** Riyadh-local date/time the change was recorded, e.g. "2026-08-03 04:15 PM". */
     riyadhTime?: string;
@@ -801,7 +810,16 @@ export interface PipelineStage {
   customerLabel?: string;
   /** Whether moving a piece into this stage notifies the customer. */
   notifyCustomer?: boolean;
+  /** Set on the five system stages (0045); null for a custom stage. Behaviour keys on this, never on the name. */
+  systemKey?: StageSystemKey | null;
+  /** Optional Arabic stage name; falls back to `name`. */
+  nameAr?: string | null;
+  /** Optional Arabic customer-facing wording; falls back to `customerLabel`. */
+  customerLabelAr?: string | null;
 }
+
+/** The fixed key of each system stage (pipeline_stages.system_key). */
+export type StageSystemKey = 'created' | 'kiln' | 'ready' | 'collected' | 'broken';
 
 /**
  * The pottery workflow: three customer-facing making-stages, then the two
@@ -820,14 +838,14 @@ export interface PipelineStage {
  * tracker is rendered).
  */
 export const DEFAULT_PIPELINE_STAGES: PipelineStage[] = [
-  { id: 'stage-greenware', name: 'Created', color: '#E07A5F', order: 0, visibleToCustomer: true, enabled: true, notifyCustomer: true },
-  { id: 'stage-bisque', name: 'First Burn and Colored', color: '#F2CC8F', order: 1, visibleToCustomer: true, enabled: true, notifyCustomer: true },
-  { id: 'stage-ready', name: 'Ready for Pickup', color: '#335C67', order: 2, visibleToCustomer: true, enabled: true, notifyCustomer: true },
+  { id: 'stage-greenware', name: 'Created', color: '#E07A5F', order: 0, visibleToCustomer: true, enabled: true, notifyCustomer: true, systemKey: 'created' },
+  { id: 'stage-bisque', name: 'First Burn and Colored', color: '#F2CC8F', order: 1, visibleToCustomer: true, enabled: true, notifyCustomer: true, systemKey: 'kiln' },
+  { id: 'stage-ready', name: 'Ready for Pickup', color: '#335C67', order: 2, visibleToCustomer: true, enabled: true, notifyCustomer: true, systemKey: 'ready' },
   // End-states. On the board these are outcomes, not columns, and neither is
   // a step in the customer's 3-stage tracker.
-  { id: 'stage-collected', name: 'Collected', color: '#111111', order: 3, visibleToCustomer: false, enabled: true, notifyCustomer: true },
+  { id: 'stage-collected', name: 'Collected', color: '#111111', order: 3, visibleToCustomer: false, enabled: true, notifyCustomer: true, systemKey: 'collected' },
   // The customer is told to contact the café, never shown the damage details.
-  { id: 'stage-broken', name: 'Broken', color: '#B91C1C', order: 4, visibleToCustomer: false, enabled: true, notifyCustomer: true }
+  { id: 'stage-broken', name: 'Broken', color: '#B91C1C', order: 4, visibleToCustomer: false, enabled: true, notifyCustomer: true, systemKey: 'broken' }
 ];
 
 /** A stage is selectable for a new update unless it has been disabled. */

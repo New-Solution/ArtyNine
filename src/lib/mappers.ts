@@ -58,7 +58,8 @@ export function modelToRow(model: Record<string, any>, allowed?: string[]): Reco
 /**
  * Columns that exist on each table, so a model carrying extra client-side
  * fields cannot produce an "column does not exist" error. Mirrors
- * 0001_init.sql, plus 0035 for the *_ar columns.
+ * 0001_init.sql, plus 0035 for the *_ar columns and 0045 for the stage-id
+ * columns.
  */
 export const TABLE_COLUMNS: Record<string, string[]> = {
   customers: [
@@ -104,16 +105,17 @@ export const TABLE_COLUMNS: Record<string, string[]> = {
     'customer_phone', 'date_created', 'image', 'status', 'days_elapsed', 'assigned_staff',
     'damage_note', 'storage_location', 'notes', 'additional_description_glazing_notes',
     'expected_completion', 'expected_ready_date', 'collection_date', 'last_notification_date',
-    'created_at', 'updated_at'
+    'stage_id', 'created_at', 'updated_at'
   ],
-  piece_history: ['id', 'piece_id', 'status', 'timestamp', 'riyadh_time', 'user', 'reason', 'created_at'],
+  piece_history: ['id', 'piece_id', 'status', 'stage_id', 'timestamp', 'riyadh_time', 'user', 'reason', 'created_at'],
   categories: ['id', 'name', 'name_ar', 'created_at'],
   notifications: [
     'id', 'type', 'customer_id', 'customer_phone', 'title', 'message', 'piece_id',
     'piece_name', 'new_status', 'performed_by', 'timestamp', 'is_read', 'highlighted'
   ],
   pipeline_stages: [
-    'id', 'name', 'color', 'order', 'visible_to_customer', 'customer_label', 'enabled', 'notify_customer'
+    'id', 'name', 'color', 'order', 'visible_to_customer', 'customer_label', 'enabled', 'notify_customer',
+    'system_key', 'name_ar', 'customer_label_ar'
   ],
   workshop_options: ['id', 'type', 'value', 'order', 'enabled'],
   event_options: ['id', 'type', 'value', 'order'],
