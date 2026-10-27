@@ -1,4 +1,4 @@
--- STATUS: NOT YET APPLIED — requires manual review
+-- STATUS: APPLIED
 -- =============================================================================
 -- 0045 — PIECES POINT AT A STAGE ID (M1 of the stage-id plan: additive only)
 --
