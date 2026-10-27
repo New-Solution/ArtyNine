@@ -1,4 +1,6 @@
--- STATUS: NOT YET APPLIED — apply only AFTER VITE_PHONE_AUTH is live in production
+-- STATUS: NOT YET APPLIED — READY TO APPLY. VITE_PHONE_AUTH is live in
+-- production and the startup probes for both functions have been removed from
+-- src/lib/migrationCheck.ts. Deploy that change before (or with) applying this.
 -- =============================================================================
 -- 0043 — RETIRE THE SIGN-IN LOOKUP
 --
@@ -31,10 +33,9 @@
 --     route either, so walk-ins have no way to claim their record online.
 --   - Every sign-in attempt logs "customer_signin_route failed: permission
 --     denied" in the browser console.
---   - The startup migration check (src/lib/migrationCheck.ts) still reports both
---     functions as present (a permission error is not "not found"), but its two
---     probes become failed requests on every page load. Remove those two probes
---     when this is applied.
+--   - The startup migration check (src/lib/migrationCheck.ts) used to probe both
+--     functions; those probes would become failed requests on every page load.
+--     They have been removed.
 --
 -- Rollback:
 --   grant execute on function public.customer_signin_route(text) to anon, authenticated;

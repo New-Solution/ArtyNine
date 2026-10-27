@@ -110,20 +110,14 @@ export const MIGRATION_REQUIREMENTS: MigrationRequirement[] = [
   },
 
   // 0005 — signing in with a phone number or an email address.
-  {
-    name: 'customer_signin_route()',
-    migration: '0005_signin_by_phone_or_email.sql',
-    probe: rpcExists('customer_signin_route', { identifier: '' })
-  },
+  // customer_signin_route() and customer_claim_email_matches() are not probed:
+  // 0043 revokes anon/authenticated EXECUTE on both, so a probe would be a
+  // refused request on every page load. The app no longer calls them with
+  // VITE_PHONE_AUTH on.
   {
     name: 'customer_signin_email()',
     migration: '0005_signin_by_phone_or_email.sql',
     probe: rpcExists('customer_signin_email', { p_identifier: '', p_password: '' })
-  },
-  {
-    name: 'customer_claim_email_matches()',
-    migration: '0005_signin_by_phone_or_email.sql',
-    probe: rpcExists('customer_claim_email_matches', { p_identifier: '', p_email: '' })
   },
 
   // 0006 — the four-stage pottery pipeline. Without it the stage rows are still
