@@ -5,7 +5,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { CustomerAccount, Booking, QueueItem, PotteryPiece } from '../types';
+import { CustomerAccount, Booking, QueueItem, PotteryPiece, DEFAULT_PIPELINE_STAGES } from '../types';
+import { stageOf } from '../utils/pipelineStages';
 import { PieceImage } from '../lib/pieceImages';
 import { 
   Users, UserPlus, Search, Filter, Phone, Mail, Calendar, Clock, 
@@ -53,6 +54,7 @@ export const AdminCustomersSection: React.FC = () => {
     bookings,
     queue,
     pieces,
+    pipelineStages,
     workshops,
     addCustomer,
     updateCustomer, 
@@ -63,6 +65,13 @@ export const AdminCustomersSection: React.FC = () => {
     viewCustomerSite
   } = useApp();
   const { lang, t } = useLanguage();
+
+  /**
+   * A piece's stage key: by stage id, falling back to its stored name. Until the
+   * stage list has loaded, the default rows (same ids and names) stand in.
+   */
+  const pieceStageKey = (p: PotteryPiece) =>
+    stageOf(p, pipelineStages.length > 0 ? pipelineStages : DEFAULT_PIPELINE_STAGES)?.systemKey;
 
   // Navigation state inside Customers section
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -335,7 +344,7 @@ export const AdminCustomersSection: React.FC = () => {
 
       const totalSpent = Math.max(0, totalPaid - totalRefunded);
 
-      const piecesReadyCount = cPieces.filter(p => p.status === 'Ready for Pickup').length;
+      const piecesReadyCount = cPieces.filter(p => pieceStageKey(p) === 'ready').length;
 
       map.set(c.id, {
         totalVisits: visitsList.length,
@@ -358,7 +367,7 @@ export const AdminCustomersSection: React.FC = () => {
     });
 
     return map;
-  }, [allDerivedCustomers, bookings, queue, pieces, todayDateStr]);
+  }, [allDerivedCustomers, bookings, queue, pieces, pipelineStages, todayDateStr]);
 
   // Global Customer Summary Statistics
   const globalCustomerStats = useMemo(() => {
@@ -1020,8 +1029,8 @@ export const AdminCustomersSection: React.FC = () => {
                         <div className="flex justify-between items-start">
                           <span className="font-mono font-bold text-xs text-brand-terracotta">{p.pieceCode || p.id}</span>
                           <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${
-                            p.status === 'Ready for Pickup' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                            p.status === 'Collected' ? 'bg-gray-100 text-gray-700 border-gray-300' :
+                            pieceStageKey(p) === 'ready' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                            pieceStageKey(p) === 'collected' ? 'bg-gray-100 text-gray-700 border-gray-300' :
                             'bg-amber-50 text-amber-800 border-amber-200'
                           }`}>
                             {enumLabel('pieceStatus', p.status, lang)}

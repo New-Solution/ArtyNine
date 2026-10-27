@@ -8,7 +8,8 @@ import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
 import { pieceWorkshopLabel } from '../utils/bookingTitleLabel';
 import { Calendar, Box, Flame, Compass, Clock, LogIn, Hash , CheckCircle2, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { PotteryPiece, stageCustomerLabel, migrateLegacyPieceStatus } from '../types';
+import { PotteryPiece, stageCustomerLabel, DEFAULT_PIPELINE_STAGES } from '../types';
+import { stageOf } from '../utils/pipelineStages';
 import Reveal from './ui/Reveal';
 import { AppImage } from './ui/AppImage';
 
@@ -52,20 +53,27 @@ export const MyPiecesSection: React.FC = () => {
     : [t('Created', 'تم الإنشاء'), t('First Burn and Colored', 'الحرق الأول والتلوين'), t('Ready for Pickup', 'جاهزة للاستلام')];
 
   /**
+   * The stage a piece or history entry is in: by stage id, falling back to its
+   * stored name (a retired name maps onto the stage that replaced it). Until
+   * the stage list has loaded, the default rows (same ids and names) stand in.
+   */
+  const stageOfEntry = (entry: { stageId?: string | null; status?: string | null }) =>
+    stageOf(entry, pipelineStages.length > 0 ? pipelineStages : DEFAULT_PIPELINE_STAGES);
+
+  /**
    * The tracker reads its position from the configured stages rather than a
    * hardcoded list — renaming or reordering a stage in Settings moves the
-   * customer's tracker with it. A retired name on an older piece is mapped onto
-   * the stage that replaced it.
+   * customer's tracker with it.
    *
    * 'Collected' (and any other stage marked not customer-visible) has no dot
    * of its own — Picked Up is a final status, not a fourth progress step — so
    * it is read as "past the last visible stage" rather than "not found".
    */
-  const getStageIndex = (status: PotteryPiece['status'] | string): number => {
-    const current = migrateLegacyPieceStatus(status);
-    const index = customerStages.findIndex(stage => stage.name === current);
+  const getStageIndex = (entry: { stageId?: string | null; status?: string | null }): number => {
+    const stage = stageOfEntry(entry);
+    const index = stage ? customerStages.findIndex(s => s.id === stage.id) : -1;
     if (index >= 0) return index;
-    return current === 'Collected' ? customerStages.length : 0;
+    return stage?.systemKey === 'collected' ? customerStages.length : 0;
   };
 
   /**
@@ -130,13 +138,13 @@ export const MyPiecesSection: React.FC = () => {
       Collected: []
     };
     for (const piece of userPieces) {
-      const status = migrateLegacyPieceStatus(piece.status);
-      if (status === 'Ready for Pickup') groups['Ready to collect'].push(piece);
-      else if (status === 'Collected') groups.Collected.push(piece);
+      const key = stageOfEntry(piece)?.systemKey;
+      if (key === 'ready') groups['Ready to collect'].push(piece);
+      else if (key === 'collected') groups.Collected.push(piece);
       else groups['In progress'].push(piece);
     }
     return groups;
-  }, [userPieces]);
+  }, [userPieces, pipelineStages]);
 
   const activeList = categorizedPieces[activeTab];
 
@@ -162,13 +170,13 @@ export const MyPiecesSection: React.FC = () => {
    * customer is told to contact the café through the notification instead.
    */
   const getCustomerStageIndex = (piece: PotteryPiece): number => {
-    if (piece.status !== 'Broken') return getStageIndex(piece.status);
+    if (stageOfEntry(piece)?.systemKey !== 'broken') return getStageIndex(piece);
 
     const lastKnown = [...(piece.history || [])]
       .reverse()
-      .find(h => h.status !== 'Broken');
+      .find(h => stageOfEntry(h)?.systemKey !== 'broken');
 
-    return lastKnown ? getStageIndex(lastKnown.status) : 0;
+    return lastKnown ? getStageIndex(lastKnown) : 0;
   };
 
   return (
@@ -298,9 +306,10 @@ export const MyPiecesSection: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {pagedList.map((p, cardIndex) => {
             const currentStageIdx = getCustomerStageIndex(p);
-            const isReady = p.status === 'Ready for Pickup';
+            const stageKey = stageOfEntry(p)?.systemKey;
+            const isReady = stageKey === 'ready';
 
-            const isBroken = p.status === 'Broken';
+            const isBroken = stageKey === 'broken';
 
             return (
               /* Capped stagger, as on My Reservations. */
