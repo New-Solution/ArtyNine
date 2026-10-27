@@ -21,8 +21,8 @@ import {
 import { STUDIO_PHONE } from '../utils/studioConfig';
 import { bookingTitleLabel } from '../utils/bookingTitleLabel';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
-import { PhoneOtpFlow } from './PhoneOtpFlow';
-import { toE164Saudi } from '../utils/phoneAuth';
+import { PhoneOtpFlow, PhoneSetupForm } from './PhoneOtpFlow';
+import { toE164Saudi, needsCustomerName } from '../utils/phoneAuth';
 import { supabase } from '../lib/supabase';
 
 /** Staggered fade-up for the title block over the photograph. */
@@ -73,7 +73,7 @@ export const AuthSection: React.FC = () => {
     authScreen, setAuthScreen, currentUser, setCurrentUser, setCustomerTab, sessionExpired, 
     loginCustomer, claimCustomerAccount, registerCustomer, requestPasswordReset,
     logoutCustomer, pendingBooking, changeCustomerPassword,
-    workshops, birthdayPackages
+    workshops, birthdayPackages, phoneSetupPending
   } = useApp();
   const { lang, t } = useLanguage();
 
@@ -190,6 +190,14 @@ export const AuthSection: React.FC = () => {
     setPhoneFlowActive(false);
     if (pendingBooking) setCustomerTab('checkout-info');
     else setCustomerTab('my-bookings');
+  };
+
+  /** "Finish setting up" saved: show the new name straight away, then go where a finished flow goes. */
+  const handleSetupSaved = (saved: { name: string; email: string }) => {
+    if (currentUser) {
+      setCurrentUser({ ...currentUser, name: saved.name || currentUser.name, email: saved.email || currentUser.email });
+    }
+    handlePhoneFlowDone();
   };
 
   // Password Recovery States
@@ -331,6 +339,45 @@ export const AuthSection: React.FC = () => {
     }
     setResetSent(res.message || 'If an account exists for that address, a reset link is on its way.');
   };
+
+  // FINISH SETTING UP — a signed-in phone account that left before choosing a
+  // password (and name). Replaces Sign In, Create Account and the account page
+  // until it is finished; the only other way out is signing out. While the
+  // phone flow itself is on screen, its own last step does this job.
+  if (PHONE_AUTH_ENABLED && phoneSetupPending && !phoneFlowActive) {
+    return (
+      <div className="mx-auto w-full max-w-md px-4 py-10 sm:py-16 animate-in fade-in duration-300">
+        <div className="rounded-[28px] border border-brand-clay bg-white p-6 sm:p-8 shadow-card-sm text-start space-y-5">
+          <div>
+            <h1 className="font-display text-2xl font-semibold text-brand-charcoal">
+              {t('Finish setting up your account', 'أكمل إعداد حسابك')}
+            </h1>
+            <p className="mt-1.5 text-sm text-brand-ink">
+              {t('Your number is verified. Choose a password to finish — you will sign in with it and your phone number.',
+                 'تم التحقق من رقمك. اختر كلمة مرور لإكمال الإعداد — ستسجّل الدخول بها مع رقم جوالك.')}
+            </p>
+          </div>
+          {currentUser ? (
+            <PhoneSetupForm
+              key={currentUser.id}
+              askName={needsCustomerName(currentUser.name)}
+              welcomeName={currentUser.name}
+              onSaved={handleSetupSaved}
+            />
+          ) : (
+            <p className="text-sm text-brand-muted">{t('Loading your account...', 'جارٍ تحميل حسابك...')}</p>
+          )}
+          <button
+            type="button"
+            onClick={() => void logoutCustomer()}
+            className="w-full cursor-pointer text-xs font-semibold text-brand-muted hover:underline"
+          >
+            {t('Sign out', 'تسجيل الخروج')}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

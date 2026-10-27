@@ -11,7 +11,7 @@ import { supabase } from '../lib/supabase';
 import { PhoneInput } from './PhoneInput';
 import { PasswordField } from './PasswordField';
 import {
-  requestPhoneCode, verifyPhoneCode, setPassword, maskE164Saudi,
+  requestPhoneCode, verifyPhoneCode, completePhoneSetup, maskE164Saudi, needsCustomerName,
   type PhoneAuthFailure
 } from '../utils/phoneAuth';
 import {
@@ -22,7 +22,32 @@ import {
 /** Seconds before "Resend code" is offered again. */
 const RESEND_SECONDS = 60;
 
+const inputClass = 'w-full bg-brand-cream border border-brand-clay rounded-xl py-3.5 px-4 text-sm font-semibold text-brand-charcoal shadow-2xs';
+const buttonClass = 'w-full cursor-pointer rounded-full bg-brand-terracotta py-3.5 text-sm font-semibold text-brand-cream hover:bg-brand-terracotta-hover transition-colors shadow-card-sm flex items-center justify-center gap-2 disabled:opacity-50';
+
 type Step = 'phone' | 'code' | 'details' | 'phone_in_use';
+
+/** Every failure reason in both languages. Shared by the flow and the setup form. */
+function phoneFailureText(reason: PhoneAuthFailure, t: (en: string, ar: string) => string): string {
+  switch (reason) {
+    case 'invalid_phone':
+      return t('Enter a valid Saudi mobile number, e.g. 05X XXX XXXX.', 'أدخل رقم جوال سعوديًا صحيحًا، مثال: 05X XXX XXXX.');
+    case 'rate_limited':
+      return t('Too many codes requested. Please wait a few minutes and try again.', 'طلبت رموزًا كثيرة. يرجى الانتظار بضع دقائق ثم المحاولة مرة أخرى.');
+    case 'send_failed':
+      return t('We could not send the code right now. Please try again in a moment.', 'تعذّر إرسال الرمز حاليًا. يرجى المحاولة بعد قليل.');
+    case 'invalid_code':
+      return t('That code is incorrect or has expired. Check it, or send a new one.', 'الرمز غير صحيح أو انتهت صلاحيته. تحقّق منه أو اطلب رمزًا جديدًا.');
+    case 'link_failed':
+      return t('Your number is verified, but we could not open your account. Please try again.', 'تم التحقق من رقمك، لكن تعذّر فتح حسابك. يرجى المحاولة مرة أخرى.');
+    case 'weak_password':
+      return t('Choose a stronger password.', 'اختر كلمة مرور أقوى.');
+    case 'update_failed':
+      return t('We could not save your password. Please try again.', 'تعذّر حفظ كلمة المرور. يرجى المحاولة مرة أخرى.');
+    case 'profile_failed':
+      return t('Your password is saved, but we could not save your name. Please try again.', 'تم حفظ كلمة المرور، لكن تعذّر حفظ اسمك. يرجى المحاولة مرة أخرى.');
+  }
+}
 
 interface PhoneOtpFlowProps {
   /** Only changes the heading: one flow serves sign-up, walk-in claim, reset and checkout. */
@@ -52,7 +77,7 @@ interface PhoneOtpFlowProps {
  */
 export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhone, onActiveChange, onDone, onCancel }) => {
   const { setCurrentUser, logoutCustomer } = useApp();
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
 
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState(initialPhone || '');
@@ -62,12 +87,13 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
   const [isNew, setIsNew] = useState(false);
   const [customerId, setCustomerId] = useState<string | undefined>();
   const [record, setRecord] = useState<{ name: string; email: string; phone: string } | null>(null);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPasswordValue] = useState('');
-  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Unmounted part-way (e.g. switching Sign In / Create Account): release the
+  // hold. A verified but unfinished account then gets the parent's "Finish
+  // setting up" step instead — the session, not this component, is the state.
+  useEffect(() => () => onActiveChange?.(false), []);
 
   // Resend countdown.
   useEffect(() => {
@@ -76,24 +102,7 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
     return () => window.clearTimeout(id);
   }, [secondsLeft]);
 
-  const failureText = (reason: PhoneAuthFailure): string => {
-    switch (reason) {
-      case 'invalid_phone':
-        return t('Enter a valid Saudi mobile number, e.g. 05X XXX XXXX.', 'أدخل رقم جوال سعوديًا صحيحًا، مثال: 05X XXX XXXX.');
-      case 'rate_limited':
-        return t('Too many codes requested. Please wait a few minutes and try again.', 'طلبت رموزًا كثيرة. يرجى الانتظار بضع دقائق ثم المحاولة مرة أخرى.');
-      case 'send_failed':
-        return t('We could not send the code right now. Please try again in a moment.', 'تعذّر إرسال الرمز حاليًا. يرجى المحاولة بعد قليل.');
-      case 'invalid_code':
-        return t('That code is incorrect or has expired. Check it, or send a new one.', 'الرمز غير صحيح أو انتهت صلاحيته. تحقّق منه أو اطلب رمزًا جديدًا.');
-      case 'link_failed':
-        return t('Your number is verified, but we could not open your account. Please try again.', 'تم التحقق من رقمك، لكن تعذّر فتح حسابك. يرجى المحاولة مرة أخرى.');
-      case 'weak_password':
-        return t('Choose a stronger password.', 'اختر كلمة مرور أقوى.');
-      case 'update_failed':
-        return t('We could not save your password. Please try again.', 'تعذّر حفظ كلمة المرور. يرجى المحاولة مرة أخرى.');
-    }
-  };
+  const failureText = (reason: PhoneAuthFailure) => phoneFailureText(reason, t);
 
   const notConfigured = () =>
     setError(t('Sign-in is not available right now. Please try again later.', 'تسجيل الدخول غير متاح حاليًا. يرجى المحاولة لاحقًا.'));
@@ -177,43 +186,19 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
     setStep('details');
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!supabase || !customerId) return notConfigured();
+  /** A new row is still "Guest"; a walk-in's row keeps the name the studio gave it. */
+  const askName = isNew || needsCustomerName(record?.name);
 
-    if (isNew) {
-      const nameCheck = validateRequired(name, t('Full name', 'الاسم الكامل'), lang);
-      if (!nameCheck.valid) return setError(nameCheck.error!);
-      const emailCheck = validateEmailRule(email, false, lang);
-      if (!emailCheck.valid) return setError(emailCheck.error!);
+  /** The setup form has saved the password (and name) and marked setup complete. */
+  const handleSaved = (saved: { name: string; email: string }) => {
+    if (customerId) {
+      setCurrentUser({
+        id: customerId,
+        name: askName ? saved.name : record?.name || '',
+        email: askName ? saved.email : record?.email || '',
+        phone: record?.phone || sentTo
+      });
     }
-    const strength = validatePasswordRule(password, lang);
-    if (!strength.valid) return setError(strength.error!);
-    const match = validatePasswordConfirmation(password, confirm, lang);
-    if (!match.valid) return setError(match.error!);
-
-    setBusy(true);
-    const saved = await setPassword(supabase, password, isNew ? name : undefined);
-    if ('reason' in saved) {
-      setBusy(false);
-      setError(failureText(saved.reason));
-      return;
-    }
-
-    let signedIn = record;
-    if (isNew) {
-      // The new row was created as "Guest"; the customer may edit their own row.
-      const details = { name: name.trim(), email: canonicalEmail(email) || null, updated_at: new Date().toISOString() };
-      const { error: updateError } = await supabase.from('customers').update(details).eq('id', customerId);
-      if (updateError) console.error('Saving new customer details failed:', updateError.message);
-      signedIn = { name: details.name, email: details.email || '', phone: sentTo };
-    }
-
-    if (signedIn) {
-      setCurrentUser({ id: customerId, name: signedIn.name, email: signedIn.email, phone: signedIn.phone });
-    }
-    setBusy(false);
     onActiveChange?.(false);
     onDone();
   };
@@ -228,10 +213,6 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
       ? t('We will text you a 6-digit code, then you can choose a new password.', 'سنرسل إليك رمزًا من 6 أرقام برسالة نصية، ثم يمكنك اختيار كلمة مرور جديدة.')
       : t('We will text you a 6-digit code. New here, or booked with us at the studio? This sets up your account.',
           'سنرسل إليك رمزًا من 6 أرقام برسالة نصية. جديد هنا، أو حجزت لدينا في الاستوديو؟ بهذا يتم إعداد حسابك.');
-
-  const firstName = (record?.name || '').trim().split(/\s+/)[0];
-  const inputClass = 'w-full bg-brand-cream border border-brand-clay rounded-xl py-3.5 px-4 text-sm font-semibold text-brand-charcoal shadow-2xs';
-  const buttonClass = 'w-full cursor-pointer rounded-full bg-brand-terracotta py-3.5 text-sm font-semibold text-brand-cream hover:bg-brand-terracotta-hover transition-colors shadow-card-sm flex items-center justify-center gap-2 disabled:opacity-50';
 
   return (
     <div className="space-y-5 text-start">
@@ -325,90 +306,9 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
         </form>
       )}
 
-      {/* 3. Password (+ name and optional email for a new account) */}
+      {/* 3. Password (+ name and optional email when the record has no real name yet) */}
       {step === 'details' && (
-        <form onSubmit={handleSave} className="space-y-4">
-          {!isNew && (
-            <p className="p-4 rounded-xl bg-brand-sand/40 border border-brand-clay text-xs text-brand-ink leading-relaxed">
-              {firstName
-                ? t(`Welcome back, ${firstName}. Not you? Contact the studio.`, `مرحبًا بعودتك، ${firstName}. لست أنت؟ تواصل مع الاستوديو.`)
-                : t('Welcome back. Not you? Contact the studio.', 'مرحبًا بعودتك. لست أنت؟ تواصل مع الاستوديو.')}
-            </p>
-          )}
-
-          {isNew && (
-            <>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-brand-charcoal/80" htmlFor="phone-otp-name">{t('Full name', 'الاسم الكامل')} *</label>
-                <input
-                  id="phone-otp-name"
-                  type="text"
-                  autoComplete="name"
-                  value={name}
-                  onChange={e => { setName(e.target.value); setError(null); }}
-                  placeholder={t('e.g. Noura Al-Amri', 'مثال: نورة العمري')}
-                  className={inputClass}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-brand-charcoal/80" htmlFor="phone-otp-email">
-                  {t('Email address (optional)', 'البريد الإلكتروني (اختياري)')}
-                </label>
-                <input
-                  id="phone-otp-email"
-                  type="text"
-                  inputMode="email"
-                  autoComplete="email"
-                  dir="ltr"
-                  value={email}
-                  onChange={e => { setEmail(e.target.value); setError(null); }}
-                  placeholder="noura@example.com"
-                  className={inputClass}
-                />
-              </div>
-            </>
-          )}
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-brand-charcoal/80">{t('New password', 'كلمة المرور الجديدة')} *</label>
-            <PasswordField
-              required
-              placeholder="••••••••"
-              autoComplete="new-password"
-              value={password}
-              onChange={v => { setPasswordValue(v); setError(null); }}
-              className={inputClass}
-            />
-            <ul className="space-y-0.5 pt-0.5">
-              {passwordChecklist(password, lang).map(item => (
-                <li
-                  key={item.label}
-                  className={`text-[11px] font-semibold flex items-center gap-1.5 ${item.met ? 'text-brand-sage' : 'text-brand-charcoal/45'}`}
-                >
-                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-                    {item.met ? <Check className="h-3.5 w-3.5" /> : <span className="h-1 w-1 rounded-full bg-current opacity-60" />}
-                  </span>
-                  <span>{item.label}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-brand-charcoal/80">{t('Confirm password', 'تأكيد كلمة المرور')} *</label>
-            <PasswordField
-              required
-              placeholder="••••••••"
-              autoComplete="new-password"
-              value={confirm}
-              onChange={v => { setConfirm(v); setError(null); }}
-              className={inputClass}
-            />
-          </div>
-          <button type="submit" disabled={busy} className={buttonClass}>
-            <KeyRound className="h-4 w-4" />
-            <span>{busy ? t('Saving...', 'جارٍ الحفظ...') : t('Save and continue', 'حفظ والمتابعة')}</span>
-          </button>
-        </form>
+        <PhoneSetupForm askName={askName} welcomeName={record?.name} onSaved={handleSaved} />
       )}
 
       {/* The number belongs to an email account. Said only after the code proved ownership. */}
@@ -431,5 +331,161 @@ export const PhoneOtpFlow: React.FC<PhoneOtpFlowProps> = ({ purpose, initialPhon
         </div>
       )}
     </div>
+  );
+};
+
+interface PhoneSetupFormProps {
+  /** Ask for a name (and optional email): the record is new, or still "Guest". */
+  askName: boolean;
+  /** The name on file, for "Welcome back" when no name is asked for. */
+  welcomeName?: string;
+  /** Called after the password (and name) are saved and setup is marked complete. */
+  onSaved: (saved: { name: string; email: string }) => void;
+}
+
+/**
+ * The last step of a phone account: a password, plus a name when the record
+ * has none yet. Used by the flow right after the code, and on its own as the
+ * "Finish setting up your account" step for a signed-in phone account that
+ * left before finishing (AuthSection). The phone and auth id come from the
+ * session, never from props.
+ */
+export const PhoneSetupForm: React.FC<PhoneSetupFormProps> = ({ askName: askNameProp, welcomeName, onSaved }) => {
+  const { lang, t } = useLanguage();
+  // Fixed on mount: saving the name changes the record while this is still on screen.
+  const [askName] = useState(askNameProp);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPasswordValue] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (askName) {
+      const nameCheck = validateRequired(name, t('Full name', 'الاسم الكامل'), lang);
+      if (!nameCheck.valid) return setError(nameCheck.error!);
+      const emailCheck = validateEmailRule(email, false, lang);
+      if (!emailCheck.valid) return setError(emailCheck.error!);
+    }
+    const strength = validatePasswordRule(password, lang);
+    if (!strength.valid) return setError(strength.error!);
+    const match = validatePasswordConfirmation(password, confirm, lang);
+    if (!match.valid) return setError(match.error!);
+
+    setBusy(true);
+    const sessionUser = supabase ? (await supabase.auth.getSession()).data.session?.user : undefined;
+    if (!supabase || !sessionUser?.phone) {
+      setBusy(false);
+      return setError(t('Sign-in is not available right now. Please try again later.', 'تسجيل الدخول غير متاح حاليًا. يرجى المحاولة لاحقًا.'));
+    }
+    const res = await completePhoneSetup(supabase, {
+      password,
+      phone: sessionUser.phone,
+      authId: sessionUser.id,
+      name: askName ? name : undefined,
+      email: askName ? canonicalEmail(email) : undefined
+    });
+    setBusy(false);
+    if ('reason' in res) return setError(phoneFailureText(res.reason, t));
+
+    onSaved({ name: askName ? name.trim() : '', email: askName ? canonicalEmail(email) : '' });
+  };
+
+  const firstName = (welcomeName || '').trim().split(/\s+/)[0];
+
+  return (
+    <form onSubmit={handleSave} className="space-y-4">
+      {error && (
+        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-start gap-2.5" role="alert">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
+          <p>{error}</p>
+        </div>
+      )}
+
+      {!askName && (
+        <p className="p-4 rounded-xl bg-brand-sand/40 border border-brand-clay text-xs text-brand-ink leading-relaxed">
+          {firstName
+            ? t(`Welcome back, ${firstName}. Not you? Contact the studio.`, `مرحبًا بعودتك، ${firstName}. لست أنت؟ تواصل مع الاستوديو.`)
+            : t('Welcome back. Not you? Contact the studio.', 'مرحبًا بعودتك. لست أنت؟ تواصل مع الاستوديو.')}
+        </p>
+      )}
+
+      {askName && (
+        <>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-brand-charcoal/80" htmlFor="phone-otp-name">{t('Full name', 'الاسم الكامل')} *</label>
+            <input
+              id="phone-otp-name"
+              type="text"
+              autoComplete="name"
+              value={name}
+              onChange={e => { setName(e.target.value); setError(null); }}
+              placeholder={t('e.g. Noura Al-Amri', 'مثال: نورة العمري')}
+              className={inputClass}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-brand-charcoal/80" htmlFor="phone-otp-email">
+              {t('Email address (optional)', 'البريد الإلكتروني (اختياري)')}
+            </label>
+            <input
+              id="phone-otp-email"
+              type="text"
+              inputMode="email"
+              autoComplete="email"
+              dir="ltr"
+              value={email}
+              onChange={e => { setEmail(e.target.value); setError(null); }}
+              placeholder="noura@example.com"
+              className={inputClass}
+            />
+          </div>
+        </>
+      )}
+
+      <div className="space-y-1">
+        <label className="text-xs font-bold text-brand-charcoal/80">{t('New password', 'كلمة المرور الجديدة')} *</label>
+        <PasswordField
+          required
+          placeholder="••••••••"
+          autoComplete="new-password"
+          value={password}
+          onChange={v => { setPasswordValue(v); setError(null); }}
+          className={inputClass}
+        />
+        <ul className="space-y-0.5 pt-0.5">
+          {passwordChecklist(password, lang).map(item => (
+            <li
+              key={item.label}
+              className={`text-[11px] font-semibold flex items-center gap-1.5 ${item.met ? 'text-brand-sage' : 'text-brand-charcoal/45'}`}
+            >
+              <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                {item.met ? <Check className="h-3.5 w-3.5" /> : <span className="h-1 w-1 rounded-full bg-current opacity-60" />}
+              </span>
+              <span>{item.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-bold text-brand-charcoal/80">{t('Confirm password', 'تأكيد كلمة المرور')} *</label>
+        <PasswordField
+          required
+          placeholder="••••••••"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={v => { setConfirm(v); setError(null); }}
+          className={inputClass}
+        />
+      </div>
+      <button type="submit" disabled={busy} className={buttonClass}>
+        <KeyRound className="h-4 w-4" />
+        <span>{busy ? t('Saving...', 'جارٍ الحفظ...') : t('Save and continue', 'حفظ والمتابعة')}</span>
+      </button>
+    </form>
   );
 };

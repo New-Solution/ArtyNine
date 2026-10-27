@@ -78,7 +78,7 @@ import { pieceStatusText, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVarian
 import { enumLabel } from '../utils/enumLabels';
 import { bookingCancellationSms } from '../../supabase/functions/_shared/bookingSmsTemplates';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
-import { toE164Saudi } from '../utils/phoneAuth';
+import { toE164Saudi, isPhoneSetupPending } from '../utils/phoneAuth';
 import { getConfiguredTables, computeTableStates, validateTableSelection } from '../utils/tableSeatingUtils';
 
 export {
@@ -344,6 +344,8 @@ interface AppContextType {
   /** A customer's session ended without them asking. See the implementation. */
   sessionExpired: boolean;
   clearSessionExpired: () => void;
+  /** A signed-in phone account that has not finished setup (VITE_PHONE_AUTH only; always false otherwise). */
+  phoneSetupPending: boolean;
 
   addBooking: (
     booking: Omit<Booking, 'id' | 'createdAt' | 'timeline'>,
@@ -1352,6 +1354,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    *      the listener consumes.
    */
   const [sessionExpired, setSessionExpired] = useState(false);
+  /**
+   * Phone sign-up signs the visitor in before the password step. Until
+   * user_metadata.phone_setup_complete is written, AuthSection shows "Finish
+   * setting up your account" instead of anything else; My Bookings and My
+   * Pieces send them there. Read from the session the listener already has.
+   */
+  const [phoneSetupPending, setPhoneSetupPending] = useState(false);
+  useEffect(() => {
+    if (!PHONE_AUTH_ENABLED || !phoneSetupPending) return;
+    if (customerTab === 'my-bookings' || customerTab === 'my-pieces') setCustomerTab('auth');
+  }, [phoneSetupPending, customerTab]);
   /** Set for the duration of a deliberate sign-out. Guard 3. */
   const intentionalSignOutRef = useRef(false);
   /** Whether a customer was signed in as of the last event. Guard 2. */
@@ -3421,6 +3434,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       staffId = staffSession.data.session?.user?.id ?? null;
       customerId = customerSession.data.session?.user?.id ?? null;
       customerEmail = customerSession.data.session?.user?.email ?? null;
+      if (PHONE_AUTH_ENABLED) setPhoneSetupPending(isPhoneSetupPending(customerSession.data.session?.user));
       // Seeds guard 2. Until this runs, hadCustomerSession is false, so a
       // SIGNED_OUT arriving during startup cannot announce an expiry.
       hadCustomerSessionRef.current = customerId !== null;
@@ -3450,6 +3464,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       hadCustomerSessionRef.current = nextCustomerId !== null;
       customerId = nextCustomerId;
       customerEmail = session?.user?.email ?? null;
+      if (PHONE_AUTH_ENABLED) setPhoneSetupPending(isPhoneSetupPending(session?.user));
       sessionGenerationRef.current += 1;
       resolveSessions(staffId, customerId, customerEmail, sessionGenerationRef.current);
     });
@@ -4465,6 +4480,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       birthdayFormFields, updateBirthdayFormFields,
       addWorkshop, updateWorkshop,
       sessionExpired, clearSessionExpired: () => setSessionExpired(false),
+      phoneSetupPending,
       addBooking, bookingError, clearBookingError: () => setBookingError(null),
       cancelBooking, cancelOwnBooking, updateBookingStatus,
       addCategoryIfMissing, updateCategoryNameAr, assignBookingStaff, updateWorkshopSession, appendBookingTimeline,

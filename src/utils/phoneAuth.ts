@@ -36,7 +36,8 @@ export type PhoneAuthFailure =
   | 'invalid_code'      // not 6 digits, wrong, or expired
   | 'link_failed'       // verified, but the customer record could not be linked
   | 'weak_password'     // Supabase refused the password
-  | 'update_failed';    // the password could not be saved
+  | 'update_failed'     // the password could not be saved
+  | 'profile_failed';   // the password is saved, but the name could not be
 
 export type Failure = { ok: false; reason: PhoneAuthFailure };
 
@@ -144,5 +145,70 @@ export async function setPassword(
     const status = (error as { status?: number }).status;
     return { ok: false, reason: status === 422 ? 'weak_password' : 'update_failed' };
   }
+  return { ok: true };
+}
+
+/**
+ * user_metadata key written once a phone account has a password (and a name,
+ * if it needed one). Until then the account is half set up: verifyOtp signs the
+ * visitor in before the password step, so leaving the page there would keep
+ * them signed in as "Guest" with no password.
+ */
+export const PHONE_SETUP_COMPLETE_KEY = 'phone_setup_complete';
+
+/** A signed-in phone account that has not finished the setup step. Reads the local session user only. */
+export function isPhoneSetupPending(
+  user?: { phone_confirmed_at?: string | null; user_metadata?: Record<string, unknown> | null } | null
+): boolean {
+  return !!user?.phone_confirmed_at && user.user_metadata?.[PHONE_SETUP_COMPLETE_KEY] !== true;
+}
+
+/** Whether the customer record still has no real name — empty, or the "Guest" placeholder a new row starts with. */
+export function needsCustomerName(name?: string | null): boolean {
+  const trimmed = String(name ?? '').trim();
+  return !trimmed || trimmed.toLowerCase() === 'guest';
+}
+
+/**
+ * Finishes a phone account: saves the password, then — only when a name is
+ * given — the name (and optional email) onto the caller's own customer row
+ * through resolve_customer_record()'s owner path (rule 1: matched by the
+ * verified phone, auth.uid() owns the row), then marks setup complete.
+ *
+ * Completion is written last, so a failure part-way leaves the account pending
+ * and the setup step is shown again. Strength rules are the caller's to check
+ * first (validatePasswordRule).
+ */
+export async function completePhoneSetup(
+  client: PhoneAuthClient,
+  input: { password: string; phone: string; authId: string; name?: string; email?: string }
+): Promise<{ ok: true } | Failure> {
+  if (!input.password) return { ok: false, reason: 'weak_password' };
+
+  const saved = await setPassword(client, input.password);
+  if ('reason' in saved) return saved;
+
+  const name = input.name?.trim();
+  if (name) {
+    const e164 = toE164Saudi(input.phone);
+    if (!e164 || !input.authId) return { ok: false, reason: 'profile_failed' };
+    const { data, error } = await client.rpc('resolve_customer_record', {
+      p_name: name,
+      p_phone: e164,
+      p_email: input.email?.trim() || null,
+      p_auth_id: input.authId,
+      p_source: null
+    });
+    if (error || !data) {
+      // The message only — never the phone or the name.
+      console.error('Saving the customer name failed:', error?.message ?? 'no id returned');
+      return { ok: false, reason: 'profile_failed' };
+    }
+  }
+
+  const { error } = await client.auth.updateUser({
+    data: name ? { name, [PHONE_SETUP_COMPLETE_KEY]: true } : { [PHONE_SETUP_COMPLETE_KEY]: true }
+  });
+  if (error) return { ok: false, reason: 'update_failed' };
   return { ok: true };
 }

@@ -6,7 +6,10 @@
  *   npx tsx src/utils/phoneAuth.test.ts
  */
 
-import { toE164Saudi, maskE164Saudi, requestPhoneCode, verifyPhoneCode, setPassword, type PhoneAuthClient } from './phoneAuth';
+import {
+  toE164Saudi, maskE164Saudi, requestPhoneCode, verifyPhoneCode, setPassword,
+  isPhoneSetupPending, needsCustomerName, completePhoneSetup, type PhoneAuthClient
+} from './phoneAuth';
 
 let passed = 0;
 let failed = 0;
@@ -31,7 +34,10 @@ function fakeClient(opts: {
   verify?: { session: unknown; error?: Err };
   link?: { data: unknown; error?: Err };
   updateError?: Err;
+  /** Per-call updateUser errors, in order; falls back to updateError. */
+  updateErrors?: Err[];
 }) {
+  let updateCall = 0;
   const calls: Call[] = [];
   const client = {
     auth: {
@@ -40,7 +46,12 @@ function fakeClient(opts: {
         calls.push({ method: 'verifyOtp', args });
         return { data: { session: opts.verify?.session ?? null, user: null }, error: opts.verify?.error ?? null };
       },
-      updateUser: async (...args: unknown[]) => { calls.push({ method: 'updateUser', args }); return { data: {}, error: opts.updateError ?? null }; }
+      updateUser: async (...args: unknown[]) => {
+        calls.push({ method: 'updateUser', args });
+        const error = opts.updateErrors ? opts.updateErrors[updateCall] ?? null : opts.updateError ?? null;
+        updateCall++;
+        return { data: {}, error };
+      }
     },
     rpc: async (...args: unknown[]) => { calls.push({ method: 'rpc', args }); return { data: opts.link?.data ?? null, error: opts.link?.error ?? null }; }
   };
@@ -149,6 +160,65 @@ async function main() {
   {
     const { client } = fakeClient({ updateError: { message: 'network', status: 500 } });
     assertEqual(await setPassword(client, 'Str0ng!pass'), { ok: false, reason: 'update_failed' }, 'other error -> update_failed');
+  }
+
+  console.log('isPhoneSetupPending()');
+  assertEqual(isPhoneSetupPending({ phone_confirmed_at: '2026-10-27T10:00:00Z', user_metadata: {} }), true, 'confirmed phone, no flag -> pending');
+  assertEqual(isPhoneSetupPending({ phone_confirmed_at: '2026-10-27T10:00:00Z', user_metadata: { phone_setup_complete: true } }), false, 'flag true -> done');
+  assertEqual(isPhoneSetupPending({ phone_confirmed_at: '2026-10-27T10:00:00Z', user_metadata: { phone_setup_complete: 'true' } }), true, 'only boolean true counts');
+  assertEqual(isPhoneSetupPending({ phone_confirmed_at: '2026-10-27T10:00:00Z', user_metadata: null }), true, 'no metadata -> pending');
+  assertEqual(isPhoneSetupPending({ phone_confirmed_at: null, user_metadata: {} }), false, 'email account (no confirmed phone) -> never pending');
+  assertEqual(isPhoneSetupPending(null), false, 'signed out -> not pending');
+
+  console.log('needsCustomerName()');
+  assertEqual(needsCustomerName('Guest'), true, '"Guest" placeholder');
+  assertEqual(needsCustomerName(' guest '), true, 'case and spaces ignored');
+  assertEqual(needsCustomerName(''), true, 'empty');
+  assertEqual(needsCustomerName(null), true, 'null');
+  assertEqual(needsCustomerName('Noura Al-Amri'), false, 'a real name');
+
+  console.log('completePhoneSetup()');
+  {
+    const { client, calls } = fakeClient({ link: { data: 'CUST-9' } });
+    const res = await completePhoneSetup(client, { password: 'Str0ng!pass', phone: '966501234567', authId: 'uid-1', name: ' Noura ', email: 'noura@example.com' });
+    assertEqual(res, { ok: true }, 'new account: password, name, complete');
+    assertEqual(calls, [
+      { method: 'updateUser', args: [{ password: 'Str0ng!pass' }] },
+      { method: 'rpc', args: ['resolve_customer_record', { p_name: 'Noura', p_phone: '+966501234567', p_email: 'noura@example.com', p_auth_id: 'uid-1', p_source: null }] },
+      { method: 'updateUser', args: [{ data: { name: 'Noura', phone_setup_complete: true } }] }
+    ], 'password first, then the owner update (phone + name), completion last');
+  }
+  {
+    const { client, calls } = fakeClient({});
+    assertEqual(await completePhoneSetup(client, { password: 'Str0ng!pass', phone: '966501234567', authId: 'uid-1' }), { ok: true }, 'walk-in claim: password only');
+    assertEqual(calls, [
+      { method: 'updateUser', args: [{ password: 'Str0ng!pass' }] },
+      { method: 'updateUser', args: [{ data: { phone_setup_complete: true } }] }
+    ], 'no name -> no RPC, studio name untouched');
+  }
+  {
+    const { client, calls } = fakeClient({ link: { data: 'CUST-9' } });
+    await completePhoneSetup(client, { password: 'Str0ng!pass', phone: '966501234567', authId: 'uid-1', name: 'Noura', email: '  ' });
+    assertEqual((calls[1].args[1] as { p_email: unknown }).p_email, null, 'blank email -> p_email null');
+  }
+  {
+    const { client, calls } = fakeClient({ updateError: { message: 'weak', status: 422 } });
+    assertEqual(await completePhoneSetup(client, { password: 'abc', phone: '966501234567', authId: 'uid-1', name: 'Noura' }), { ok: false, reason: 'weak_password' }, 'password refused -> weak_password');
+    assertEqual(calls.map(c => c.method), ['updateUser'], 'nothing else attempted, not marked complete');
+  }
+  {
+    const { client, calls } = fakeClient({ link: { data: null, error: { message: 'boom' } } });
+    assertEqual(await completePhoneSetup(client, { password: 'Str0ng!pass', phone: '966501234567', authId: 'uid-1', name: 'Noura' }), { ok: false, reason: 'profile_failed' }, 'name save fails -> profile_failed');
+    assertEqual(calls.map(c => c.method), ['updateUser', 'rpc'], 'not marked complete when the name was not saved');
+  }
+  {
+    const { client } = fakeClient({ link: { data: 'CUST-9' }, updateErrors: [null, { message: 'network', status: 500 }] });
+    assertEqual(await completePhoneSetup(client, { password: 'Str0ng!pass', phone: '966501234567', authId: 'uid-1', name: 'Noura' }), { ok: false, reason: 'update_failed' }, 'completion write fails -> update_failed (stays pending)');
+  }
+  {
+    const { client, calls } = fakeClient({});
+    assertEqual(await completePhoneSetup(client, { password: '', phone: '966501234567', authId: 'uid-1' }), { ok: false, reason: 'weak_password' }, 'empty password refused');
+    assertEqual(calls.length, 0, 'empty password never reaches Supabase');
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);
