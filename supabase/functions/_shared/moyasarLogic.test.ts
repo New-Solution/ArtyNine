@@ -21,7 +21,9 @@ import {
   auditCopy,
   stateForUnpaidStatus,
   stateForOutcome,
-  staffAlertFor
+  staffAlertFor,
+  tokensMatch,
+  parseWebhook
 } from './moyasarLogic.ts';
 import { verifyAndConfirmPayment, type AdminClient } from './confirmPayment.ts';
 import { fetchMoyasarPayment } from './moyasar.ts';
@@ -108,6 +110,19 @@ assertEqual(staffAlertFor('needs_refund', facts), null, 'no alert here for needs
 assertEqual(staffAlertFor('already_paid_other', facts), null, 'no alert here for already_paid_other (the SQL alerts)');
 assertEqual(staffAlertFor('amount_mismatch', facts)?.message.includes('100.00 SAR'), true, 'mismatch alert names the amount');
 assertEqual(staffAlertFor('not_found', { ...facts, bookingId: null })?.message.includes('(none)'), true, 'unknown booking alert');
+
+console.log('webhooks');
+assertEqual(tokensMatch('s3cret', 's3cret'), true, 'same token matches');
+assertEqual(tokensMatch('s3cret ', 's3cret'), false, 'trailing space does not match');
+assertEqual(tokensMatch('', 's3cret'), false, 'empty token refused');
+assertEqual(tokensMatch('x', ''), false, 'no configured secret -> refuse everything');
+assertEqual(tokensMatch(undefined, 's3cret'), false, 'missing token refused');
+assertEqual(parseWebhook({ type: 'payment_paid', live: false, data: { id: PID } }), { kind: 'payment', eventType: 'payment_paid', paymentId: PID, live: false }, 'payment_paid parsed');
+assertEqual(parseWebhook({ type: 'payment_faild', data: { id: PID } }).kind, 'payment', 'misspelt payment_faild still handled');
+assertEqual(parseWebhook({ type: 'payment_abandoned', data: { id: PID } }).kind, 'payment', 'payment_abandoned handled');
+assertEqual(parseWebhook({ type: 'card_auth_failed', data: { id: PID } }).kind, 'ignored', 'card_auth_* ignored');
+assertEqual(parseWebhook({ type: 'payment_paid', data: { id: '../x' } }).kind, 'invalid', 'bad payment id refused');
+assertEqual(parseWebhook('nope').kind, 'invalid', 'non-object refused');
 
 // -----------------------------------------------------------------------------
 // Fakes for the confirm flow.

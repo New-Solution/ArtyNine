@@ -21,3 +21,8 @@ verify_jwt = false
 # are read from Moyasar with the secret key. See its header comment.
 [functions.verify-payment]
 verify_jwt = false
+
+# moyasar-webhook is called by Moyasar (no Supabase JWT); it checks the
+# webhook's secret_token and re-fetches the payment from Moyasar itself.
+[functions.moyasar-webhook]
+verify_jwt = false

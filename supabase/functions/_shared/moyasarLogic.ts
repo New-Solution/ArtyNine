@@ -211,3 +211,45 @@ export function staffAlertFor(
       return null;
   }
 }
+
+// -----------------------------------------------------------------------------
+// Webhooks (https://docs.moyasar.com/api/other/webhooks/webhook-reference)
+//
+// Moyasar POSTs { id, type, created_at, secret_token, account_name, live,
+// data } where data is the payment for payment_* events. The ONLY documented
+// authenticity check is secret_token, the value set when the webhook was
+// created in the dashboard; no signature header is documented. So the token
+// is compared, and then — whatever the body says — the payment is fetched
+// again from the API with the secret key before anything is decided.
+// -----------------------------------------------------------------------------
+
+/** Constant-time string comparison, so the token cannot be guessed by timing. */
+export function tokensMatch(given: unknown, expected: string): boolean {
+  if (typeof given !== 'string' || !expected) return false;
+  const a = new TextEncoder().encode(given);
+  const b = new TextEncoder().encode(expected);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
+  return diff === 0;
+}
+
+export type WebhookParse =
+  | { kind: 'payment'; eventType: string; paymentId: string; live: boolean | null }
+  | { kind: 'ignored'; reason: string }
+  | { kind: 'invalid'; reason: string };
+
+/**
+ * Reads a webhook body. Every payment_* event is treated the same way (fetch
+ * and decide), so a misspelt or new event name — the docs list both
+ * payment_failed and payment_faild, and payment_abandoned only in the API —
+ * still works. Non-payment events (card_auth_*) are acknowledged and ignored.
+ */
+export function parseWebhook(body: unknown): WebhookParse {
+  if (!body || typeof body !== 'object') return { kind: 'invalid', reason: 'body is not an object' };
+  const b = body as Record<string, any>;
+  const type = typeof b.type === 'string' ? b.type : '';
+  if (!type.startsWith('payment_')) return { kind: 'ignored', reason: `event ${type || '(none)'}` };
+  const paymentId = b.data && typeof b.data === 'object' ? b.data.id : undefined;
+  if (!isMoyasarPaymentId(paymentId)) return { kind: 'invalid', reason: 'data.id is not a payment id' };
+  return { kind: 'payment', eventType: type, paymentId, live: typeof b.live === 'boolean' ? b.live : null };
+}
