@@ -13,6 +13,10 @@ import {
 import { PotteryPiece, isStageEnabled, DEFAULT_LOGGING_FIELDS, DEFAULT_PIPELINE_STAGES, type StageSystemKey } from '../types';
 import { stageOf, stageByKey, isEndState } from '../utils/pipelineStages';
 import { PieceImage, PiecePhotoError, compressPiecePhoto, uploadPiecePhoto } from '../lib/pieceImages';
+import { supabaseStaff } from '../lib/supabase';
+
+/** Long enough to read the "sign-in expired" message before the login screen replaces the console. */
+const SIGN_IN_EXPIRED_REDIRECT_MS = 4000;
 
 /**
  * Display labels [English, Arabic] for the known piece types. The option value
@@ -226,6 +230,8 @@ export const AdminPiecesTrackingSection: React.FC = () => {
   const [customPhotoRef, setCustomPhotoRef] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState('');
+  // The underlying error text (e.g. "Load failed"), shown beneath the message.
+  const [photoErrorDetail, setPhotoErrorDetail] = useState('');
   // Picking a second photo while the first is still uploading must not let the
   // first one's result land last.
   const photoAttemptRef = useRef(0);
@@ -435,6 +441,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
     setCustomPhotoRef('');
     setPhotoUploading(false);
     setPhotoError('');
+    setPhotoErrorDetail('');
   };
 
   /**
@@ -465,14 +472,28 @@ export const AdminPiecesTrackingSection: React.FC = () => {
       setCustomPhotoRef(reference);
     } catch (err) {
       if (attempt !== photoAttemptRef.current) return;
+      if (!(err instanceof PiecePhotoError)) {
+        console.error('handleCameraCapture: unexpected error while adding a photo:', err);
+      }
       const code = err instanceof PiecePhotoError ? err.code : 'upload-failed';
+      const detail = err instanceof PiecePhotoError ? err.detail : err instanceof Error ? err.message : String(err);
       setPhotoError(
         code === 'undecodable'
           ? t('This photo format cannot be read here (HEIC photos often cannot be read on a computer). Use the phone camera, or upload a JPEG or PNG.', 'لا يمكن قراءة صيغة هذه الصورة هنا (غالبًا لا يمكن قراءة صور HEIC على الكمبيوتر). استخدم كاميرا الهاتف أو ارفع صورة JPEG أو PNG.')
           : code === 'too-large'
             ? t('This photo is too large even after compression (5MB limit).', 'هذه الصورة كبيرة جدًا حتى بعد الضغط (الحد 5 ميجابايت).')
-            : t('The photo could not be uploaded. Check your connection and try again.', 'تعذّر رفع الصورة. تحقق من الاتصال وحاول مرة أخرى.')
+            : code === 'session-expired'
+              ? t('Your sign-in expired, please sign in again.', 'انتهت صلاحية تسجيل الدخول، يرجى تسجيل الدخول مرة أخرى.')
+              : code === 'connection-dropped'
+                ? t('The connection dropped while uploading, please try again.', 'انقطع الاتصال أثناء رفع الصورة، يرجى المحاولة مرة أخرى.')
+                : t('The photo could not be uploaded. Check your connection and try again.', 'تعذّر رفع الصورة. تحقق من الاتصال وحاول مرة أخرى.')
       );
+      setPhotoErrorDetail(detail || '');
+      if (code === 'session-expired') {
+        // Ending the dead staff session locally makes the console render the
+        // staff login (App.tsx shows it whenever there is no currentStaff).
+        setTimeout(() => { supabaseStaff?.auth.signOut({ scope: 'local' }); }, SIGN_IN_EXPIRED_REDIRECT_MS);
+      }
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setCustomPhotoUrl('');
       setCustomPhotoRef('');
@@ -1864,6 +1885,11 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                         <p className="text-[10px] font-bold text-red-700 flex items-start gap-1 leading-tight">
                           <AlertCircle className="h-3 w-3 shrink-0 mt-px" />
                           {photoError}
+                        </p>
+                      )}
+                      {photoError && photoErrorDetail && (
+                        <p className="text-[9px] text-red-700/80 leading-tight break-words">
+                          {t(`Details: ${photoErrorDetail}`, `التفاصيل: ${photoErrorDetail}`)}
                         </p>
                       )}
                     </div>

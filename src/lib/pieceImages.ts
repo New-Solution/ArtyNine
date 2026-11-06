@@ -24,7 +24,8 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { getDataClient } from './supabase';
+import { StorageApiError, isAuthRetryableFetchError, type SupabaseClient } from '@supabase/supabase-js';
+import { getDataClient, supabaseStaff } from './supabase';
 import { MAX_IMAGE_BYTES } from './mediaUpload';
 
 export const PIECE_PHOTO_BUCKET = 'customer-uploads';
@@ -38,13 +39,28 @@ const JPEG_QUALITY = 0.8;
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const SIGNED_URL_MARGIN_MS = 5 * 60 * 1000;
 
+/** How long the session check, or one upload attempt, may take before it counts as dropped. */
+const UPLOAD_TIMEOUT_MS = 30 * 1000;
+/** Pause before the one automatic retry. */
+const RETRY_DELAY_MS = 1000;
+
 // ---- Compression ------------------------------------------------------------
 
-export type PiecePhotoErrorCode = 'undecodable' | 'too-large' | 'unavailable' | 'upload-failed';
+export type PiecePhotoErrorCode =
+  | 'undecodable'
+  | 'too-large'
+  | 'unavailable'
+  | 'upload-failed'
+  | 'session-expired'
+  | 'connection-dropped';
 
-/** Carries a code so the console can phrase the message in either language. */
+/**
+ * Carries a code so the console can phrase the message in either language,
+ * and the underlying error text (e.g. Safari's "Load failed") so the console
+ * can show the real reason beneath it.
+ */
 export class PiecePhotoError extends Error {
-  constructor(public code: PiecePhotoErrorCode, message: string) {
+  constructor(public code: PiecePhotoErrorCode, message: string, public detail?: string) {
     super(message);
     this.name = 'PiecePhotoError';
   }
@@ -126,8 +142,62 @@ export async function compressPiecePhoto(file: File): Promise<Blob> {
 // ---- Upload -----------------------------------------------------------------
 
 /**
+ * A unique name for a new photo. crypto.randomUUID needs Safari 15.4 or later;
+ * an older iPad gets a timestamp-based name instead of a TypeError.
+ */
+const newPhotoId = () =>
+  globalThis.crypto?.randomUUID?.() ?? `photo-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+/**
+ * Settles with `work`, or rejects as a dropped connection once the timeout
+ * passes. A request that hangs would otherwise leave the console spinning.
+ */
+function withTimeout<T>(work: Promise<T>, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const detail = `${what} timed out after ${UPLOAD_TIMEOUT_MS / 1000}s`;
+      reject(new PiecePhotoError('connection-dropped', detail, detail));
+    }, UPLOAD_TIMEOUT_MS);
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Makes sure the staff client holds a session before uploading.
+ *
+ * Without one, supabase-js quietly sends the anon key and Storage refuses the
+ * upload. A refresh that fails for want of a network is a dropped connection,
+ * not an expired sign-in — signing staff out for it would only lose the form.
+ */
+async function ensureStaffSession(client: SupabaseClient): Promise<void> {
+  const { data } = await client.auth.getSession();
+  if (data.session) return;
+
+  const { data: refreshed, error } = await client.auth.refreshSession();
+  if (refreshed.session) return;
+  if (error && isAuthRetryableFetchError(error)) {
+    throw new PiecePhotoError('connection-dropped', 'The staff session could not be refreshed.', error.message);
+  }
+  throw new PiecePhotoError('session-expired', 'The staff sign-in has expired.', error?.message || 'No staff session');
+}
+
+/**
+ * Storage's reply when the object already exists. Only expected on the retry,
+ * when the first attempt landed but its response was lost.
+ */
+function isAlreadyExists(error: StorageApiError): boolean {
+  return error.status === 409 || error.statusCode === '409' || /already exists/i.test(error.message);
+}
+
+/**
  * Uploads a compressed photo and returns the reference to store in
  * pieces.image.
+ *
+ * Always through the staff client: piece photos are a staff action, and
+ * getDataClient() would hand back the customer client whenever the staff flag
+ * is off. A failure that never reached Storage (network error or timeout) is
+ * retried once; a refusal from Storage itself would not change on a retry.
  *
  * The piece's id is minted inside addPiece, after this runs, so a new photo is
  * named by a fresh UUID under pieces/new/ rather than by its piece. If the
@@ -135,21 +205,43 @@ export async function compressPiecePhoto(file: File): Promise<Blob> {
  * cleanup for that yet.
  */
 export async function uploadPiecePhoto(photo: Blob): Promise<string> {
-  const supabase = getDataClient();
+  const supabase = supabaseStaff;
   if (!supabase) {
     throw new PiecePhotoError('unavailable', 'Photo uploads are unavailable — the storage connection is not configured.');
   }
 
-  const path = `pieces/new/${crypto.randomUUID()}.jpg`;
-  const { error } = await supabase.storage.from(PIECE_PHOTO_BUCKET).upload(path, photo, {
-    contentType: 'image/jpeg',
-    upsert: false
-  });
-  if (error) {
-    console.error(`uploadPiecePhoto: ${path} failed:`, error.message);
-    throw new PiecePhotoError('upload-failed', error.message || 'The photo could not be uploaded.');
+  await withTimeout(ensureStaffSession(supabase), 'The session check');
+
+  const path = `pieces/new/${newPhotoId()}.jpg`;
+  const reference = `${REFERENCE_PREFIX}${PIECE_PHOTO_BUCKET}/${path}`;
+
+  for (let attempt = 1; ; attempt++) {
+    let error: Error | null;
+    try {
+      ({ error } = await withTimeout(
+        supabase.storage.from(PIECE_PHOTO_BUCKET).upload(path, photo, {
+          contentType: 'image/jpeg',
+          upsert: false
+        }),
+        'The upload'
+      ));
+    } catch (err) {
+      error = err instanceof Error ? err : new Error(String(err));
+    }
+    if (!error) return reference;
+
+    if (error instanceof StorageApiError) {
+      if (attempt > 1 && isAlreadyExists(error)) return reference;
+      console.error(`uploadPiecePhoto: ${path} failed:`, error.message);
+      throw new PiecePhotoError('upload-failed', error.message || 'The photo could not be uploaded.', error.message);
+    }
+
+    console.error(`uploadPiecePhoto: ${path} attempt ${attempt} did not reach Storage:`, error.message);
+    if (attempt >= 2) {
+      throw new PiecePhotoError('connection-dropped', 'The connection dropped while uploading.', error.message);
+    }
+    await new Promise(done => setTimeout(done, RETRY_DELAY_MS));
   }
-  return `${REFERENCE_PREFIX}${PIECE_PHOTO_BUCKET}/${path}`;
 }
 
 // ---- Resolving a stored value to something an <img> can show ------------------
