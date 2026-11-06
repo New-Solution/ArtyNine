@@ -18,6 +18,7 @@ import { AuthSection } from './components/AuthSection';
 import { BirthdayBookingSection } from './components/BirthdayBookingSection';
 import { MyPiecesSection } from './components/MyPiecesSection';
 import { ResetPasswordSection } from './components/ResetPasswordSection';
+import { PaymentReturnSection } from './components/PaymentReturnSection';
 import { MigrationWarning } from './components/MigrationWarning';
 import { PageTransition } from './components/PageTransition';
 
@@ -99,6 +100,7 @@ export default function App() {
             {customerTab === 'my-pieces' && <MyPiecesSection />}
             {customerTab === 'auth' && <AuthSection />}
             {customerTab === 'reset-password' && <ResetPasswordSection />}
+            {customerTab === 'payment-return' && <PaymentReturnSection />}
             {customerTab === 'birthday-booking' && <BirthdayBookingSection />}
             </PageTransition>
           </main>
