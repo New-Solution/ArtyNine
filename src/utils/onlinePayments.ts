@@ -150,3 +150,32 @@ export function isLapsedHold(
 export function toHalalas(sar: number): number {
   return Math.round(sar * 100);
 }
+
+// -----------------------------------------------------------------------------
+// The amount shown BEFORE a booking is held
+// -----------------------------------------------------------------------------
+
+/**
+ * A package's full price, the way online_payment_terms() (0046) computes it:
+ * 'Fixed price' is the price, anything else is price x guests.
+ */
+export function birthdayFullPrice(pkg: { price?: number; pricingType?: string } | undefined, guests: number): number {
+  if (!pkg) return 0;
+  const price = Number(pkg.price) || 0;
+  return pkg.pricingType === 'Fixed price' ? price : price * Math.max(1, Math.floor(guests) || 1);
+}
+
+/**
+ * What the payment step expects to charge, for display before the hold
+ * exists. Mirrors online_payment_terms(): deposit = min(deposit, full price).
+ * The figure actually charged is the database's (booking_payment_quote), read
+ * once the hold is created; this only has to agree with it, not decide it.
+ */
+export function estimateOnlineAmount(
+  fullPrice: number,
+  kind: OnlinePaymentKindConfig
+): { mode: OnlinePaymentMode; dueNow: number; balance: number } {
+  const total = Math.max(0, Math.round((Number(fullPrice) || 0) * 100) / 100);
+  const dueNow = kind.mode === 'deposit' ? Math.min(kind.depositAmount, total) : total;
+  return { mode: kind.mode, dueNow, balance: Math.round((total - dueNow) * 100) / 100 };
+}

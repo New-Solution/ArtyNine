@@ -1639,6 +1639,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     sanitizeQueueDates();
   }, [todayDateStr]);
 
+  const openHoldCount = bookings.filter(b => b.paymentStatus === 'Awaiting Payment').length;
+
   // Auto-sync today's bookings into the Live Queue when their day comes
   useEffect(() => {
     const syncTodayBookingsToQueue = async () => {
@@ -1650,6 +1652,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         for (const b of todayBookings) {
           if (b.status === 'Cancelled') continue;
+          // An online hold (0046) is not a booking yet: it joins the queue once
+          // paid, when this sync runs again. Expired / refund cases never do.
+          if (b.paymentStatus === 'Awaiting Payment' || b.paymentStatus === 'Expired' || b.paymentStatus === 'Needs Refund') continue;
 
           // Fresh query on each iteration to prevent race conditions within loop
           const currentQueue = await db.queue.toArray();
@@ -1731,7 +1736,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     syncTodayBookingsToQueue();
-  }, [todayDateStr, bookings.length]);
+    // openHoldCount: a hold turning paid (0046) changes no length, but must
+    // now be queued — so the number of open holds re-runs the sync too.
+  }, [todayDateStr, bookings.length, openHoldCount]);
 
   /**
    * Flips a booking to Checked In when its guest is seated.

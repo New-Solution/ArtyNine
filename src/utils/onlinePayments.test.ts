@@ -15,6 +15,8 @@ import {
   isPaidStatus,
   isLapsedHold,
   toHalalas,
+  birthdayFullPrice,
+  estimateOnlineAmount,
   PAYMENT_STATUSES
 } from './onlinePayments';
 import { enumLabel } from './enumLabels';
@@ -84,5 +86,17 @@ assertEqual(toHalalas(100), 10000, '100 SAR');
 assertEqual(toHalalas(0.1 + 0.2), 30, 'float noise rounded');
 assertEqual(toHalalas(1199.99), 119999, '1199.99 SAR');
 
+console.log('estimates (mirror online_payment_terms)');
+const dep = { mode: 'deposit' as const, depositAmount: 100 };
+const full = { mode: 'full' as const, depositAmount: 100 };
+assertEqual(estimateOnlineAmount(300, dep), { mode: 'deposit', dueNow: 100, balance: 200 }, 'deposit 100 of 300');
+assertEqual(estimateOnlineAmount(60, dep), { mode: 'deposit', dueNow: 60, balance: 0 }, 'deposit never above the price (0046 case 3)');
+assertEqual(estimateOnlineAmount(1200, full), { mode: 'full', dueNow: 1200, balance: 0 }, 'full price');
+assertEqual(birthdayFullPrice({ price: 120, pricingType: 'Per child' }, 10), 1200, 'per child x guests (0046 case 4)');
+assertEqual(birthdayFullPrice({ price: 1500, pricingType: 'Fixed price' }, 10), 1500, 'fixed price ignores guests (0046 case 4b)');
+assertEqual(birthdayFullPrice(undefined, 10), 0, 'no package -> 0');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
+
+

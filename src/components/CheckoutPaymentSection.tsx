@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
 import { CreditCard, Smartphone, ShieldCheck, Check, Lock, ChevronDown } from 'lucide-react';
@@ -16,6 +16,12 @@ import { bookingTitleLabel } from '../utils/bookingTitleLabel';
 import { timeLabel } from '../utils/availabilityLabel';
 import { CheckoutStepper } from './ui/CheckoutStepper';
 import { BackButton } from './ui/BackButton';
+import { MoyasarPaymentPanel } from './MoyasarPaymentPanel';
+import { ONLINE_PAYMENTS_AVAILABLE, ONLINE_CHECKOUT_SHIPPED } from '../utils/featureFlags';
+import {
+  ONLINE_PAYMENTS_SETTING_ID, normalizeOnlinePayments, estimateOnlineAmount, birthdayFullPrice
+} from '../utils/onlinePayments';
+import { fetchPaymentQuote, rememberPendingPayment, type PaymentQuote } from '../lib/onlinePayment';
 
 export const CheckoutPaymentSection: React.FC = () => {
   const { 
@@ -78,6 +84,38 @@ export const CheckoutPaymentSection: React.FC = () => {
 
   const workshop = workshops.find(w => w.id === pendingBooking?.workshopId) || workshops[0];
   const titleLabel = pendingBooking ? bookingTitleLabel(pendingBooking, workshops, birthdayPackages, lang) : '';
+
+  // ---- Online payment (Moyasar, migration 0046) ----------------------------
+  // On only when this build has the payment step and a key, AND the studio has
+  // switched it on in Settings. Off: the flow below is exactly the old one.
+  const onlineConfig = normalizeOnlinePayments(appSettings.find(s => s.id === ONLINE_PAYMENTS_SETTING_ID)?.value);
+  const onlineLive = ONLINE_PAYMENTS_AVAILABLE && onlineConfig.enabled;
+  const isBirthdayBooking = !!pendingBooking && (
+    pendingBooking.workshopId === 'birthday-party-event' ||
+    pendingBooking.workshopTitle.toLowerCase().includes('birthday')
+  );
+  // Display only, before the hold exists. What is charged is the database's
+  // figure (booking_payment_quote), shown once the place is held.
+  const fullPrice = !pendingBooking
+    ? 0
+    : isBirthdayBooking
+      ? birthdayFullPrice(birthdayPackages.find(p => p.id === pendingBooking.birthdayDetails?.packageId), pendingBooking.participants)
+      : pendingBooking.totalPrice;
+  const estimate = estimateOnlineAmount(fullPrice, isBirthdayBooking ? onlineConfig.birthday : onlineConfig.workshop);
+
+  /** The held booking being paid for, once the hold exists. */
+  const [hold, setHold] = useState<{ bookingId: string; quote: PaymentQuote } | null>(null);
+
+  const handleHoldExpired = useCallback(() => {
+    setHold(null);
+    // A new attempt is a new booking: the expired one cannot be revived (0046
+    // refuses a retry of an expired hold).
+    refCodeRef.current = generateBookingRefCode();
+    setSubmitError(t(
+      'The time to pay ran out and your place was released. Nothing was charged. Please press the button to try again.',
+      'انتهت مهلة الدفع وتم تحرير مكانك. لم يُخصم أي مبلغ. يرجى الضغط على الزر للمحاولة مرة أخرى.'
+    ));
+  }, [t]);
 
   if (!pendingBooking) {
     return (
@@ -149,9 +187,11 @@ export const CheckoutPaymentSection: React.FC = () => {
     const email = pendingBooking.customerEmail || currentUser?.email || 'guest@artycafe.sa';
     const phone = pendingBooking.customerPhone || currentUser?.phone || '';
 
-    // The 800ms stands in for payment processing. The booking write happens
-    // AFTER it and is awaited: the confirmation screen must never appear for a
-    // booking the database has not accepted.
+    // Without online payment the 800ms stands in for payment processing. The
+    // booking write happens AFTER it and is awaited: the confirmation screen
+    // must never appear for a booking the database has not accepted.
+    // With online payment this write creates the HOLD; the card is charged
+    // afterwards, in Moyasar's form, for the amount the database sets.
     setTimeout(async () => {
       let newBooking;
       try {
@@ -169,7 +209,9 @@ export const CheckoutPaymentSection: React.FC = () => {
         totalPrice: pendingBooking.totalPrice,
         source: 'Website',
         status: 'Pending',
-        paymentStatus: 'Paid',
+        // Online: the database writes 'Awaiting Payment' whatever is sent here;
+        // 'Unpaid' just keeps the local timeline honest ("awaiting payment").
+        paymentStatus: onlineLive ? 'Unpaid' : 'Paid',
           // The full birthday submission travels onto the one shared booking record.
           birthdayDetails: pendingBooking.birthdayDetails
         }, refCodeRef.current!);
@@ -186,8 +228,24 @@ export const CheckoutPaymentSection: React.FC = () => {
         // Pressing the button again is safe: the same reference code is reused,
         // and the RPC returns the existing booking rather than writing a second.
         const isTimeout = /abort/i.test(raw) || err?.name === 'AbortError';
+        // 0046: a retry of a hold that has run out. A fresh code makes the
+        // next press a genuinely new booking.
+        const isExpiredHold = /hold has expired/i.test(raw);
+        if (isExpiredHold) refCodeRef.current = generateBookingRefCode();
+        // 0046: the database could not price this for online payment.
+        const notPayableOnline = /cannot be paid online|package is no longer available/i.test(raw);
         setSubmitError(
-          isCapacity
+          isExpiredHold
+            ? t(
+                'The time to pay for this booking ran out and the place was released. Nothing was charged — please press the button to try again.',
+                'انتهت مهلة الدفع لهذا الحجز وتم تحرير المكان. لم يُخصم أي مبلغ — يرجى الضغط على الزر للمحاولة مرة أخرى.'
+              )
+          : notPayableOnline
+            ? t(
+                'This booking cannot be paid online right now. Please contact the studio to book.',
+                'لا يمكن دفع هذا الحجز إلكترونيًا حاليًا. يرجى التواصل مع الاستوديو لإتمام الحجز.'
+              )
+          : isCapacity
             ? t(
                 'That session filled up while you were paying. Nothing has been charged — please choose another date or time.',
                 'امتلأت هذه الجلسة أثناء عملية الدفع. لم يتم خصم أي مبلغ — يرجى اختيار تاريخ أو وقت آخر.'
@@ -210,11 +268,61 @@ export const CheckoutPaymentSection: React.FC = () => {
       // sync, which resolves the tutor from the booked session. Adding one here too
       // produced a second, instructor-less entry for the same booking.
 
+      // Is this booking a hold waiting for payment? Asked of the database, not
+      // inferred from this page's copy of the setting: if the studio switched
+      // online payments on a moment ago, this page may not know yet, and
+      // showing "confirmed" for an unpaid hold would lose the customer's place
+      // when it expires. Errors (e.g. before 0046 is applied) mean "no hold".
+      let quote: PaymentQuote | null = null;
+      if (ONLINE_CHECKOUT_SHIPPED) {
+        try {
+          quote = await fetchPaymentQuote(newBooking.id);
+        } catch {
+          quote = null;
+        }
+      }
+
+      if (quote) {
+        if (!ONLINE_PAYMENTS_AVAILABLE) {
+          // The database wants a payment this build cannot take (no key).
+          setSubmitError(t(
+            'Online payment is not available right now. Your place is held for a few minutes — please contact the studio to finish your booking.',
+            'الدفع الإلكتروني غير متاح حاليًا. مكانك محجوز لبضع دقائق — يرجى التواصل مع الاستوديو لإتمام حجزك.'
+          ));
+          setIsProcessing(false);
+          return;
+        }
+        rememberPendingPayment({
+          bookingId: newBooking.id,
+          workshopId: pendingBooking.workshopId,
+          isBirthday: isBirthdayBooking,
+          customerName: name,
+          customerPhone: phone,
+          customerEmail: email,
+          startedAt: Date.now()
+        });
+        setSubmitError(null);
+        setHold({ bookingId: newBooking.id, quote });
+        setIsProcessing(false);
+        return;
+      }
+
+      if (onlineLive) {
+        // Expected a hold and the database did not create one: the studio
+        // switched online payments off meanwhile. The booking stands, unpaid.
+        setSubmitError(t(
+          'Your booking was received but online payment is not available right now. The studio will contact you about payment.',
+          'تم استلام حجزك لكن الدفع الإلكتروني غير متاح حاليًا. سيتواصل معك الاستوديو بخصوص الدفع.'
+        ));
+        setIsProcessing(false);
+        return;
+      }
+
       setLastBookingCreated(newBooking);
       setPendingBooking(null);
       setIsProcessing(false);
       setCustomerTab('confirmation');
-    }, 800);
+    }, onlineLive ? 0 : 800);
   };
 
   const summaryBody = (
@@ -248,8 +356,22 @@ export const CheckoutPaymentSection: React.FC = () => {
 
             <div className="border-t border-brand-clay pt-3 flex justify-between items-center text-brand-charcoal">
               <span className="font-semibold text-sm">{t('Total Amount', 'الإجمالي')}:</span>
-              <span className="font-serif text-2xl font-semibold text-brand-terracotta">{pendingBooking.totalPrice} {t('SAR', 'ريال')}</span>
+              <span className={onlineLive ? 'font-semibold text-sm' : 'font-serif text-2xl font-semibold text-brand-terracotta'}>
+                {onlineLive ? (hold?.quote.totalPrice ?? fullPrice) : pendingBooking.totalPrice} {t('SAR', 'ريال')}
+              </span>
             </div>
+            {onlineLive && (
+              <div className="flex justify-between items-center text-brand-charcoal">
+                <span className="font-semibold text-sm">
+                  {(hold?.quote.mode ?? estimate.mode) === 'deposit'
+                    ? t('Deposit due now', 'العربون المستحق الآن')
+                    : t('Due now', 'المستحق الآن')}:
+                </span>
+                <span className="font-serif text-2xl font-semibold text-brand-terracotta">
+                  {hold?.quote.amount ?? estimate.dueNow} {t('SAR', 'ريال')}
+                </span>
+              </div>
+            )}
     </>
   );
 
@@ -297,9 +419,14 @@ export const CheckoutPaymentSection: React.FC = () => {
             border are untouched; only the lift changes. */}
         <div className="lg:col-span-7 bg-brand-cream rounded-[28px] p-6 sm:p-8 border border-brand-clay shadow-card">
           
-          <h2 className="font-display text-lg font-semibold text-brand-charcoal mb-4">{t('Choose Payment Method', 'اختر طريقة الدفع')}</h2>
+          <h2 className="font-display text-lg font-semibold text-brand-charcoal mb-4">
+            {onlineLive ? t('Secure Payment', 'الدفع الآمن') : t('Choose Payment Method', 'اختر طريقة الدفع')}
+          </h2>
 
-          {/* Payment Method Selector Cards */}
+          {/* Payment Method Selector Cards — the pre-Moyasar mock-up, shown
+              only while online payment is off. Moyasar's own form offers the
+              real methods. */}
+          {!onlineLive && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
             
             {/* Mada / Credit Card */}
@@ -363,11 +490,34 @@ export const CheckoutPaymentSection: React.FC = () => {
             </button>
 
           </div>
+          )}
 
+          {onlineLive && hold ? (
+            <MoyasarPaymentPanel
+              bookingId={hold.bookingId}
+              quote={hold.quote}
+              description={`${titleLabel} — ${pendingBooking.date} ${timeLabel(pendingBooking.time, lang)}`}
+              onExpired={handleHoldExpired}
+            />
+          ) : (
           <form onSubmit={handlePay} className="space-y-4">
-            
+
+            {onlineLive && (
+              <p className="p-4 bg-brand-sand/20 rounded-[22px] border border-brand-clay text-xs text-brand-ink leading-relaxed">
+                {estimate.mode === 'deposit'
+                  ? t(
+                      `Pay a non-refundable deposit of ${estimate.dueNow} SAR now by card or mada to secure your place${estimate.balance > 0 ? `; the remaining ${estimate.balance} SAR is paid at the studio` : ''}.`,
+                      `ادفع الآن عربونًا غير قابل للاسترداد بقيمة ${estimate.dueNow} ريال بالبطاقة أو مدى لتأكيد مكانك${estimate.balance > 0 ? `، ويُدفع المبلغ المتبقي (${estimate.balance} ريال) في الاستوديو` : ''}.`
+                    )
+                  : t(
+                      `Pay ${estimate.dueNow} SAR now by card or mada to confirm your booking. Cancellations more than 24 hours ahead are refunded.`,
+                      `ادفع ${estimate.dueNow} ريال الآن بالبطاقة أو مدى لتأكيد حجزك. يُسترد المبلغ عند الإلغاء قبل أكثر من 24 ساعة.`
+                    )}
+              </p>
+            )}
+
             {/* Card Form */}
-            {paymentMethod === 'card' && (
+            {!onlineLive && paymentMethod === 'card' && (
               <div className="space-y-3 p-4 bg-brand-sand/20 rounded-[22px] border border-brand-clay animate-in fade-in duration-150">
                 <div>
                   <label className="block text-xs font-semibold text-brand-ink mb-1">{t('Name on Card', 'الاسم على البطاقة')}</label>
@@ -420,7 +570,7 @@ export const CheckoutPaymentSection: React.FC = () => {
             )}
 
             {/* Apple Pay Prompt */}
-            {paymentMethod === 'applepay' && (
+            {!onlineLive && paymentMethod === 'applepay' && (
               <div className="p-6 bg-brand-sand/30 rounded-[22px] border border-brand-clay text-center space-y-2 animate-in fade-in duration-150">
                 <span className="font-semibold text-2xl">Pay</span> {/* ⚠ styled to evoke the Apple Pay mark — flagged, not translated */}
                 <p className="text-xs text-brand-ink">
@@ -433,7 +583,7 @@ export const CheckoutPaymentSection: React.FC = () => {
             )}
 
             {/* STC Pay Prompt */}
-            {paymentMethod === 'stcpay' && (
+            {!onlineLive && paymentMethod === 'stcpay' && (
               <div className="p-4 bg-brand-sand/20 rounded-[22px] border border-brand-clay space-y-3 animate-in fade-in duration-150">
                 <PhoneInput
                   label={`STC Pay ${t('Registered Phone Number', 'رقم الجوال المسجّل')}`}
@@ -473,7 +623,7 @@ export const CheckoutPaymentSection: React.FC = () => {
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden">
                 <span className="min-w-0 truncate text-sm font-semibold text-brand-charcoal">{titleLabel}</span>
                 <span className="flex shrink-0 items-center gap-2">
-                  <span className="font-serif text-lg font-semibold text-brand-terracotta">{pendingBooking.totalPrice} {t('SAR', 'ريال')}</span>
+                  <span className="font-serif text-lg font-semibold text-brand-terracotta">{onlineLive ? estimate.dueNow : pendingBooking.totalPrice} {t('SAR', 'ريال')}</span>
                   <ChevronDown className="h-4 w-4 text-brand-muted transition-transform group-[[open]]:rotate-180" />
                 </span>
               </summary>
@@ -487,18 +637,27 @@ export const CheckoutPaymentSection: React.FC = () => {
             >
               <Lock className="h-4 w-4" />
               <span>
-                {isProcessing
-                  ? t('Processing Payment...', 'جارٍ معالجة الدفع...')
-                  : `${t('Complete Booking', 'إتمام الحجز')} (${pendingBooking.totalPrice} ${t('SAR', 'ريال')})`}
+                {onlineLive
+                  ? (isProcessing
+                      ? t('Holding your place…', 'جارٍ حجز مكانك…')
+                      : `${t('Continue to Secure Payment', 'المتابعة إلى الدفع الآمن')} (${estimate.dueNow} ${t('SAR', 'ريال')})`)
+                  : isProcessing
+                    ? t('Processing Payment...', 'جارٍ معالجة الدفع...')
+                    : `${t('Complete Booking', 'إتمام الحجز')} (${pendingBooking.totalPrice} ${t('SAR', 'ريال')})`}
               </span>
             </button>
 
             <div className="flex items-center justify-center gap-1.5 text-[11px] text-brand-muted pt-1">
               <ShieldCheck className="h-4 w-4 text-brand-sage" />
-              <span>{t('SSL 256-Bit Encrypted Payment • Immediate Admin Sync', 'دفع مشفّر بتقنية SSL 256-بت • مزامنة فورية مع الإدارة')}</span>
+              <span>
+                {onlineLive
+                  ? t('Payments are processed securely by Moyasar.', 'تتم معالجة المدفوعات بأمان عبر Moyasar.')
+                  : t('SSL 256-Bit Encrypted Payment • Immediate Admin Sync', 'دفع مشفّر بتقنية SSL 256-بت • مزامنة فورية مع الإدارة')}
+              </span>
             </div>
 
           </form>
+          )}
 
         </div>
 
