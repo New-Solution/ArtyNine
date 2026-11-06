@@ -132,6 +132,7 @@ export type SettingsSectionId =
   | 'settings-pottery-logging'
   | 'settings-capacity'
   | 'settings-events'
+  | 'settings-payments'
   | 'settings-data-reset';
 
 export interface SettingsSection {
@@ -153,6 +154,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'settings-pottery-logging', label: 'Pottery Logging Console', labelAr: 'لوحة تسجيل الفخار' },
   { id: 'settings-capacity', label: 'Capacity', labelAr: 'السعة' },
   { id: 'settings-events', label: 'Events / Birthday', labelAr: 'الفعاليات / أعياد الميلاد' },
+  { id: 'settings-payments', label: 'Online Payments', labelAr: 'الدفع الإلكتروني' },
   { id: 'settings-data-reset', label: 'Data Reset', labelAr: 'إعادة ضبط البيانات' }
 ];
 

@@ -28,6 +28,7 @@ import { PhoneInput } from './PhoneInput';
 import { PotteryLoggingConsoleSettings } from './PotteryLoggingConsoleSettings';
 import { AdminCapacitySettings } from './AdminCapacitySettings';
 import { AdminEventsSettings } from './AdminEventsSettings';
+import { AdminOnlinePaymentsSettings } from './AdminOnlinePaymentsSettings';
 import { LineListTextarea } from './ui/LineListTextarea';
 import { usePagination, TablePager } from './ui/TablePager';
 import { useLanguage } from '../context/LanguageContext';
@@ -534,6 +535,13 @@ export const AdminSettingsSection: React.FC = () => {
             ======================================================= */}
         {activeTab === 'settings-events' && (
           <AdminEventsSettings />
+        )}
+
+        {/* =======================================================
+            TAB: ONLINE PAYMENTS (Moyasar, migration 0046)
+            ======================================================= */}
+        {activeTab === 'settings-payments' && (
+          <AdminOnlinePaymentsSettings />
         )}
         
         {/* =======================================================
