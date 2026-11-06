@@ -19,6 +19,8 @@ import {
 import { DateInput } from './DateInput';
 import { validatePhoneRule, canonicalPhone } from '../utils/validation';
 import { minBirthdayNoticeDays, BIRTHDAY_DAILY_MAX, BIRTHDAY_SAME_SLOT_MAX, DEFAULT_DEPOSIT_AMOUNT } from '../utils/queueUtils';
+import { ONLINE_PAYMENTS_AVAILABLE } from '../utils/featureFlags';
+import { ONLINE_PAYMENTS_SETTING_ID, normalizeOnlinePayments, estimateOnlineAmount, birthdayFullPrice } from '../utils/onlinePayments';
 import { useBirthdayCounts } from '../lib/sessionSeats';
 import { BackButton } from './ui/BackButton';
 import { localizedText } from '../utils/localizedText';
@@ -253,7 +255,21 @@ export const BirthdayBookingSection: React.FC = () => {
   // Display only. The stored values below (:447, :485, :513) keep the English name.
   const selectedPackageDisplayName = localizedText(selectedPackage?.name ?? '', selectedPackage?.nameAr, lang);
 
-  const depositAmount = selectedPackage?.depositAmount ?? DEFAULT_DEPOSIT_AMOUNT;
+  // The package's full price, computed exactly as the database charges it
+  // (online_payment_terms, 0046): 'Fixed price' is the price, otherwise
+  // price x guests. This used to multiply Fixed-price packages too.
+  const fullPrice = birthdayFullPrice(selectedPackage ?? undefined, Number(numberOfPeople || 0));
+
+  // What is paid today. With online payments live it follows Settings ->
+  // Online Payments (default: the full price); otherwise the package's
+  // deposit, exactly as before.
+  const onlineConfig = normalizeOnlinePayments(appSettings?.find(s => s.id === ONLINE_PAYMENTS_SETTING_ID)?.value);
+  const onlineLive = ONLINE_PAYMENTS_AVAILABLE && onlineConfig.enabled;
+  const onlineEstimate = estimateOnlineAmount(fullPrice, onlineConfig.birthday);
+  const payMode: 'deposit' | 'full' = onlineLive ? onlineEstimate.mode : 'deposit';
+  const depositAmount = onlineLive
+    ? onlineEstimate.dueNow
+    : (selectedPackage?.depositAmount ?? DEFAULT_DEPOSIT_AMOUNT);
   const timeOptions = selectedPackage?.availableTimes?.length
     ? selectedPackage.availableTimes
     : FALLBACK_TIMES;
@@ -600,7 +616,7 @@ export const BirthdayBookingSection: React.FC = () => {
       termsSnapshot: termsLines,
       termsSnapshotAr: termsLinesAr,
       termsShownLang,
-      totalAmount: (selectedPackage?.price || 0) * Number(numberOfPeople),
+      totalAmount: fullPrice,
       depositAmount,
       submittedAt: new Date().toISOString(),
       fieldValues
@@ -614,7 +630,7 @@ export const BirthdayBookingSection: React.FC = () => {
       date: bookingDate,
       time: bookingTime,
       participants: Number(numberOfPeople),
-      totalPrice: depositAmount,
+      totalPrice: onlineLive ? fullPrice : depositAmount,
       // Carried into Customer Information so it is never re-typed.
       customerName: bookingName.trim(),
       customerEmail: currentUser?.email || '',
@@ -989,7 +1005,7 @@ export const BirthdayBookingSection: React.FC = () => {
     [extraFields, fieldValues, cakePhotoUrl, lang]
   );
 
-  const estimatedTotal = (selectedPackage?.price || 0) * Number(numberOfPeople || 0);
+  const estimatedTotal = fullPrice;
 
   const prettyDate = useMemo(() => {
     if (!bookingDate) return '';
@@ -1066,7 +1082,7 @@ export const BirthdayBookingSection: React.FC = () => {
           <div className="flex items-center justify-between gap-4">
             <span className="text-brand-muted">
               {t('Estimated total', 'الإجمالي التقديري')}
-              {selectedPackage && numberOfPeople !== '' && (
+              {selectedPackage && numberOfPeople !== '' && selectedPackage.pricingType !== 'Fixed price' && (
                 <span className="ltr-numerals"> ({selectedPackage.price} × {numberOfPeople})</span>
               )}
             </span>
@@ -1077,13 +1093,17 @@ export const BirthdayBookingSection: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span className="font-semibold text-brand-charcoal">{t('Deposit due today', 'العربون المستحق اليوم')}</span>
+            <span className="font-semibold text-brand-charcoal">
+              {payMode === 'full' ? t('Due today', 'المستحق اليوم') : t('Deposit due today', 'العربون المستحق اليوم')}
+            </span>
             <span className="font-display text-xl font-semibold text-brand-terracotta ltr-numerals">
               {depositAmount} {t('SAR', 'ريال')}
             </span>
           </div>
           <p className="text-[11px] leading-relaxed text-brand-muted">
-            {t('The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')}
+            {payMode === 'full'
+              ? t('Paid in full online. Any cake upgrade is added at the studio. Cancel more than 24 hours ahead for a refund.', 'يُدفع المبلغ كاملًا إلكترونيًا. أي ترقية للكعكة تُضاف في الاستوديو. يُسترد المبلغ عند الإلغاء قبل أكثر من 24 ساعة.')
+              : t('The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')}
           </p>
         </div>
       </div>
@@ -1427,7 +1447,9 @@ export const BirthdayBookingSection: React.FC = () => {
                   type="submit"
                   className="cursor-pointer rounded-full bg-brand-terracotta px-8 py-4 text-base font-semibold text-brand-cream shadow-button transition-colors hover:bg-brand-terracotta-hover active:scale-[0.99]"
                 >
-                  {t('Pay', 'ادفع')} {depositAmount} {t('SAR Deposit', 'ريال عربون')}
+                  {payMode === 'full'
+                    ? <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR', 'ريال')}</>
+                    : <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR Deposit', 'ريال عربون')}</>}
                 </button>
               )}
             </div>

@@ -26,12 +26,14 @@ import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
 import { PhoneOtpFlow, PhoneSetupForm } from './PhoneOtpFlow';
 import { needsCustomerName } from '../utils/phoneAuth';
 import { useTurnstile } from './Turnstile';
+import { ONLINE_PAYMENTS_AVAILABLE } from '../utils/featureFlags';
+import { ONLINE_PAYMENTS_SETTING_ID, normalizeOnlinePayments, estimateOnlineAmount, birthdayFullPrice } from '../utils/onlinePayments';
 
 export const CheckoutInfoSection: React.FC = () => {
   const {
     pendingBooking, setPendingBooking, setCustomerTab, currentUser, setCurrentUser,
     workshops, loginCustomer, registerCustomer, requestPasswordReset, publishedBirthdayPackages, birthdayPackages, categories,
-    phoneSetupPending
+    phoneSetupPending, appSettings
   } = useApp();
   const { lang, t } = useLanguage();
 
@@ -46,6 +48,18 @@ export const CheckoutInfoSection: React.FC = () => {
   // The Arabic title is looked up strictly by id (not via `workshop`, which falls back to
   // workshops[0]) and, for a birthday, in the FULL package list.
   const titleLabel = pendingBooking ? bookingTitleLabel(pendingBooking, workshops, birthdayPackages, lang) : '';
+
+  // What the payment step will ask for. With online payments live this
+  // follows Settings -> Online Payments (workshop deposit / birthday full
+  // price by default); otherwise it is the draft's own total, as before.
+  const onlineConfig = normalizeOnlinePayments(appSettings.find(s => s.id === ONLINE_PAYMENTS_SETTING_ID)?.value);
+  const onlineLive = ONLINE_PAYMENTS_AVAILABLE && onlineConfig.enabled;
+  const onlineEstimate = estimateOnlineAmount(
+    birthday ? birthdayFullPrice(birthdayPackage, pendingBooking?.participants ?? 1) : (pendingBooking?.totalPrice ?? 0),
+    birthday ? onlineConfig.birthday : onlineConfig.workshop
+  );
+  const dueNow = onlineLive ? onlineEstimate.dueNow : (pendingBooking?.totalPrice ?? 0);
+  const dueIsDeposit = onlineLive ? onlineEstimate.mode === 'deposit' : !!birthday;
 
   const [name, setName] = useState(pendingBooking?.customerName || currentUser?.name || '');
   const [email, setEmail] = useState(pendingBooking?.customerEmail || currentUser?.email || '');
@@ -285,8 +299,8 @@ export const CheckoutInfoSection: React.FC = () => {
             </div>
 
             <div className="border-t border-brand-clay pt-3 flex justify-between items-center text-brand-charcoal">
-              <span className="font-semibold text-sm">{birthday ? t('Deposit Due', 'المقدم المستحق') : t('Total Due', 'الإجمالي المستحق')}:</span>
-              <span className="font-serif text-xl font-semibold text-brand-terracotta">{pendingBooking.totalPrice} {t('SAR', 'ريال')}</span>
+              <span className="font-semibold text-sm">{dueIsDeposit ? t('Deposit Due', 'المقدم المستحق') : t('Total Due', 'الإجمالي المستحق')}:</span>
+              <span className="font-serif text-xl font-semibold text-brand-terracotta">{dueNow} {t('SAR', 'ريال')}</span>
             </div>
     </>
   );
@@ -382,7 +396,7 @@ export const CheckoutInfoSection: React.FC = () => {
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden">
                   <span className="min-w-0 truncate text-sm font-semibold text-brand-charcoal">{titleLabel}</span>
                   <span className="flex shrink-0 items-center gap-2">
-                    <span className="font-serif text-lg font-semibold text-brand-terracotta">{pendingBooking.totalPrice} {t('SAR', 'ريال')}</span>
+                    <span className="font-serif text-lg font-semibold text-brand-terracotta">{dueNow} {t('SAR', 'ريال')}</span>
                     <ChevronDown className="h-4 w-4 text-brand-muted transition-transform group-[[open]]:rotate-180" />
                   </span>
                 </summary>
@@ -529,7 +543,7 @@ export const CheckoutInfoSection: React.FC = () => {
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden">
                 <span className="min-w-0 truncate text-sm font-semibold text-brand-charcoal">{titleLabel}</span>
                 <span className="flex shrink-0 items-center gap-2">
-                  <span className="font-serif text-lg font-semibold text-brand-terracotta">{pendingBooking.totalPrice} {t('SAR', 'ريال')}</span>
+                  <span className="font-serif text-lg font-semibold text-brand-terracotta">{dueNow} {t('SAR', 'ريال')}</span>
                   <ChevronDown className="h-4 w-4 text-brand-muted transition-transform group-[[open]]:rotate-180" />
                 </span>
               </summary>
