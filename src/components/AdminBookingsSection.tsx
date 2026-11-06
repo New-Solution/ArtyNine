@@ -17,6 +17,7 @@ import { normalizeDateString } from '../utils/timeUtils';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { PAYMENT_STATUSES, paymentTone } from '../utils/onlinePayments';
+import { OnlineRefundNote } from './OnlineRefundNote';
 
 /**
  * The title given to queue walk-ins that have no instructor. It stays English in the
@@ -1089,6 +1090,8 @@ export const AdminBookingsSection: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              <OnlineRefundNote booking={bookings.find(b => b.id === cancellingBookingId)} />
 
               <div className="flex gap-2 pt-2">
                 <button

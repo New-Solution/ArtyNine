@@ -45,7 +45,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
 import { sendSms } from '../_shared/sms.ts';
 import { bookingCancellationSms } from '../_shared/bookingSmsTemplates.ts';
-import { ownsBooking, wasRefunded, type BookingRow } from './logic.ts';
+import { ownsBooking, wasRefunded, shouldSendCancellationSms, type BookingRow } from './logic.ts';
 import type { NotifyOwnBookingRequest, NotifyOwnBookingResponse } from './contract.ts';
 
 const CORS_HEADERS = {
@@ -139,6 +139,11 @@ Deno.serve(async (req: Request) => {
 
   if (booking.status !== 'Cancelled') {
     return json({ success: false, error: 'That booking has not been cancelled.' }, 409);
+  }
+
+  // An unpaid online hold: nothing was paid, so no refund SMS of either kind.
+  if (!shouldSendCancellationSms(booking as BookingRow)) {
+    return json({ success: true }, 200);
   }
 
   if (!booking.customer_phone) {

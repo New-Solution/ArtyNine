@@ -41,3 +41,14 @@ export function ownsBooking(booking: Pick<BookingRow, 'customer_id'>, callerCust
 export function wasRefunded(booking: Pick<BookingRow, 'payment_status'>): boolean {
   return booking.payment_status === 'Refunded';
 }
+
+/**
+ * Whether the cancellation SMS is sent at all. Not for an unpaid online hold
+ * (0046, 'Awaiting Payment'): nothing was paid, and both registered templates
+ * talk about a refund ("refunded" / "not eligible for a refund"). The in-app
+ * notification written by cancel_own_booking already says "Nothing was
+ * charged".
+ */
+export function shouldSendCancellationSms(booking: Pick<BookingRow, 'payment_status'>): boolean {
+  return booking.payment_status !== 'Awaiting Payment';
+}

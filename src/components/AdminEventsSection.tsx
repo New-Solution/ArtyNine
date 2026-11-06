@@ -14,6 +14,7 @@ import { AdminBirthdayPackageEditor } from './AdminBirthdayPackageEditor';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { paymentTone } from '../utils/onlinePayments';
+import { OnlineRefundNote } from './OnlineRefundNote';
 
 /** One label/value line. Optional answers are shown as "Not provided", never dropped. */
 const DetailRow: React.FC<{ label: string; value?: string; mono?: boolean }> = ({ label, value, mono }) => {
@@ -829,6 +830,8 @@ export const AdminEventsSection: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            <OnlineRefundNote booking={liveBookings.find(b => b.id === cancellingBookingId)} />
 
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button

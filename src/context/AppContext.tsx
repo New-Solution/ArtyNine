@@ -2234,8 +2234,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    */
   const notifyBookingCancellation = async (booking: Booking, refunded: boolean) => {
     const formattedDate = formatDate(booking.date, { year: 'numeric', month: 'long', day: 'numeric', timeZone: RIYADH_TIME_ZONE });
+    // What was actually paid: an online payment (0046) records its own amount,
+    // which for a deposit is less than the booking total.
+    const refundAmount = booking.paymentMode && booking.onlineAmount !== undefined && booking.onlineAmount !== null
+      ? Number(booking.onlineAmount)
+      : booking.totalPrice;
     const friendlyMsg = refunded
-      ? `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled, and ${booking.totalPrice} SAR has been refunded. We hope to see you again soon!`
+      ? `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled, and ${refundAmount} SAR has been refunded. We hope to see you again soon!`
       : `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled. Per our cancellation policy, this booking was not eligible for a refund. Please contact Arty Café with any questions.`;
 
     // Best-effort, matching the SMS block below: notifications RLS only
@@ -2286,7 +2291,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const smsText = bookingCancellationSms(refunded ? 'refunded' : 'notRefunded', {
           workshopTitle: booking.workshopTitle,
           date: booking.date,
-          amount: booking.totalPrice
+          amount: refundAmount
         });
         const { data: smsData, error: smsError } = await smsClient.functions.invoke('send-sms', {
           body: { phone: booking.customerPhone, message: smsText }

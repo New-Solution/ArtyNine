@@ -136,9 +136,23 @@ export const MyBookingsSection: React.FC = () => {
     return hours < REFUND_NOTICE_HOURS && hours > 0;
   };
 
-  /** Whether cancelling right now would be refunded, by the same rule. */
-  const isRefundable = (booking: Booking): boolean =>
-    hoursUntilStart(booking, getRiyadhNow()) > REFUND_NOTICE_HOURS;
+  /**
+   * Whether cancelling right now would be refunded, by the same rule as
+   * cancel_own_booking (0046): an unpaid hold has nothing to refund, an
+   * online deposit is never refunded, everything else keeps the 24h rule.
+   */
+  const isRefundable = (booking: Booking): boolean => {
+    if (booking.paymentStatus === 'Awaiting Payment') return false;
+    if (booking.paymentMode === 'deposit') return false;
+    return hoursUntilStart(booking, getRiyadhNow()) > REFUND_NOTICE_HOURS;
+  };
+
+  /** What this customer actually paid: the online amount for an online
+   *  payment (a deposit is less than the total), else the booking total. */
+  const paidAmount = (booking: Booking): number =>
+    booking.paymentMode && booking.onlineAmount !== undefined && booking.onlineAmount !== null
+      ? Number(booking.onlineAmount)
+      : booking.totalPrice;
 
   const getStatusBadgeColor = (status: Booking['status']) => {
     switch (status) {
@@ -403,8 +417,19 @@ export const MyBookingsSection: React.FC = () => {
                 {/* Right block: total price & actions */}
                 <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-brand-clay gap-2">
                   <div className="text-start sm:text-end">
-                    <span className="text-[10px] font-semibold text-brand-sage block uppercase tracking-wider">{t('Paid amount', 'المبلغ المدفوع')}</span>
-                    <span className="text-base font-semibold text-brand-charcoal">{b.totalPrice} {t('SAR', 'ريال')}</span>
+                    {b.paymentStatus === 'Awaiting Payment' ? (
+                      <span className="text-[10px] font-semibold text-amber-700 block uppercase tracking-wider">{t('Awaiting payment', 'بانتظار الدفع')}</span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-brand-sage block uppercase tracking-wider">
+                        {b.paymentMode === 'deposit' ? t('Deposit paid', 'العربون المدفوع') : t('Paid amount', 'المبلغ المدفوع')}
+                      </span>
+                    )}
+                    <span className="text-base font-semibold text-brand-charcoal">{paidAmount(b)} {t('SAR', 'ريال')}</span>
+                    {b.paymentMode === 'deposit' && b.totalPrice > paidAmount(b) && (
+                      <span className="block text-[10px] text-brand-muted">
+                        {t(`Balance ${b.totalPrice - paidAmount(b)} SAR at the studio`, `المتبقي ${b.totalPrice - paidAmount(b)} ريال في الاستوديو`)}
+                      </span>
+                    )}
                   </div>
 
                   {/* Cancel Booking Action Trigger with Hover Tooltip simulation */}
@@ -448,15 +473,22 @@ export const MyBookingsSection: React.FC = () => {
                             // the dialog cannot promise a refund the function
                             // then declines to give.
                             const willRefund = isRefundable(b);
-                            const consequence = willRefund
-                              ? t(
-                                  `Your payment of ${b.totalPrice} SAR will be refunded.`,
-                                  `سيتم استرداد مبلغ الدفع البالغ ${b.totalPrice} ريال.`
-                                )
-                              : t(
-                                  'This booking is within 24 hours of its start, so it is not eligible for a refund.',
-                                  'هذا الحجز خلال 24 ساعة من بدايته، لذا فهو غير مؤهل لاسترداد المبلغ.'
-                                );
+                            const consequence = b.paymentStatus === 'Awaiting Payment'
+                              ? t('Nothing has been charged for it.', 'لم يُخصم أي مبلغ مقابله.')
+                              : b.paymentMode === 'deposit'
+                                ? t(
+                                    `The ${paidAmount(b)} SAR deposit is non-refundable.`,
+                                    `العربون البالغ ${paidAmount(b)} ريال غير قابل للاسترداد.`
+                                  )
+                                : willRefund
+                                  ? t(
+                                      `Your payment of ${paidAmount(b)} SAR will be refunded.`,
+                                      `سيتم استرداد مبلغ الدفع البالغ ${paidAmount(b)} ريال.`
+                                    )
+                                  : t(
+                                      'This booking is within 24 hours of its start, so it is not eligible for a refund.',
+                                      'هذا الحجز خلال 24 ساعة من بدايته، لذا فهو غير مؤهل لاسترداد المبلغ.'
+                                    );
                             // window.confirm() renders as browser chrome and cannot be RTL-styled regardless of translation — translating the text anyway.
                             if (!window.confirm(t(
                               `Are you sure you want to cancel your booking for ${b.workshopTitle}? ${consequence}`,
@@ -486,7 +518,15 @@ export const MyBookingsSection: React.FC = () => {
                   {/* Cancelled placeholder marker */}
                   {isCancelled && (
                     <span className="text-xs font-semibold text-brand-charcoal/40 italic block py-1">
-                      {t('Refund complete', 'تم استرداد المبلغ')}
+                      {/* Said only when it is true: this read "Refund complete" for
+                          every cancelled booking, refunded or not. */}
+                      {b.paymentStatus === 'Refunded'
+                        ? t('Refunded', 'تم استرداد المبلغ')
+                        : b.paymentStatus === 'Needs Refund'
+                          ? t('Refund on its way from the studio', 'سيعيد الاستوديو المبلغ')
+                          : b.paymentStatus === 'Expired'
+                            ? t('Not paid in time — nothing charged', 'لم يُدفع في الوقت — لم يُخصم أي مبلغ')
+                            : t('Cancelled', 'ملغى')}
                     </span>
                   )}
                 </div>
