@@ -14,10 +14,15 @@
  * Called-only gate. If it changes, it changes here — the client timer is gone.
  *
  * A second rule once lived here, cancelling Pending + Unpaid bookings 15
- * minutes after creation. It was removed: every online booking in this system
- * is paid at booking time, so it matched nothing, and it would have cancelled
- * any future pay-at-counter booking a quarter of an hour after it was taken.
- * A pay-later rule belongs with a pay-later payment model, not before one.
+ * minutes after creation. It was removed: every online booking was "paid" at
+ * booking time, so it matched nothing, and it would have cancelled any
+ * pay-at-counter booking a quarter of an hour after it was taken.
+ *
+ * Online payments (migration 0046) brought back a pay-later state, with its
+ * own explicit marker rather than "Unpaid": an 'Awaiting Payment' booking is a
+ * hold with a payment_expires_at. isExpiredHold() is that rule. It never
+ * touches 'Unpaid' (a pay-at-counter booking), and holds are never treated as
+ * no-shows — a customer who has not paid yet has not been called yet.
  */
 
 /** Minutes of grace before a called guest is treated as absent. */
@@ -25,7 +30,7 @@ export const GRACE_MINUTES = 15;
 
 /** Kept as a named union so the response shape can carry a reason, and so
  *  a second rule can be added back without reshaping the contract. */
-export type CancelReason = 'no_show';
+export type CancelReason = 'no_show' | 'payment_expired';
 
 export interface BookingRow {
   id: string;
@@ -35,6 +40,16 @@ export interface BookingRow {
   customer_name: string | null;
   customer_phone: string | null;
   workshop_title: string | null;
+  /** Read so an unpaid online hold is never judged a no-show. */
+  payment_status?: string | null;
+}
+
+/** An online hold (0046), as the expiry scan reads it. */
+export interface HoldRow {
+  id: string;
+  status: string | null;
+  payment_status: string | null;
+  payment_expires_at: string | null;
 }
 
 export interface QueueRow {
@@ -138,12 +153,37 @@ export function findQueueRow(queue: QueueRow[], booking: BookingRow): QueueRow |
  */
 export function isNoShow(booking: BookingRow, queue: QueueRow[], nowMs: number): boolean {
   if (String(booking.status ?? '') !== 'Pending') return false;
+  // An unpaid online hold is the expiry rule's, never this one's.
+  if (booking.payment_status === 'Awaiting Payment') return false;
 
   const startMs = bookingStartMs(booking.date, booking.time);
   if (startMs === null || nowMs - startMs < GRACE_MINUTES * 60_000) return false;
 
   return findQueueRow(queue, booking)?.status === 'Called';
 }
+
+/**
+ * Whether an online hold has run out and should be marked expired.
+ *
+ * Pending + 'Awaiting Payment' + payment_expires_at reached. The database
+ * already stopped counting its seat at that instant (session_seats_taken,
+ * 0046); this is the tidy-up that makes the booking say so. Inclusive, like
+ * the SQL's payment_expires_at <= now(). A hold the customer cancelled
+ * themselves (status Cancelled) is left alone.
+ */
+export function isExpiredHold(hold: HoldRow, nowMs: number): boolean {
+  if (hold.status !== 'Pending' || hold.payment_status !== 'Awaiting Payment') return false;
+  if (!hold.payment_expires_at) return false;
+  const expires = Date.parse(hold.payment_expires_at);
+  return Number.isFinite(expires) && expires <= nowMs;
+}
+
+/** Timeline entry for an expired hold. No SMS and no notification are sent:
+ *  nothing was charged, and the customer saw the hold end on the payment page. */
+export const HOLD_EXPIRED_TIMELINE_ACTION = 'Payment not completed in time — hold released (System Action)';
+
+/** Most holds a single run expires; the rest wait for the next run. */
+export const HOLD_EXPIRY_BATCH = 200;
 
 /** The timeline entry, matching the wording the client timer wrote. */
 export const NO_SHOW_TIMELINE_ACTION = 'Did not show up — auto-cancelled (System Action)';

@@ -15,6 +15,7 @@
 
 import {
   isNoShow,
+  isExpiredHold,
   bookingStartMs,
   findQueueRow,
   normalizePhone,
@@ -124,6 +125,15 @@ assertEqual(noShowMsg.includes('31 August 2026'), true, 'message names the date'
 assertEqual(NO_SHOW_NOTIFICATION_TITLE.includes('Missed Session'), true, 'notification title names the reason');
 assertEqual(NO_SHOW_TIMELINE_ACTION, 'Did not show up — auto-cancelled (System Action)', 'no-show timeline text unchanged');
 assertEqual(noShowMessage(booking({ date: 'bad' })).includes('undefined'), false, 'bad date never prints undefined');
+
+console.log('\n--- online payment holds (0046) ---');
+assertEqual(isNoShow(booking({ payment_status: 'Awaiting Payment' }), [q('Called')], START_MS + 60 * 60_000), false, 'an unpaid hold is never a no-show');
+const hold = { id: 'ART-1', status: 'Pending', payment_status: 'Awaiting Payment', payment_expires_at: '2026-08-31T18:00:00Z' };
+assertEqual(isExpiredHold(hold, START_MS), true, 'expiry is inclusive');
+assertEqual(isExpiredHold(hold, START_MS - 1), false, 'not yet expired');
+assertEqual(isExpiredHold({ ...hold, payment_status: 'Unpaid' }, START_MS), false, 'Unpaid (pay at counter) is never expired');
+assertEqual(isExpiredHold({ ...hold, status: 'Cancelled' }, START_MS), false, 'a self-cancelled hold is left alone');
+assertEqual(isExpiredHold({ ...hold, payment_expires_at: null }, START_MS), false, 'no expiry, no expiring');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

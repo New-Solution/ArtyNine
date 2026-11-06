@@ -5,10 +5,23 @@
  * auto-cancel-bookings — the scheduled replacement for the client-side
  * no-show timer that used to live in AppContext.tsx.
  *
- * An unpaid-payment rule was moved here alongside it and has since been
- * removed: every online booking in this system is paid at booking time, so it
- * could never match, and it would have cancelled a future pay-at-counter
- * booking fifteen minutes after it was taken.
+ * An unpaid-payment rule was moved here alongside it and later removed: it
+ * keyed on 'Unpaid', which would have cancelled pay-at-counter bookings.
+ *
+ * ONLINE PAYMENT HOLDS (migration 0046)
+ * A second pass expires 'Awaiting Payment' holds whose payment_expires_at has
+ * passed: status 'Cancelled', payment_status 'Expired', a timeline entry, any
+ * waiting queue row cancelled. No SMS and no notification — nothing was
+ * charged. The seat itself was already released by the database the moment
+ * the hold expired; this makes the booking say so.
+ *
+ * Before expiring a hold, every payment on record for it (booking_payments,
+ * written when the payment form completed) is checked with Moyasar, through
+ * the same verifyAndConfirmPayment() verify-payment uses. A customer who paid
+ * and closed the tab during 3-D Secure is confirmed here instead of expired.
+ * That needs MOYASAR_SECRET_KEY in this function's environment too; without
+ * it the check is skipped and logged, and expiry goes ahead.
+ * Holds are never judged no-shows (logic.ts isNoShow).
  *
  * WHY AN EDGE FUNCTION AND NOT pg_cron
  * The job has to send an SMS, and the mShastra credentials live exclusively
@@ -43,8 +56,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
 import { sendSms } from '../_shared/sms.ts';
 import { bookingCancellationSms } from '../_shared/bookingSmsTemplates.ts';
+import { verifyAndConfirmPayment } from '../_shared/confirmPayment.ts';
+import { secretKeyProblem } from '../_shared/moyasarLogic.ts';
 import {
   isNoShow,
+  isExpiredHold,
+  HOLD_EXPIRED_TIMELINE_ACTION,
+  HOLD_EXPIRY_BATCH,
+  type HoldRow,
   NO_SHOW_TIMELINE_ACTION,
   NO_SHOW_NOTE,
   NO_SHOW_NOTIFICATION_TITLE,
@@ -52,7 +71,7 @@ import {
   type BookingRow,
   type QueueRow
 } from './logic.ts';
-import type { AutoCancelRequest, AutoCancelResponse, AutoCancelledBooking } from './contract.ts';
+import type { AutoCancelRequest, AutoCancelResponse, AutoCancelledBooking, ReconciledPayment } from './contract.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -76,6 +95,153 @@ const WINDOW_DAYS = 3;
 
 const dayOffset = (days: number) =>
   new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+
+type Admin = ReturnType<typeof createClient>;
+
+const riyadhClock = (ms: number) =>
+  new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Riyadh' });
+
+/**
+ * Cancels a queue row that belongs to a cancelled booking. Callers skip rows
+ * that describe a visit that happened (Completed / In Progress). Shared by
+ * both rules.
+ */
+async function cancelQueueRow(admin: Admin, queueId: string, nowMs: number) {
+  const { data: freshQueue } = await admin
+    .from('queue')
+    .select('history')
+    .eq('id', queueId)
+    .maybeSingle();
+  const history = Array.isArray(freshQueue?.history) ? freshQueue!.history : [];
+
+  const { error: queueUpdateError } = await admin
+    .from('queue')
+    .update({
+      status: 'Cancelled',
+      table_ids: [],
+      history: [...history, { status: 'Cancelled', timestamp: new Date(nowMs).toISOString() }],
+      updated_at: new Date(nowMs).toISOString()
+    })
+    .eq('id', queueId);
+
+  if (queueUpdateError) {
+    console.error(`auto-cancel-bookings: cancelling queue row ${queueId} failed:`, queueUpdateError.message);
+  }
+}
+
+/**
+ * Expires online payment holds (0046). Never throws and never fails the run:
+ * before 0046 is applied the columns do not exist, the scan errors, and the
+ * no-show rule still runs.
+ */
+async function expireHolds(
+  admin: Admin,
+  nowMs: number,
+  dryRun: boolean
+): Promise<{ expired: AutoCancelledBooking[]; reconciled: ReconciledPayment[] }> {
+  const expired: AutoCancelledBooking[] = [];
+  const reconciled: ReconciledPayment[] = [];
+
+  const { data, error } = await admin
+    .from('bookings')
+    .select('id, status, payment_status, payment_expires_at')
+    .eq('status', 'Pending')
+    .eq('payment_status', 'Awaiting Payment')
+    .lte('payment_expires_at', new Date(nowMs).toISOString())
+    .order('payment_expires_at', { ascending: true })
+    .limit(HOLD_EXPIRY_BATCH);
+
+  if (error) {
+    console.error('auto-cancel-bookings: hold expiry skipped (is migration 0046 applied?):', error.message);
+    return { expired, reconciled };
+  }
+
+  const holds = ((data ?? []) as HoldRow[]).filter(h => isExpiredHold(h, nowMs));
+  if (holds.length === 0) return { expired, reconciled };
+
+  if (dryRun) {
+    for (const hold of holds) {
+      expired.push({ bookingId: hold.id, reason: 'payment_expired', smsSent: false, notificationWritten: false });
+    }
+    return { expired, reconciled };
+  }
+
+  const secretKey = Deno.env.get('MOYASAR_SECRET_KEY') ?? '';
+  const keyProblem = secretKeyProblem(secretKey, Deno.env.get('MOYASAR_MODE'));
+  let keyProblemLogged = false;
+
+  for (const hold of holds) {
+    // 1. Did the customer actually pay? Ask Moyasar about every payment on
+    //    record that could still be (or have become) paid.
+    const { data: payments, error: paymentsError } = await admin
+      .from('booking_payments')
+      .select('id')
+      .eq('booking_id', hold.id)
+      .in('status', ['initiated', 'paid']);
+
+    if (paymentsError) {
+      console.error(`auto-cancel-bookings: reading payments for ${hold.id} failed:`, paymentsError.message);
+      continue; // do not expire what could not be checked; the next run retries
+    }
+
+    if ((payments ?? []).length > 0) {
+      if (keyProblem) {
+        if (!keyProblemLogged) {
+          console.error(`auto-cancel-bookings: payment check skipped — ${keyProblem}`);
+          keyProblemLogged = true;
+        }
+      } else {
+        for (const p of payments as { id: string }[]) {
+          const r = await verifyAndConfirmPayment(admin, secretKey, p.id);
+          reconciled.push({ bookingId: hold.id, paymentId: p.id, state: r.ok ? r.state : `error:${r.reason}` });
+        }
+      }
+    }
+
+    // 2. Expire — compare-and-swap. A hold just confirmed above (or paid,
+    //    cancelled or edited meanwhile) is no longer Pending + Awaiting
+    //    Payment, so zero rows come back and it is left alone.
+    const { data: fresh } = await admin
+      .from('bookings')
+      .select('timeline')
+      .eq('id', hold.id)
+      .maybeSingle();
+    const timeline = Array.isArray(fresh?.timeline) ? fresh!.timeline : [];
+
+    const { data: updated, error: updateError } = await admin
+      .from('bookings')
+      .update({
+        status: 'Cancelled',
+        payment_status: 'Expired',
+        timeline: [...timeline, { time: riyadhClock(nowMs), action: HOLD_EXPIRED_TIMELINE_ACTION }],
+        updated_at: new Date(nowMs).toISOString()
+      })
+      .eq('id', hold.id)
+      .eq('status', 'Pending')
+      .eq('payment_status', 'Awaiting Payment')
+      .select('id');
+
+    if (updateError) {
+      console.error(`auto-cancel-bookings: expiring hold ${hold.id} failed:`, updateError.message);
+      continue;
+    }
+    if (!updated || updated.length === 0) continue;
+
+    const { data: linked } = await admin
+      .from('queue')
+      .select('id, status')
+      .eq('booking_id', hold.id);
+    for (const row of (linked ?? []) as { id: string; status: string | null }[]) {
+      if (row.status !== 'Completed' && row.status !== 'In Progress' && row.status !== 'Cancelled') {
+        await cancelQueueRow(admin, row.id, nowMs);
+      }
+    }
+
+    expired.push({ bookingId: hold.id, reason: 'payment_expired', smsSent: false, notificationWritten: false });
+  }
+
+  return { expired, reconciled };
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -108,9 +274,15 @@ Deno.serve(async (req: Request) => {
   const cancelled: AutoCancelledBooking[] = [];
 
   try {
+    // Online payment holds first, so a hold is settled (paid or expired)
+    // before anything else looks at it.
+    const holdRun = await expireHolds(admin, nowMs, dryRun);
+    cancelled.push(...holdRun.expired);
+    const reconciled = holdRun.reconciled;
+
     const { data: bookings, error: bookingsError } = await admin
       .from('bookings')
-      .select('id, status, date, time, customer_name, customer_phone, workshop_title')
+      .select('id, status, date, time, customer_name, customer_phone, workshop_title, payment_status')
       .eq('status', 'Pending')
       .gte('date', dayOffset(-WINDOW_DAYS))
       .lte('date', dayOffset(WINDOW_DAYS));
@@ -122,7 +294,7 @@ Deno.serve(async (req: Request) => {
 
     const candidates = (bookings ?? []) as BookingRow[];
     if (candidates.length === 0) {
-      return json({ success: true, scanned: 0, cancelled: [] }, 200);
+      return json({ success: true, scanned: 0, cancelled, reconciled }, 200);
     }
 
     // One queue read for the whole run rather than one per booking.
@@ -202,26 +374,7 @@ Deno.serve(async (req: Request) => {
         q => q.booking_id && String(q.booking_id) === String(booking.id)
       );
       if (linked && linked.status !== 'Completed' && linked.status !== 'In Progress') {
-        const { data: freshQueue } = await admin
-          .from('queue')
-          .select('history')
-          .eq('id', linked.id)
-          .maybeSingle();
-        const history = Array.isArray(freshQueue?.history) ? freshQueue!.history : [];
-
-        const { error: queueUpdateError } = await admin
-          .from('queue')
-          .update({
-            status: 'Cancelled',
-            table_ids: [],
-            history: [...history, { status: 'Cancelled', timestamp: new Date(nowMs).toISOString() }],
-            updated_at: new Date(nowMs).toISOString()
-          })
-          .eq('id', linked.id);
-
-        if (queueUpdateError) {
-          console.error(`auto-cancel-bookings: cancelling queue row ${linked.id} failed:`, queueUpdateError.message);
-        }
+        await cancelQueueRow(admin, linked.id, nowMs);
       }
 
       const message = noShowMessage(booking);
@@ -268,7 +421,7 @@ Deno.serve(async (req: Request) => {
       cancelled.push({ bookingId: booking.id, reason: 'no_show', smsSent, notificationWritten });
     }
 
-    return json({ success: true, scanned: candidates.length, cancelled }, 200);
+    return json({ success: true, scanned: candidates.length, cancelled, reconciled }, 200);
   } catch (err) {
     console.error('auto-cancel-bookings: run failed:', err instanceof Error ? err.message : err);
     return json({ success: false, error: 'Run failed.' }, 500);
