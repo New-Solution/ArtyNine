@@ -1,8 +1,9 @@
 # Supabase CLI configuration — per-function deploy settings ONLY.
 #
-# This file exists for one setting: send-sms-hook is called by Supabase Auth
-# (server-to-server, no user JWT) and authenticates requests by their webhook
-# signature instead, so its JWT verification must be off on every deploy.
+# This file exists for functions whose JWT verification must be off on every
+# deploy: send-sms-hook is called by Supabase Auth (server-to-server, no user
+# JWT) and authenticates requests by their webhook signature instead;
+# verify-payment is explained beside its entry below.
 #
 # Every other function is not listed here and keeps the CLI default
 # (verify_jwt = true) — the same setting they get today when deployed with
@@ -13,4 +14,10 @@
 # settings to CLI defaults. Project settings are managed in the dashboard.
 
 [functions.send-sms-hook]
+verify_jwt = false
+
+# verify-payment is called by signed-out guests finishing a payment, and trusts
+# nothing in the request beyond a Moyasar payment id: amount, status and booking
+# are read from Moyasar with the secret key. See its header comment.
+[functions.verify-payment]
 verify_jwt = false
