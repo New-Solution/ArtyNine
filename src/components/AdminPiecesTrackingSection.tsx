@@ -713,6 +713,11 @@ export const AdminPiecesTrackingSection: React.FC = () => {
             onClick={() => {
               pieceCodeTouchedRef.current = false;
               setPieceCodeInput(nextPieceCode(pieces));
+              // Cancel and ✕ leave the last photo in place, and an upload still
+              // running when the form closed lands afterwards — either way a new
+              // piece would be saved with someone else's photo. Clearing also
+              // discards that late upload (it bumps photoAttemptRef).
+              clearCustomPhoto();
               setShowManualLogModal(true);
             }}
             className="cursor-pointer px-4 py-2 bg-brand-terracotta hover:bg-brand-terracotta/95 text-brand-cream rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all duration-200"
