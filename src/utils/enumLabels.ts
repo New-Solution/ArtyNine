@@ -9,7 +9,9 @@ import type { Lang } from '../context/LanguageContext';
 const LABELS: Record<string, Record<string, string>> = {
   bookingStatus: { 'Pending': 'قيد الانتظار', 'Checked In': 'تم تسجيل الحضور', 'In Progress': 'جارٍ الآن',
                    'Completed': 'مكتمل', 'Cancelled': 'ملغى', 'Waiting': 'في الانتظار', 'Called': 'تم النداء' },
-  payment:       { 'Paid': 'مدفوع', 'Unpaid': 'غير مدفوع', 'Refunded': 'مُسترد', 'Deposit Paid': 'عربون مدفوع' },
+  payment:       { 'Paid': 'مدفوع', 'Unpaid': 'غير مدفوع', 'Refunded': 'مُسترد', 'Deposit Paid': 'عربون مدفوع',
+                   // Online payment (0046).
+                   'Awaiting Payment': 'بانتظار الدفع', 'Expired': 'انتهت المهلة', 'Needs Refund': 'يحتاج استردادًا' },
   source:        { 'Website': 'الموقع', 'Walk-in': 'زيارة مباشرة', 'Admin': 'الإدارة' },
   category:      { 'Workshops': 'الورش', 'Events/Birthdays': 'الفعاليات وأعياد الميلاد', 'Self-Guided': 'ذاتي التوجيه' },
   dateScope:     { 'Today': 'اليوم', 'Yesterday': 'أمس', 'This Week': 'هذا الأسبوع', 'All': 'كل السجل' },

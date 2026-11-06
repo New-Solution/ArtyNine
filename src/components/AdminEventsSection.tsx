@@ -13,6 +13,7 @@ import { matchesQuery } from '../utils/search';
 import { AdminBirthdayPackageEditor } from './AdminBirthdayPackageEditor';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
+import { paymentTone } from '../utils/onlinePayments';
 
 /** One label/value line. Optional answers are shown as "Not provided", never dropped. */
 const DetailRow: React.FC<{ label: string; value?: string; mono?: boolean }> = ({ label, value, mono }) => {
@@ -440,11 +441,14 @@ export const AdminEventsSection: React.FC = () => {
                     <td className="p-3.5">
                       <div className="font-mono font-bold text-brand-charcoal">{b.totalPrice} {t('SAR', 'ريال')}</div>
                       <span className={`inline-block px-2 py-0.5 rounded-md text-[9px] font-bold mt-1 ${
-                        b.paymentStatus === 'Paid' 
-                          ? 'bg-emerald-100 text-emerald-800' 
-                          : b.paymentStatus === 'Refunded'
-                          ? 'bg-purple-100 text-purple-800'
-                          : 'bg-amber-100 text-amber-800'
+                        {
+                          paid: 'bg-emerald-100 text-emerald-800',
+                          refunded: 'bg-purple-100 text-purple-800',
+                          waiting: 'bg-amber-100 text-amber-800',
+                          closed: 'bg-gray-100 text-gray-500',
+                          attention: 'bg-red-100 text-red-800',
+                          unpaid: 'bg-amber-100 text-amber-800'
+                        }[paymentTone(b.paymentStatus)]
                       }`}>
                         {enumLabel('payment', b.paymentStatus, lang)}
                       </span>

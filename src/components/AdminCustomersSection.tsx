@@ -24,6 +24,7 @@ import { matchesQuery, useDebouncedValue } from '../utils/search';
 import { BackButton } from './ui/BackButton';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
+import { paymentTone } from '../utils/onlinePayments';
 
 /** Badge colour per activity category. */
 const categoryBadgeClass = (category: ActivityCategory) => {
@@ -915,9 +916,14 @@ export const AdminCustomersSection: React.FC = () => {
                             <td className="py-3 font-bold text-brand-charcoal">{b.totalPrice} {t('SAR', 'ريال')}</td>
                             <td className="py-3">
                               <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                b.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                                b.paymentStatus === 'Refunded' ? 'bg-purple-50 text-purple-800 border-purple-200' :
-                                'bg-red-50 text-red-800 border-red-200'
+                                {
+                                  paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                                  refunded: 'bg-purple-50 text-purple-800 border-purple-200',
+                                  waiting: 'bg-amber-50 text-amber-800 border-amber-200',
+                                  closed: 'bg-gray-50 text-gray-500 border-gray-200',
+                                  attention: 'bg-red-50 text-red-800 border-red-200',
+                                  unpaid: 'bg-red-50 text-red-800 border-red-200'
+                                }[paymentTone(b.paymentStatus)]
                               }`}>
                                 {enumLabel('payment', b.paymentStatus, lang)}
                               </span>
@@ -980,9 +986,14 @@ export const AdminCustomersSection: React.FC = () => {
                             <td className="py-3 text-brand-charcoal/70">{b.source === 'Website' ? t('Online Mada/Card', 'مدى / بطاقة عبر الإنترنت') : t('Front Desk POS', 'نقطة البيع في الاستقبال')}</td>
                             <td className="py-3">
                               <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                b.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                                b.paymentStatus === 'Refunded' ? 'bg-purple-50 text-purple-800 border-purple-200' :
-                                'bg-red-50 text-red-800 border-red-200'
+                                {
+                                  paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                                  refunded: 'bg-purple-50 text-purple-800 border-purple-200',
+                                  waiting: 'bg-amber-50 text-amber-800 border-amber-200',
+                                  closed: 'bg-gray-50 text-gray-500 border-gray-200',
+                                  attention: 'bg-red-50 text-red-800 border-red-200',
+                                  unpaid: 'bg-red-50 text-red-800 border-red-200'
+                                }[paymentTone(b.paymentStatus)]
                               }`}>
                                 {enumLabel('payment', b.paymentStatus, lang)}
                               </span>

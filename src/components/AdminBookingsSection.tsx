@@ -16,6 +16,7 @@ import { matchesQuery } from '../utils/search';
 import { normalizeDateString } from '../utils/timeUtils';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
+import { PAYMENT_STATUSES, paymentTone } from '../utils/onlinePayments';
 
 /**
  * The title given to queue walk-ins that have no instructor. It stays English in the
@@ -612,9 +613,9 @@ export const AdminBookingsSection: React.FC = () => {
             className="bg-brand-cream/40 border border-brand-clay/60 rounded-xl py-2 px-3 text-xs font-semibold text-brand-charcoal cursor-pointer focus:outline-none focus:border-brand-terracotta"
           >
             <option value="All">{t('All Payment Statuses', 'كل حالات الدفع')}</option>
-            <option value="Paid">{enumLabel('payment', 'Paid', lang)}</option>
-            <option value="Unpaid">{enumLabel('payment', 'Unpaid', lang)}</option>
-            <option value="Refunded">{enumLabel('payment', 'Refunded', lang)}</option>
+            {PAYMENT_STATUSES.map(status => (
+              <option key={status} value={status}>{enumLabel('payment', status, lang)}</option>
+            ))}
           </select>
 
         </div>
@@ -818,9 +819,14 @@ export const AdminBookingsSection: React.FC = () => {
                             </span>
                           ) : (
                             <span className={`inline-flex px-2.5 py-0.5 rounded text-[10px] font-bold ${
-                              b.paymentStatus === 'Paid' ? 'bg-green-100 text-green-800' :
-                              b.paymentStatus === 'Refunded' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                              'bg-red-100 text-red-800 animate-pulse'
+                              {
+                                paid: 'bg-green-100 text-green-800',
+                                refunded: 'bg-blue-100 text-blue-800 border border-blue-200',
+                                waiting: 'bg-amber-100 text-amber-800 border border-amber-200',
+                                closed: 'bg-gray-100 text-gray-500 border border-gray-200',
+                                attention: 'bg-red-100 text-red-800 animate-pulse',
+                                unpaid: 'bg-red-100 text-red-800 animate-pulse'
+                              }[paymentTone(b.paymentStatus)]
                             }`}>
                               {enumLabel('payment', b.paymentStatus, lang)}
                             </span>

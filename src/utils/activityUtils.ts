@@ -11,6 +11,7 @@
 
 import { Booking, QueueItem, Workshop } from '../types';
 import { normalizeDateString, timeToMinutes } from './timeUtils';
+import { isLapsedHold } from './onlinePayments';
 
 export type ActivityCategory = 'Workshops' | 'Events/Birthdays' | 'Self-Guided';
 
@@ -39,7 +40,7 @@ export interface TodayActivity {
 /** Statuses that mean a booking is no longer a valid visit for today. */
 const DEAD_BOOKING_STATUSES = ['cancelled', 'auto-cancelled', 'autocancelled', 'draft', 'no show', 'no-show'];
 /** Payment states that mean the booking never completed. */
-const DEAD_PAYMENT_STATUSES = ['failed', 'payment failed', 'declined', 'draft'];
+const DEAD_PAYMENT_STATUSES = ['failed', 'payment failed', 'declined', 'draft', 'expired'];
 const DEAD_QUEUE_STATUSES = ['cancelled'];
 
 /**
@@ -57,6 +58,10 @@ export function isLiveBooking(booking: Booking): boolean {
 
   const payment = String(booking.paymentStatus || '').trim().toLowerCase();
   if (DEAD_PAYMENT_STATUSES.includes(payment)) return false;
+
+  // An online hold past its expiry holds nothing, as session_seats_taken (0046)
+  // already treats it, even before the auto-cancel job marks it Expired.
+  if (isLapsedHold(booking)) return false;
 
   return true;
 }

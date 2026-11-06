@@ -16,6 +16,7 @@ import { searchText } from '../utils/search';
 import { usePagination, TablePager } from './ui/TablePager';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
+import { paymentTone } from '../utils/onlinePayments';
 import { pieceDaysWaiting, OVERDUE_PIECE_DAYS } from '../utils/pieceDays';
 
 export const AdminDashboardSection: React.FC = () => {
@@ -375,8 +376,14 @@ export const AdminDashboardSection: React.FC = () => {
                     <td className="py-3 px-3">
                       {a.paymentStatus ? (
                         <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
-                          a.paymentStatus === 'Paid' || a.paymentStatus === 'Deposit Paid' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                          'bg-red-50 text-red-800 border-red-200'
+                          {
+                            paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                            refunded: 'bg-purple-50 text-purple-800 border-purple-200',
+                            waiting: 'bg-amber-50 text-amber-800 border-amber-200',
+                            closed: 'bg-gray-50 text-gray-500 border-gray-200',
+                            attention: 'bg-red-50 text-red-800 border-red-200',
+                            unpaid: 'bg-red-50 text-red-800 border-red-200'
+                          }[paymentTone(a.paymentStatus)]
                         }`}>
                           {enumLabel('payment', a.paymentStatus, lang)}
                         </span>
@@ -489,8 +496,14 @@ export const AdminDashboardSection: React.FC = () => {
                     <td className="py-3 px-3 font-mono">{/* ⚠ ARABIC PLURALIZATION — placeholder only, needs a native speaker. */}{b.participants} {t('guest(s)', 'ضيف/ضيوف')}</td>
                     <td className="py-3 px-3">
                       <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
-                        b.paymentStatus === 'Paid' || b.paymentStatus === 'Deposit Paid' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                        'bg-red-50 text-red-800 border-red-200'
+                        {
+                          paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                          refunded: 'bg-purple-50 text-purple-800 border-purple-200',
+                          waiting: 'bg-amber-50 text-amber-800 border-amber-200',
+                          closed: 'bg-gray-50 text-gray-500 border-gray-200',
+                          attention: 'bg-red-50 text-red-800 border-red-200',
+                          unpaid: 'bg-red-50 text-red-800 border-red-200'
+                        }[paymentTone(b.paymentStatus)]
                       }`}>
                         {enumLabel('payment', b.paymentStatus, lang)}
                       </span>
@@ -586,8 +599,14 @@ export const AdminDashboardSection: React.FC = () => {
                     <td className="py-3 px-3 font-bold text-emerald-800">{b.totalPrice} {t('SAR', 'ريال')}</td>
                     <td className="py-3 px-3">
                       <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
-                        b.paymentStatus === 'Paid' || b.paymentStatus === 'Deposit Paid' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                        'bg-red-50 text-red-800 border-red-200'
+                        {
+                          paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                          refunded: 'bg-purple-50 text-purple-800 border-purple-200',
+                          waiting: 'bg-amber-50 text-amber-800 border-amber-200',
+                          closed: 'bg-gray-50 text-gray-500 border-gray-200',
+                          attention: 'bg-red-50 text-red-800 border-red-200',
+                          unpaid: 'bg-red-50 text-red-800 border-red-200'
+                        }[paymentTone(b.paymentStatus)]
                       }`}>
                         {enumLabel('payment', b.paymentStatus, lang)}
                       </span>

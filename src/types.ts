@@ -232,7 +232,21 @@ export interface Booking {
   totalPrice: number; // in SAR
   source: 'Website' | 'Walk-in' | 'Admin';
   status: 'Pending' | 'Checked In' | 'In Progress' | 'Completed' | 'Cancelled';
-  paymentStatus: 'Paid' | 'Unpaid' | 'Refunded' | 'Deposit Paid';
+  /** See PAYMENT_STATUSES (utils/onlinePayments.ts). 'Awaiting Payment',
+   *  'Expired' and 'Needs Refund' are written by the database only (0046). */
+  paymentStatus: 'Paid' | 'Unpaid' | 'Refunded' | 'Deposit Paid' | 'Awaiting Payment' | 'Expired' | 'Needs Refund';
+  // ---- Online payment (0046). READ-ONLY in the app: deliberately absent from
+  // TABLE_COLUMNS.bookings, so no client write can ever send them — only the
+  // booking RPCs and confirm_booking_payment() set them.
+  /** How this booking was paid online; undefined for every other booking. */
+  paymentMode?: 'deposit' | 'full';
+  /** SAR charged (or to be charged) online. */
+  onlineAmount?: number;
+  onlineAmountHalalas?: number;
+  /** ISO time an 'Awaiting Payment' hold stops holding its place. */
+  paymentExpiresAt?: string;
+  moyasarPaymentId?: string;
+  paidAt?: string;
   notes?: string;
   /** Staff member hosting this event/birthday. Ids are stable; the name is
    *  denormalised for display only, exactly as workshop sessions do it. */
