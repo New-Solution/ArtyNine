@@ -244,6 +244,45 @@ export async function uploadPiecePhoto(photo: Blob): Promise<string> {
   }
 }
 
+/**
+ * Removes a deleted piece's photo from Storage, unless another piece still
+ * refers to it.
+ *
+ * The log form used to keep the previous photo when reopened, so a piece
+ * logged twice by mistake can share its original's reference — deleting the
+ * duplicate must not take the original's photo with it. Only storage
+ * references have anything to remove; a legacy data: URL or a link does not.
+ *
+ * Returns false when the photo could not be removed. The piece is already gone
+ * by then, so callers treat that as a warning (an orphaned object), not a
+ * failure.
+ */
+export async function removePiecePhotoIfUnused(value: string | null | undefined): Promise<boolean> {
+  const parsed = parsePieceImageReference(value);
+  if (!value || !parsed) return true;
+  const supabase = supabaseStaff;
+  if (!supabase) return false;
+
+  const { data: stillUsed, error: readError } = await supabase.from('pieces').select('id').eq('image', value).limit(1);
+  if (readError) {
+    console.error(`removePiecePhotoIfUnused: could not check ${parsed.path}:`, readError.message);
+    return false;
+  }
+  if (stillUsed && stillUsed.length > 0) return true;
+
+  const { data: removed, error } = await supabase.storage.from(parsed.bucket).remove([parsed.path]);
+  if (error) {
+    console.error(`removePiecePhotoIfUnused: ${parsed.path} failed:`, error.message);
+    return false;
+  }
+  // An empty result is a missing object or a policy refusal; neither throws.
+  if (!removed || removed.length === 0) {
+    console.warn(`removePiecePhotoIfUnused: nothing removed at ${parsed.path}.`);
+  }
+  signedCache.delete(value);
+  return true;
+}
+
 // ---- Resolving a stored value to something an <img> can show ------------------
 
 /** Bucket and path of a storage reference, or null for any other value. */

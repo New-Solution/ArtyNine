@@ -4,11 +4,12 @@
  */
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp, getRiyadhDateString } from '../context/AppContext';
 import { 
   Flame, LayoutGrid, List, Search, Filter, AlertCircle, X, Check, 
   MapPin, User, Calendar, RefreshCw, ClipboardList, Clock, Sparkles,
-  Camera, Hash, Upload
+  Camera, Hash, Upload, Trash2
 } from 'lucide-react';
 import { PotteryPiece, isStageEnabled, DEFAULT_LOGGING_FIELDS, DEFAULT_PIPELINE_STAGES, type StageSystemKey } from '../types';
 import { stageOf, stageByKey, isEndState } from '../utils/pipelineStages';
@@ -145,7 +146,7 @@ function displayOrigin(origin: string, t: Translate, lang: Lang) {
 
 export const AdminPiecesTrackingSection: React.FC = () => {
   const {
-    pieces, updatePieceStatus, addPiece, updatePiece, workshops, bookings,
+    pieces, updatePieceStatus, addPiece, updatePiece, deletePiece, workshops, bookings,
     // Shared records — no local copies of customers or staff.
     customers, queue, staff, resolveCustomer, pipelineStages, loggingFields, todayDateStr
   } = useApp();
@@ -252,6 +253,10 @@ export const AdminPiecesTrackingSection: React.FC = () => {
 
   // Mark-as-Broken Modal State
   const [brokenTargetId, setBrokenTargetId] = useState<string | null>(null);
+  // The piece awaiting delete confirmation, and that delete's progress.
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deletingPiece, setDeletingPiece] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   // A piece waiting on the Kiln Time message choice before it moves forward.
   const [kilnPromptPieceId, setKilnPromptPieceId] = useState<string | null>(null);
   const [brokenPerformer, setBrokenPerformer] = useState('');
@@ -1277,12 +1282,98 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                   </select>
                 </div>
 
+                {/* For a piece logged by mistake (often a duplicate). */}
+                <button
+                  type="button"
+                  onClick={() => { setDeleteTargetId(selectedPiece.id); setDeleteError(''); }}
+                  className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t('Delete piece', 'حذف القطعة')}
+                </button>
+
               </div>
 
             </div>
 
         </ConsoleModal>
       )}
+
+      {/* ================= DELETE PIECE CONFIRMATION ================= */}
+      {deleteTargetId && (() => {
+        const target = pieces.find(p => p.id === deleteTargetId);
+        if (!target) return null;
+        const code = target.pieceCode || target.id;
+
+        // Portalled above the piece detail modal (ConsoleModal, z-[100] on
+        // document.body), which stays open behind it.
+        return createPortal(
+          <div className="fixed inset-0 bg-brand-charcoal/60 backdrop-blur-xs z-[110] flex items-center justify-center p-4">
+            <div className="bg-white border border-brand-clay rounded-3xl p-6 shadow-2xl max-w-md w-full space-y-4 text-left animate-in zoom-in-95 duration-150">
+
+              <div className="flex items-start gap-3 border-b border-brand-clay/60 pb-3">
+                <div className="h-10 w-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-display text-base font-bold text-brand-charcoal">{t(`Delete piece ${code}?`, `حذف القطعة ${code}؟`)}</h3>
+                  <p className="text-[11px] font-semibold text-brand-charcoal/60">
+                    {code} · {target.customerName}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-[11px] font-semibold text-brand-charcoal/70 bg-brand-cream/60 border border-brand-clay/50 rounded-xl p-2.5">
+                {t("This removes the piece, its history and its photo. This can't be undone.", 'سيؤدي هذا إلى حذف القطعة وسجلها وصورتها. لا يمكن التراجع عن ذلك.')}
+              </p>
+
+              {deleteError && (
+                <p className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl p-2.5">
+                  {deleteError}
+                </p>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  disabled={deletingPiece}
+                  onClick={() => { setDeleteTargetId(null); setDeleteError(''); }}
+                  className="bg-brand-sand/60 hover:bg-brand-sand text-brand-charcoal font-bold text-xs py-3 rounded-xl cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {t('Cancel', 'إلغاء')}
+                </button>
+                <button
+                  disabled={deletingPiece}
+                  onClick={async () => {
+                    setDeletingPiece(true);
+                    setDeleteError('');
+                    try {
+                      await deletePiece(target.id);
+                    } catch (err) {
+                      console.error('deletePiece failed:', err);
+                      const detail = err instanceof Error ? err.message : String(err);
+                      setDeleteError(t(`The piece could not be deleted. ${detail}`, `تعذّر حذف القطعة. ${detail}`));
+                      return;
+                    } finally {
+                      setDeletingPiece(false);
+                    }
+                    setDeleteTargetId(null);
+                    setSelectedPieceId(null);
+                    triggerToast(
+                      t('Piece Deleted', 'تم حذف القطعة'),
+                      t(`Piece ${code} (${target.customerName}) was deleted.`, `تم حذف القطعة ${code} (${target.customerName}).`),
+                      false
+                    );
+                  }}
+                  className="bg-red-600 hover:bg-red-700 text-brand-cream font-bold text-xs py-3 rounded-xl cursor-pointer transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {deletingPiece ? t('Deleting…', 'جارٍ الحذف…') : t('Delete piece', 'حذف القطعة')}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        );
+      })()}
 
       {/* ================= KILN TIME MESSAGE PICKER ================= */}
       {kilnPromptPieceId && (() => {

@@ -53,6 +53,7 @@ import {
   supabase, supabaseStaff, isSupabaseConfigured, SUPABASE_NOT_CONFIGURED, setStaffSessionActive
 } from '../lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import { removePiecePhotoIfUnused } from '../lib/pieceImages';
 import {
   normalizeCustomerPhone, toDisplayPhone, findCustomerMatch, buildCustomerIdentity,
   mergeCustomerDetails, findDuplicateGroups, customerPhoneKey
@@ -418,6 +419,8 @@ interface AppContextType {
   updatePieceStatus: (id: string, status: PotteryPiece['status'], performerUser?: string, reason?: string, smsVariant?: KilnSmsVariant) => void;
   addPiece: (piece: Omit<PotteryPiece, 'id' | 'daysElapsed' | 'expectedCompletion' | 'notes'> & Partial<Pick<PotteryPiece, 'expectedCompletion' | 'notes'>>) => void;
   updatePiece: (id: string, updates: Partial<PotteryPiece>) => Promise<void>;
+  /** Deletes a piece logged by mistake, with its history, notifications and photo. Sends nothing. */
+  deletePiece: (id: string) => Promise<void>;
   /** Dashboard "Pottery Awaiting Pickup" widget data (audit finding C-4) — fed by get_overdue_pickup_pieces(), works for any console-access staff member regardless of the pieces-admin permission. */
   overduePickupPieces: PotteryPiece[];
   markPieceCollected: (piece: {
@@ -3162,6 +3165,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await db.pieces.update(id, updates);
   };
 
+  /**
+   * Deletes a piece logged by mistake (staff sometimes log the same piece two
+   * or three times). No SMS and no customer notification.
+   *
+   * No RPC: the existing staff policies already allow it — pieces_staff_all
+   * and piece_history_staff_all (0014) for pieces-admin staff, and
+   * notifications_staff_all (0001). Deleting the piece row takes its
+   * piece_history rows with it in the same statement (ON DELETE CASCADE).
+   *
+   * Its notifications are looked up first, because deleting the piece nulls
+   * their piece_id (ON DELETE SET NULL) and they could no longer be matched.
+   * They and the photo are only removed once the piece itself is confirmed
+   * gone; a failure there is logged, not thrown, since the piece is deleted.
+   */
+  const deletePiece = async (id: string) => {
+    if (!supabaseStaff) throw new Error(SUPABASE_NOT_CONFIGURED);
+
+    const { data: pieceRow, error: readError } = await supabaseStaff
+      .from('pieces').select('id, image').eq('id', id).maybeSingle();
+    if (readError) throw new Error(`Could not read the piece: ${readError.message}`);
+    if (!pieceRow) throw new Error('This piece no longer exists.');
+
+    const { data: notificationRows, error: notificationsReadError } = await supabaseStaff
+      .from('notifications').select('id').eq('piece_id', id);
+    if (notificationsReadError) throw new Error(`Could not read the piece's notifications: ${notificationsReadError.message}`);
+
+    // RLS refuses a delete by matching no rows, not by erroring, so check
+    // that the row actually went.
+    const { data: deleted, error: deleteError } = await supabaseStaff
+      .from('pieces').delete().eq('id', id).select('id');
+    if (deleteError) throw new Error(`Could not delete the piece: ${deleteError.message}`);
+    if (!deleted || deleted.length === 0) throw new Error('The piece was not deleted — you may not have permission to delete pieces.');
+
+    const notificationIds = (notificationRows || []).map(row => row.id as string);
+    if (notificationIds.length > 0) {
+      const { error } = await supabaseStaff.from('notifications').delete().in('id', notificationIds);
+      if (error) console.error(`deletePiece: ${id}'s notifications were not deleted:`, error.message);
+    }
+
+    if (!(await removePiecePhotoIfUnused(pieceRow.image as string | null))) {
+      console.error(`deletePiece: ${id}'s photo was left in Storage.`);
+    }
+  };
+
   const markNotificationAsRead = async (id: string) => {
     await db.notifications.update(id, { isRead: true });
   };
@@ -4541,7 +4588,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       getFreshAssignmentSources, getFreshStaff, getCustomerPieceCount,
       addQueueItem, addStaffNotification, updateQueueStatus, updateQueueItem, reorderQueue, returnQueueItemToWaiting,
       assignQueueTables, seatQueueItem, changeQueueItemTables,
-      updatePieceStatus, addPiece, updatePiece, markNotificationAsRead, clearAllNotifications,
+      updatePieceStatus, addPiece, updatePiece, deletePiece, markNotificationAsRead, clearAllNotifications,
       overduePickupPieces, markPieceCollected, sendPickupReminder,
       runAllTests, toggleTestResult,
       isTestRunning, testProgress, testsPassing,
