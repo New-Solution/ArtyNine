@@ -179,3 +179,74 @@ export function estimateOnlineAmount(
   const dueNow = kind.mode === 'deposit' ? Math.min(kind.depositAmount, total) : total;
   return { mode: kind.mode, dueNow, balance: Math.round((total - dueNow) * 100) / 100 };
 }
+
+// -----------------------------------------------------------------------------
+// What was actually paid (display and revenue). Read-only: nothing here
+// decides money, it describes what the database recorded.
+// -----------------------------------------------------------------------------
+
+type PaidFields = {
+  totalPrice: number;
+  paymentStatus?: string | null;
+  paymentMode?: 'deposit' | 'full' | null;
+  onlineAmount?: number | string | null;
+  moyasarPaymentId?: string | null;
+};
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+export interface PaymentBreakdown {
+  /** True when money was taken online for this booking. False for bookings
+   *  made before online payments, staff bookings, and unpaid holds — those
+   *  keep showing their total as before. */
+  online: boolean;
+  mode: OnlinePaymentMode | null;
+  /** Full price of the booking (total_price). */
+  total: number;
+  /** Paid online (online_amount); the total when not online. */
+  paid: number;
+  /** Still to pay at the studio: total - paid for a deposit, else 0. */
+  balance: number;
+}
+
+export function paymentBreakdown(b: PaidFields): PaymentBreakdown {
+  const total = Number(b.totalPrice) || 0;
+  const amount = b.onlineAmount === null || b.onlineAmount === undefined || b.onlineAmount === ''
+    ? NaN
+    : Number(b.onlineAmount);
+  const mode = b.paymentMode === 'deposit' || b.paymentMode === 'full' ? b.paymentMode : null;
+  // Paid online: a recorded Moyasar payment, or (on the confirmation screen,
+  // built from verify-payment's summary, which carries no payment id) a paid
+  // status with an online amount.
+  const online = !!mode && Number.isFinite(amount) && (!!b.moyasarPaymentId || isPaidStatus(b.paymentStatus));
+  if (!online) return { online: false, mode, total, paid: total, balance: 0 };
+  const paid = round2(amount);
+  return { online: true, mode, total, paid, balance: mode === 'deposit' ? Math.max(0, round2(total - paid)) : 0 };
+}
+
+/**
+ * Money actually collected for a booking, for revenue figures: the online
+ * amount for an online-paid booking (Deposit Paid / Paid with a Moyasar
+ * payment), the total for any other Paid / Deposit Paid booking (today's
+ * rule), nothing otherwise.
+ */
+export function collectedAmount(b: PaidFields): number {
+  if (!isPaidStatus(b.paymentStatus)) return 0;
+  if (b.moyasarPaymentId) {
+    const p = paymentBreakdown(b);
+    return p.online ? p.paid : Number(b.totalPrice) || 0;
+  }
+  return Number(b.totalPrice) || 0;
+}
+
+/** Balance still owed at the studio by an online deposit booking. */
+export function studioBalanceDue(b: PaidFields): number {
+  if (!isPaidStatus(b.paymentStatus)) return 0;
+  return paymentBreakdown(b).balance;
+}
+
+/** "150" / "99.5" — no trailing .00, never float noise. */
+export function sarAmount(n: number): string {
+  const r = round2(Number(n) || 0);
+  return Number.isInteger(r) ? String(r) : r.toFixed(2).replace(/0$/, '');
+}

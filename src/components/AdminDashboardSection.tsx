@@ -16,7 +16,8 @@ import { searchText } from '../utils/search';
 import { usePagination, TablePager } from './ui/TablePager';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
-import { paymentTone } from '../utils/onlinePayments';
+import { paymentTone, isPaidStatus, collectedAmount, studioBalanceDue, sarAmount } from '../utils/onlinePayments';
+import { PaymentAmountsCell } from './PaymentAmounts';
 import { pieceDaysWaiting, OVERDUE_PIECE_DAYS } from '../utils/pieceDays';
 
 export const AdminDashboardSection: React.FC = () => {
@@ -175,14 +176,29 @@ export const AdminDashboardSection: React.FC = () => {
   const metrics = useMemo(() => {
     const inQueueCount = queue.filter(q => (q.status === 'Waiting' || q.status === 'In Progress') && q.date === todayDateStr).length;
     const unpaidBookingsCount = bookings.filter(b => b.paymentStatus === 'Unpaid' && b.status !== 'Cancelled').length;
-    const totalRevenue = bookings
-      .filter(b => (b.paymentStatus === 'Paid' || b.paymentStatus === 'Deposit Paid') && b.status !== 'Cancelled')
-      .reduce((sum, curr) => sum + curr.totalPrice, 0);
+    // Money actually collected.
+    //  - Online-paid bookings (Moyasar, 0046) count what Moyasar took
+    //    (online_amount), not the full price. A cancelled one still counts
+    //    while its payment status says the money was kept (a non-refundable
+    //    deposit stays 'Deposit Paid'); 'Refunded' / 'Needs Refund' do not.
+    //  - Every other booking keeps the old rule: Paid / Deposit Paid, not
+    //    cancelled, counted at its total.
+    const totalRevenue = Math.round(bookings
+      .filter(b => b.moyasarPaymentId
+        ? isPaidStatus(b.paymentStatus)
+        : (b.paymentStatus === 'Paid' || b.paymentStatus === 'Deposit Paid') && b.status !== 'Cancelled')
+      .reduce((sum, curr) => sum + collectedAmount(curr), 0) * 100) / 100;
+
+    // Still to be paid at the studio by live online-deposit bookings.
+    const balanceDue = Math.round(bookings
+      .filter(b => b.status !== 'Cancelled')
+      .reduce((sum, curr) => sum + studioBalanceDue(curr), 0) * 100) / 100;
 
     return {
       inQueueCount,
       unpaidBookingsCount,
-      totalRevenue
+      totalRevenue,
+      balanceDue
     };
   }, [queue, bookings, todayDateStr]);
 
@@ -299,8 +315,13 @@ export const AdminDashboardSection: React.FC = () => {
             </div>
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-bold text-purple-800">{metrics.totalRevenue} {t('SAR', 'ريال')}</p>
-            <p className="text-[10px] font-semibold text-purple-600 mt-0.5">{t('Paid & deposits', 'المدفوعات والعرابين')}</p>
+            <p className="text-2xl font-bold text-purple-800"><span className="ltr-numerals">{sarAmount(metrics.totalRevenue)}</span> {t('SAR', 'ريال')}</p>
+            <p className="text-[10px] font-semibold text-purple-600 mt-0.5">{t('Collected: payments & deposits', 'المحصَّل: المدفوعات والعرابين')}</p>
+            {metrics.balanceDue > 0 && (
+              <p className="text-[10px] font-semibold text-amber-700 mt-0.5">
+                {t('Balance due at studio', 'المتبقي في الاستوديو')}: <span className="ltr-numerals">{sarAmount(metrics.balanceDue)}</span> {t('SAR', 'ريال')}
+              </p>
+            )}
           </div>
         </div>
 
@@ -596,7 +617,7 @@ export const AdminDashboardSection: React.FC = () => {
                       <span>{b.workshopTitle}</span>
                     </td>
                     <td className="py-3 px-3 font-mono">{b.participants} {t('guests', 'ضيوف')}</td>
-                    <td className="py-3 px-3 font-bold text-emerald-800">{b.totalPrice} {t('SAR', 'ريال')}</td>
+                    <td className="py-3 px-3 font-bold text-emerald-800"><PaymentAmountsCell booking={b} /></td>
                     <td className="py-3 px-3">
                       <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
                         {

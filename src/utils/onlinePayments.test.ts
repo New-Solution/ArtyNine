@@ -17,6 +17,10 @@ import {
   toHalalas,
   birthdayFullPrice,
   estimateOnlineAmount,
+  paymentBreakdown,
+  collectedAmount,
+  studioBalanceDue,
+  sarAmount,
   PAYMENT_STATUSES
 } from './onlinePayments';
 import { enumLabel } from './enumLabels';
@@ -95,6 +99,24 @@ assertEqual(estimateOnlineAmount(1200, full), { mode: 'full', dueNow: 1200, bala
 assertEqual(birthdayFullPrice({ price: 120, pricingType: 'Per child' }, 10), 1200, 'per child x guests (0046 case 4)');
 assertEqual(birthdayFullPrice({ price: 1500, pricingType: 'Fixed price' }, 10), 1500, 'fixed price ignores guests (0046 case 4b)');
 assertEqual(birthdayFullPrice(undefined, 10), 0, 'no package -> 0');
+
+console.log('paid vs total');
+const dep150 = { totalPrice: 150, paymentStatus: 'Deposit Paid', paymentMode: 'deposit' as const, onlineAmount: '100.00', moyasarPaymentId: 'p1' };
+assertEqual(paymentBreakdown(dep150), { online: true, mode: 'deposit', total: 150, paid: 100, balance: 50 }, 'deposit 100 of 150 (numeric string from Postgres)');
+assertEqual(paymentBreakdown({ totalPrice: 1200, paymentStatus: 'Paid', paymentMode: 'full', onlineAmount: 1200, moyasarPaymentId: 'p2' }), { online: true, mode: 'full', total: 1200, paid: 1200, balance: 0 }, 'full payment');
+assertEqual(paymentBreakdown({ totalPrice: 150, paymentStatus: 'Deposit Paid', paymentMode: 'deposit', onlineAmount: 100 }).online, true, 'confirmation screen: paid status + amount, no payment id');
+assertEqual(paymentBreakdown({ totalPrice: 150, paymentStatus: 'Awaiting Payment', paymentMode: 'deposit', onlineAmount: 100 }), { online: false, mode: 'deposit', total: 150, paid: 150, balance: 0 }, 'unpaid hold is not online-paid');
+assertEqual(paymentBreakdown({ totalPrice: 300, paymentStatus: 'Paid' }), { online: false, mode: null, total: 300, paid: 300, balance: 0 }, 'legacy booking unchanged');
+assertEqual(collectedAmount(dep150), 100, 'revenue counts the deposit, not the total');
+assertEqual(collectedAmount({ totalPrice: 300, paymentStatus: 'Paid' }), 300, 'legacy Paid counts the total (today)');
+assertEqual(collectedAmount({ totalPrice: 500, paymentStatus: 'Deposit Paid' }), 500, "legacy Deposit Paid keeps today's rule");
+assertEqual(collectedAmount({ ...dep150, paymentStatus: 'Refunded' }), 0, 'refunded collects nothing');
+assertEqual(collectedAmount({ totalPrice: 150, paymentStatus: 'Awaiting Payment' }), 0, 'hold collects nothing');
+assertEqual(studioBalanceDue(dep150), 50, 'balance due 50');
+assertEqual(studioBalanceDue({ totalPrice: 300, paymentStatus: 'Paid' }), 0, 'legacy: no balance figure');
+assertEqual(sarAmount(150), '150', 'integer amount');
+assertEqual(sarAmount(99.5), '99.5', 'one decimal');
+assertEqual(sarAmount(0.1 + 0.2), '0.3', 'float noise');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

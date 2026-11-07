@@ -24,7 +24,8 @@ import { matchesQuery, useDebouncedValue } from '../utils/search';
 import { BackButton } from './ui/BackButton';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
-import { paymentTone } from '../utils/onlinePayments';
+import { paymentTone, paymentBreakdown, isPaidStatus } from '../utils/onlinePayments';
+import { PaymentAmountsCell } from './PaymentAmounts';
 
 /** Badge colour per activity category. */
 const categoryBadgeClass = (category: ActivityCategory) => {
@@ -332,6 +333,25 @@ export const AdminCustomersSection: React.FC = () => {
       let unpaidBalance = 0;
 
       cBookings.forEach(b => {
+        // Paid online (Moyasar, 0046): count what was actually taken, not the
+        // full price. A kept payment counts even if the booking was cancelled
+        // (a deposit is non-refundable); a refunded one counts as paid and
+        // refunded, netting to zero. The studio balance of a live deposit
+        // booking is its outstanding amount.
+        if (b.moyasarPaymentId) {
+          const pay = paymentBreakdown(b);
+          if (pay.online) {
+            if (isPaidStatus(b.paymentStatus)) {
+              totalPaid += pay.paid;
+              if (b.status !== 'Cancelled') unpaidBalance += pay.balance;
+            } else if (b.paymentStatus === 'Refunded') {
+              totalPaid += pay.paid;
+              totalRefunded += pay.paid;
+            }
+            return;
+          }
+        }
+        // Everything else: unchanged.
         if (b.status !== 'Cancelled') {
           if (b.paymentStatus === 'Paid') {
             totalPaid += b.totalPrice;
@@ -343,7 +363,11 @@ export const AdminCustomersSection: React.FC = () => {
         }
       });
 
-      const totalSpent = Math.max(0, totalPaid - totalRefunded);
+      // Online amounts can carry halalas; keep sums free of float noise.
+      totalPaid = Math.round(totalPaid * 100) / 100;
+      totalRefunded = Math.round(totalRefunded * 100) / 100;
+      unpaidBalance = Math.round(unpaidBalance * 100) / 100;
+      const totalSpent = Math.max(0, Math.round((totalPaid - totalRefunded) * 100) / 100);
 
       const piecesReadyCount = cPieces.filter(p => pieceStageKey(p) === 'ready').length;
 
@@ -913,7 +937,7 @@ export const AdminCustomersSection: React.FC = () => {
                                 {enumLabel('bookingStatus', b.status, lang)}
                               </span>
                             </td>
-                            <td className="py-3 font-bold text-brand-charcoal">{b.totalPrice} {t('SAR', 'ريال')}</td>
+                            <td className="py-3 font-bold text-brand-charcoal"><PaymentAmountsCell booking={b} /></td>
                             <td className="py-3">
                               <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
                                 {
@@ -982,7 +1006,7 @@ export const AdminCustomersSection: React.FC = () => {
                             <td className="py-3 font-mono font-bold text-brand-terracotta">PAY-{b.id.replace('ART-', '')}</td>
                             <td className="py-3 font-bold text-brand-charcoal">{b.id} ({b.workshopTitle})</td>
                             <td className="py-3">{b.date}</td>
-                            <td className="py-3 font-bold">{b.totalPrice} {t('SAR', 'ريال')}</td>
+                            <td className="py-3 font-bold"><PaymentAmountsCell booking={b} /></td>
                             <td className="py-3 text-brand-charcoal/70">{b.source === 'Website' ? t('Online Mada/Card', 'مدى / بطاقة عبر الإنترنت') : t('Front Desk POS', 'نقطة البيع في الاستقبال')}</td>
                             <td className="py-3">
                               <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${

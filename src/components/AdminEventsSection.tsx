@@ -15,6 +15,8 @@ import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { paymentTone } from '../utils/onlinePayments';
 import { OnlineRefundNote } from './OnlineRefundNote';
+import { PaymentAmountsCell, PaymentAmountsDetails } from './PaymentAmounts';
+import { paymentBreakdown } from '../utils/onlinePayments';
 
 /** One label/value line. Optional answers are shown as "Not provided", never dropped. */
 const DetailRow: React.FC<{ label: string; value?: string; mono?: boolean }> = ({ label, value, mono }) => {
@@ -440,7 +442,7 @@ export const AdminEventsSection: React.FC = () => {
 
                     {/* Price & Payment Status */}
                     <td className="p-3.5">
-                      <div className="font-mono font-bold text-brand-charcoal">{b.totalPrice} {t('SAR', 'ريال')}</div>
+                      <div className="font-mono font-bold text-brand-charcoal"><PaymentAmountsCell booking={b} /></div>
                       <span className={`inline-block px-2 py-0.5 rounded-md text-[9px] font-bold mt-1 ${
                         {
                           paid: 'bg-emerald-100 text-emerald-800',
@@ -705,11 +707,25 @@ export const AdminEventsSection: React.FC = () => {
               {/* Money */}
               <section className="bg-white border border-brand-clay/60 rounded-2xl p-4 space-y-2">
                 <h3 className="font-bold text-brand-charcoal uppercase tracking-wider text-[10px]">{t('Payment', 'الدفع')}</h3>
-                <DetailRow label={t('Total amount', 'المبلغ الإجمالي')} value={eventDetails?.totalAmount !== undefined ? `${eventDetails.totalAmount} ${t('SAR', 'ريال')}` : ''} />
-                <DetailRow
-                  label={t('Deposit amount', 'مبلغ العربون')}
-                  value={`${eventDetails?.depositAmount ?? selectedEventBooking.totalPrice} ${t('SAR', 'ريال')}`}
-                />
+                {paymentBreakdown(selectedEventBooking).online ? (
+                  // Paid online (0046): the booking row's own figures — the
+                  // database's total and what Moyasar took — not the amounts
+                  // the form estimated when the customer submitted it.
+                  <PaymentAmountsDetails
+                    booking={selectedEventBooking}
+                    totalLabel={t('Total amount', 'المبلغ الإجمالي')}
+                    labelClassName="text-brand-charcoal/60 font-semibold"
+                    valueClassName="font-bold text-emerald-700"
+                  />
+                ) : (
+                  <>
+                    <DetailRow label={t('Total amount', 'المبلغ الإجمالي')} value={eventDetails?.totalAmount !== undefined ? `${eventDetails.totalAmount} ${t('SAR', 'ريال')}` : ''} />
+                    <DetailRow
+                      label={t('Deposit amount', 'مبلغ العربون')}
+                      value={`${eventDetails?.depositAmount ?? selectedEventBooking.totalPrice} ${t('SAR', 'ريال')}`}
+                    />
+                  </>
+                )}
                 <DetailRow label={t('Payment status', 'حالة الدفع')} value={enumLabel('payment', selectedEventBooking.paymentStatus, lang)} />
               </section>
 

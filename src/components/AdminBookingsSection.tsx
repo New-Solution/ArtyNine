@@ -18,6 +18,8 @@ import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { PAYMENT_STATUSES, paymentTone } from '../utils/onlinePayments';
 import { OnlineRefundNote } from './OnlineRefundNote';
+import { PaymentAmountsCell, PaymentAmountsDetails } from './PaymentAmounts';
+import { paymentBreakdown } from '../utils/onlinePayments';
 
 /**
  * The title given to queue walk-ins that have no instructor. It stays English in the
@@ -384,7 +386,10 @@ export const AdminBookingsSection: React.FC = () => {
       "Total (SAR)",
       "Payment Status",
       "Booking Status",
-      "Created At"
+      "Created At",
+      // Online payments (0046): empty for bookings not paid online.
+      "Paid Online (SAR)",
+      "Balance Due at Studio (SAR)"
     ];
 
     // Helper to escape CSV cell value
@@ -416,7 +421,11 @@ export const AdminBookingsSection: React.FC = () => {
         b.id.startsWith('Q-') ? "-" : b.totalPrice,
         b.id.startsWith('Q-') ? "-" : b.paymentStatus,
         b.status,
-        b.createdAt ? b.createdAt : "-"
+        b.createdAt ? b.createdAt : "-",
+        ...(() => {
+          const pay = paymentBreakdown(b);
+          return pay.online ? [pay.paid, pay.balance] : ["", ""];
+        })()
       ];
       csvRows.push(row.map(escapeCSV).join(","));
     });
@@ -783,7 +792,7 @@ export const AdminBookingsSection: React.FC = () => {
                         </td>
                         <td className="p-4 text-center font-bold">{b.participants}</td>
                         <td className="p-4 text-right font-bold text-brand-charcoal">
-                          {b.id.startsWith('Q-') ? '-' : `${b.totalPrice} ${t('SAR', 'ريال')}`}
+                          {b.id.startsWith('Q-') ? '-' : <PaymentAmountsCell booking={b} align="end" />}
                         </td>
                         <td className="p-4">
                           <div className="space-y-1">
@@ -946,12 +955,14 @@ export const AdminBookingsSection: React.FC = () => {
                   <span className="font-semibold text-brand-charcoal/50">{t('Attendees', 'الحضور')}</span>
                   <span className="font-bold">{/* ⚠ ARABIC PLURALIZATION — placeholder only, needs a native speaker. */}{activeBookingDetail.participants} {t('Artists', 'فنانين')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="font-semibold text-brand-charcoal/50">{t('Total Payment', 'إجمالي المدفوع')}</span>
-                  <span className="font-bold text-brand-terracotta">
-                    {activeBookingDetail.id.startsWith('Q-') ? '-' : `${activeBookingDetail.totalPrice} ${t('SAR', 'ريال')}`}
-                  </span>
-                </div>
+                {activeBookingDetail.id.startsWith('Q-') ? (
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-brand-charcoal/50">{t('Total Payment', 'إجمالي المدفوع')}</span>
+                    <span className="font-bold text-brand-terracotta">-</span>
+                  </div>
+                ) : (
+                  <PaymentAmountsDetails booking={activeBookingDetail} totalLabel={t('Total Payment', 'إجمالي المدفوع')} />
+                )}
               </div>
 
               {/* Interactive Status Actions */}

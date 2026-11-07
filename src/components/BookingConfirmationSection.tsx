@@ -11,6 +11,7 @@ import confetti from 'canvas-confetti';
 import { STUDIO_PHONE } from '../utils/studioConfig';
 import { bookingTitleLabel } from '../utils/bookingTitleLabel';
 import { timeLabel } from '../utils/availabilityLabel';
+import { paymentBreakdown, sarAmount } from '../utils/onlinePayments';
 
 /**
  * Riyadh is UTC+3 all year — Saudi Arabia has observed no daylight saving since
@@ -135,6 +136,13 @@ export const BookingConfirmationSection: React.FC = () => {
   };
 
   const matchingWorkshop = workshops.find(w => w.id === booking.workshopId) || workshops[0];
+
+  // What was actually paid. For an online payment these come from
+  // verify-payment's booking summary (PaymentReturnSection), i.e. the
+  // database — never this browser's own totals. Other bookings show their
+  // total, as before.
+  const pay = paymentBreakdown(booking as { totalPrice: number; paymentStatus?: string; paymentMode?: 'deposit' | 'full'; onlineAmount?: number });
+  const isOnlineDeposit = pay.online && pay.mode === 'deposit';
   const titleLabel = bookingTitleLabel(booking, workshops, birthdayPackages, lang);
 
   /**
@@ -167,7 +175,9 @@ export const BookingConfirmationSection: React.FC = () => {
     const location = [room, 'Arty Café', 'Ahmad Al Attas St, Jeddah'].filter(Boolean).join(', ');
     const guests = `${booking.participants} ${booking.participants === 1 ? 'guest' : 'guests'}`;
     const description = `${title} at Arty Café. Booking reference ${booking.id}, ${guests}. `
-      + 'You can cancel free of charge up to 24 hours before the session.';
+      + (isOnlineDeposit
+        ? `Deposit paid: ${sarAmount(pay.paid)} SAR (non-refundable). Balance due at the studio: ${sarAmount(pay.balance)} SAR.`
+        : 'You can cancel free of charge up to 24 hours before the session.');
 
     // A UID must be globally unique and stable, so the same booking re-added
     // updates the existing entry rather than creating a duplicate.
@@ -195,7 +205,7 @@ export const BookingConfirmationSection: React.FC = () => {
       filename: `arty-cafe-${String(booking.id).toLowerCase()}.ics`,
       content: lines.map(foldLine).join('\r\n') + '\r\n'
     };
-  }, [booking, matchingWorkshop]);
+  }, [booking, matchingWorkshop, isOnlineDeposit, pay.paid, pay.balance]);
 
   const downloadCalendarEvent = () => {
     if (!calendarEvent) return;
@@ -294,10 +304,28 @@ export const BookingConfirmationSection: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex justify-between">
-            <span className="font-semibold text-brand-muted">{t('Total Paid (VAT incl.)', 'الإجمالي المدفوع (شامل الضريبة)')}</span>
-            <span className="font-semibold text-brand-terracotta text-sm">{booking.totalPrice} {t('SAR', 'ريال')}</span>
-          </div>
+          {isOnlineDeposit ? (
+            <>
+              <div className="flex justify-between">
+                <span className="font-semibold text-brand-muted">{t('Paid now', 'المدفوع الآن')}</span>
+                <span className="font-semibold text-brand-terracotta text-sm ltr-numerals">{sarAmount(pay.paid)} {t('SAR', 'ريال')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-brand-muted">{t('Balance due at the studio', 'المتبقي للدفع في الاستوديو')}</span>
+                <span className="font-semibold text-brand-charcoal text-sm ltr-numerals">{sarAmount(pay.balance)} {t('SAR', 'ريال')}</span>
+              </div>
+            </>
+          ) : pay.online ? (
+            <div className="flex justify-between">
+              <span className="font-semibold text-brand-muted">{t('Total paid', 'إجمالي المدفوع')}</span>
+              <span className="font-semibold text-brand-terracotta text-sm ltr-numerals">{sarAmount(pay.paid)} {t('SAR', 'ريال')}</span>
+            </div>
+          ) : (
+            <div className="flex justify-between">
+              <span className="font-semibold text-brand-muted">{t('Total Paid (VAT incl.)', 'الإجمالي المدفوع (شامل الضريبة)')}</span>
+              <span className="font-semibold text-brand-terracotta text-sm">{booking.totalPrice} {t('SAR', 'ريال')}</span>
+            </div>
+          )}
 
           <div className="flex justify-between items-start">
             <span className="font-semibold text-brand-muted">{t('Studio Location', 'موقع الاستوديو')}</span>
@@ -333,7 +361,9 @@ export const BookingConfirmationSection: React.FC = () => {
 
         {/* Cancellation policy note */}
         <p className="mt-5 text-[10px] text-center text-brand-muted italic leading-relaxed">
-          {t('*You can cancel free of charge up to 24 hours before your session directly from your bookings portal.', '*يمكنك الإلغاء مجانًا حتى 24 ساعة قبل جلستك مباشرة من بوابة حجوزاتك.')}
+          {isOnlineDeposit
+            ? t('*Your deposit is non-refundable.', '*العربون غير قابل للاسترداد.')
+            : t('*You can cancel free of charge up to 24 hours before your session directly from your bookings portal.', '*يمكنك الإلغاء مجانًا حتى 24 ساعة قبل جلستك مباشرة من بوابة حجوزاتك.')}
         </p>
 
       </div>
