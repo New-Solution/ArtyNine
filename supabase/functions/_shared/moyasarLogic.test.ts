@@ -23,7 +23,8 @@ import {
   stateForOutcome,
   staffAlertFor,
   tokensMatch,
-  parseWebhook
+  parseWebhook,
+  webhookVerification
 } from './moyasarLogic.ts';
 import { verifyAndConfirmPayment, type AdminClient } from './confirmPayment.ts';
 import { fetchMoyasarPayment } from './moyasar.ts';
@@ -123,6 +124,13 @@ assertEqual(parseWebhook({ type: 'payment_abandoned', data: { id: PID } }).kind,
 assertEqual(parseWebhook({ type: 'card_auth_failed', data: { id: PID } }).kind, 'ignored', 'card_auth_* ignored');
 assertEqual(parseWebhook({ type: 'payment_paid', data: { id: '../x' } }).kind, 'invalid', 'bad payment id refused');
 assertEqual(parseWebhook('nope').kind, 'invalid', 'non-object refused');
+assertEqual(webhookVerification({ type: 'webhook_verification', data: { verification_code: '123456' } }), { isVerification: true, code: '123456' }, 'verification code read');
+assertEqual(webhookVerification({ type: 'webhook_verification', data: { verification_code: 123456 } }), { isVerification: true, code: '123456' }, 'numeric verification code read');
+assertEqual(webhookVerification({ type: 'webhook_verification', data: {} }), { isVerification: true, code: null }, 'verification without a code is still a verification');
+assertEqual(webhookVerification({ type: 'webhook_verification' }), { isVerification: true, code: null }, 'verification without data');
+assertEqual(webhookVerification({ type: 'webhook_verification', data: { verification_code: 'x\nFAKE LOG LINE' } }).code, null, 'odd code not passed to the log');
+assertEqual(webhookVerification({ type: 'payment_paid', data: { id: PID, verification_code: '123456' } }), { isVerification: false }, 'payment event is not a verification');
+assertEqual(webhookVerification(null), { isVerification: false }, 'null is not a verification');
 
 // -----------------------------------------------------------------------------
 // Fakes for the confirm flow.

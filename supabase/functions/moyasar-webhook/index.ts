@@ -24,6 +24,12 @@
  * verifyAndConfirmPayment() verify-payment uses. A forged webhook with a
  * guessed token could at most make us re-check a real payment.
  *
+ * WEBHOOK VERIFICATION
+ * When the webhook is added, Moyasar sends type "webhook_verification" with a
+ * code in data.verification_code. It is answered 200 before the secret_token
+ * check; the code is written to the function log ("MOYASAR WEBHOOK
+ * VERIFICATION CODE: ...") to be entered in the dashboard. No data is touched.
+ *
  * RESPONSES (Moyasar retries any non-2xx 5 more times: immediately, then
  * 1 min, 10 min, 30 min, 1 h, 2 h)
  *   200  handled, or deliberately ignored (non-payment event, wrong mode)
@@ -39,13 +45,33 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
 import { verifyAndConfirmPayment } from '../_shared/confirmPayment.ts';
-import { parseWebhook, secretKeyProblem, tokensMatch, keyMode } from '../_shared/moyasarLogic.ts';
+import { parseWebhook, secretKeyProblem, tokensMatch, keyMode, webhookVerification } from '../_shared/moyasarLogic.ts';
 
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return reply(405, { error: 'POST only.' });
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return reply(400, { error: 'Invalid JSON.' });
+  }
+
+  // Webhook verification (sent when the webhook is added in the dashboard):
+  // handled before the secret_token check and any payment logic. Only the
+  // code is logged — never the token or the body — and nothing is touched.
+  const verification = webhookVerification(body);
+  if (verification.isVerification) {
+    if (verification.code) {
+      console.log(`MOYASAR WEBHOOK VERIFICATION CODE: ${verification.code}`);
+    } else {
+      console.log('moyasar-webhook: webhook_verification event without a usable data.verification_code.');
+    }
+    return reply(200, { verification: 'received' });
+  }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -56,13 +82,6 @@ Deno.serve(async (req: Request) => {
   if (!supabaseUrl || !serviceRoleKey || !webhookSecret || keyProblem) {
     console.error(`moyasar-webhook: not configured — ${keyProblem ?? 'missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / MOYASAR_WEBHOOK_SECRET'}`);
     return reply(500, { error: 'Not configured.' });
-  }
-
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return reply(400, { error: 'Invalid JSON.' });
   }
 
   if (!tokensMatch(body?.secret_token, webhookSecret)) {

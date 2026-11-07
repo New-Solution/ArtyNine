@@ -253,3 +253,24 @@ export function parseWebhook(body: unknown): WebhookParse {
   if (!isMoyasarPaymentId(paymentId)) return { kind: 'invalid', reason: 'data.id is not a payment id' };
   return { kind: 'payment', eventType: type, paymentId, live: typeof b.live === 'boolean' ? b.live : null };
 }
+
+export type WebhookVerification =
+  | { isVerification: false }
+  | { isVerification: true; code: string | null };
+
+/**
+ * Moyasar's webhook verification event, sent when a webhook is added in the
+ * dashboard: { type: 'webhook_verification', data: { verification_code } }.
+ * It is handled before the secret_token check: the code is only logged so it
+ * can be typed back into the dashboard, and no booking or payment data is
+ * touched. The code is returned only if it looks like a short code, so a
+ * crafted body cannot push arbitrary text into the logs.
+ */
+export function webhookVerification(body: unknown): WebhookVerification {
+  if (!body || typeof body !== 'object') return { isVerification: false };
+  const b = body as Record<string, any>;
+  if (b.type !== 'webhook_verification') return { isVerification: false };
+  const raw = b.data && typeof b.data === 'object' ? b.data.verification_code : undefined;
+  const code = typeof raw === 'string' || typeof raw === 'number' ? String(raw).trim() : '';
+  return { isVerification: true, code: /^[A-Za-z0-9]{1,32}$/.test(code) ? code : null };
+}
