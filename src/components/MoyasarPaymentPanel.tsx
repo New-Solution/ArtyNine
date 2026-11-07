@@ -31,9 +31,11 @@ import {
   verifyPayment,
   paymentCallbackUrl,
   MOYASAR_METHODS,
-  type PaymentQuote
+  type PaymentQuote,
+  type MoyasarInitConfig
 } from '../lib/onlinePayment';
 import { MOYASAR_PUBLISHABLE_KEY } from '../utils/featureFlags';
+import { MOYASAR_APPLE_PAY, moyasarDescription, moyasarConfigProblem } from '../utils/moyasarConfig';
 
 interface Props {
   bookingId: string;
@@ -58,6 +60,9 @@ export const MoyasarPaymentPanel: React.FC<Props> = ({ bookingId, quote, descrip
   const { lang, t } = useLanguage();
   const formRef = useRef<HTMLDivElement>(null);
   const [loadError, setLoadError] = useState(false);
+  // Moyasar.js refused the configuration. Shown in place of its own raw
+  // "Form configuration issue!" box; the real reason goes to the console.
+  const [configError, setConfigError] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [remainingMs, setRemainingMs] = useState(() => Date.parse(quote.expiresAt) - Date.now());
   const expiredRef = useRef(false);
@@ -83,16 +88,19 @@ export const MoyasarPaymentPanel: React.FC<Props> = ({ bookingId, quote, descrip
   useEffect(() => {
     let cancelled = false;
     setLoadError(false);
+    setConfigError(false);
     loadMoyasar()
       .then(Moyasar => {
         if (cancelled || !formRef.current) return;
-        formRef.current.innerHTML = '';
-        Moyasar.init({
-          element: formRef.current,
+        const element = formRef.current;
+        element.innerHTML = '';
+        const config: MoyasarInitConfig = {
+          element,
           amount: quote.amountHalalas,
           currency: 'SAR',
-          // For the studio's Moyasar dashboard; not shown to the customer.
-          description: `Arty booking ${bookingId}`,
+          // For the studio's Moyasar dashboard. Booking id only, never a
+          // workshop title (could be Arabic): printable ASCII, see moyasarConfig.
+          description: moyasarDescription(bookingId),
           publishable_api_key: MOYASAR_PUBLISHABLE_KEY,
           callback_url: paymentCallbackUrl(),
           methods: MOYASAR_METHODS,
@@ -102,11 +110,8 @@ export const MoyasarPaymentPanel: React.FC<Props> = ({ bookingId, quote, descrip
           // What verify-payment matches the payment to. Never trusted alone:
           // the amount owed is the booking's, not the form's.
           metadata: { booking_id: bookingId },
-          apple_pay: {
-            country: 'SA',
-            label: 'Arty Café',
-            validate_merchant_url: 'https://api.moyasar.com/v1/applepay/initiate'
-          },
+          // label must be printable ASCII or Moyasar.js rejects the whole form.
+          apple_pay: { ...MOYASAR_APPLE_PAY },
           on_completed: async payment => {
             // Record the payment before any 3-D Secure redirect. A failure here
             // is not the customer's problem: the return page and the
@@ -127,7 +132,32 @@ export const MoyasarPaymentPanel: React.FC<Props> = ({ bookingId, quote, descrip
               'تعذّر بدء عملية الدفع. يرجى التحقق من بيانات الدفع والمحاولة مرة أخرى.'
             ));
           }
-        });
+        };
+
+        const refuse = (reason: unknown) => {
+          console.error('Moyasar payment form could not be set up:', reason);
+          element.innerHTML = '';
+          if (!cancelled) setConfigError(true);
+        };
+
+        // Moyasar.init does not throw on a bad config: it logs the reason and
+        // draws its own "Form configuration issue!" box instead of the form.
+        // So: check what we know it validates first, catch anything thrown,
+        // and treat its error box, if drawn anyway, as a refusal too.
+        const problem = moyasarConfigProblem(config);
+        if (problem) {
+          refuse(problem);
+          return;
+        }
+        try {
+          Moyasar.init(config);
+        } catch (err) {
+          refuse(err);
+          return;
+        }
+        if (/Form configuration issue/i.test(element.textContent ?? '')) {
+          refuse('Moyasar.js rejected the configuration (see the error logged above).');
+        }
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -179,6 +209,16 @@ export const MoyasarPaymentPanel: React.FC<Props> = ({ bookingId, quote, descrip
             {t(
               'The secure payment form could not be loaded. Check your connection and reload the page — your place stays held until the timer ends.',
               'تعذّر تحميل نموذج الدفع الآمن. تحقق من اتصالك وأعد تحميل الصفحة — يبقى مكانك محجوزًا حتى انتهاء المؤقت.'
+            )}
+          </span>
+        </p>
+      ) : configError ? (
+        <p role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-semibold">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            {t(
+              'Online payment is temporarily unavailable, please try again or contact the studio.',
+              'الدفع الإلكتروني غير متاح مؤقتًا، يرجى المحاولة مرة أخرى أو التواصل مع الاستوديو.'
             )}
           </span>
         </p>

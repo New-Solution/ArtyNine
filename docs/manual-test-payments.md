@@ -163,7 +163,7 @@ failed or declined **by design**. That is Moyasar's test behaviour, not a bug.
 | ID | Steps | Expected |
 |---|---|---|
 | PAY-60 | Open the payment step in Safari on the iPhone. Then open it in Chrome on a laptop or Android. | iPhone: a black Apple Pay button above the card form, with Moyasar's "or pay with" divider between them; the summary box, countdown and footer look as before. Elsewhere: no button and no divider, the card form exactly as in PAY-01. Nothing overlaps or overflows at phone width. |
-| PAY-61 | Workshop, 100 SAR deposit (PAY-01). Tap Apple Pay. | The sheet shows **Arty Café**, **100.00 SAR**. |
+| PAY-61 | Workshop, 100 SAR deposit (PAY-01). Tap Apple Pay. | The sheet shows **Arty Cafe**, **100.00 SAR**. |
 | PAY-62 | Confirm with Face ID / Touch ID. | The sheet shows Done. The page goes to "Checking your payment…", then to **the same confirmation screen as a card payment** (PAY-02). Booking row: `Deposit Paid`, `moyasar_payment_id` and `paid_at` set. `booking_payments`: `status paid`, `outcome confirmed`, `source_type applepay`. No 3-D Secure page appears. |
 | PAY-63 | Arabic: switch to العربية, repeat PAY-61/62. | Form and divider right-to-left, the button still full width; the sheet's amount is in SAR; every message on the payment step, return page and confirmation in Arabic. |
 | PAY-64 | Tap Apple Pay, then cancel the sheet. | Back on the form, nothing charged, countdown still running, no `booking_payments` row. Paying by card or Apple Pay afterwards still works. |
