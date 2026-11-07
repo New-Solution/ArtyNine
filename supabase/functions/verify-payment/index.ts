@@ -16,8 +16,8 @@
  *
  * WHAT IT DOES
  *   POST { paymentId } -> fetch GET /v1/payments/{id} from Moyasar with
- *   MOYASAR_SECRET_KEY -> store Moyasar's full response, as returned, in the
- *   evidence log moyasar_payment_events (migration 0047; source
+ *   MOYASAR_SECRET_KEY -> store Moyasar's full response (minus the card
+ *   token, source.token) in the evidence log moyasar_payment_events (migration 0047; source
  *   'verify-payment', or 'return-page' when the body says from: 'return-page')
  *   -> record it in booking_payments -> if status is
  *   'paid', confirm_booking_payment() (migration 0046) checks currency, the

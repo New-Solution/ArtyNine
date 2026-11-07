@@ -8,15 +8,19 @@
  *
  * WHAT GOES IN `raw`
  *   - verify-payment / return-page: the full JSON body of
- *     GET /v1/payments/{id}, unmodified.
+ *     GET /v1/payments/{id}, with `source.token` removed.
  *   - webhook: the full webhook body with `secret_token` removed (at any
- *     depth). That is the only change.
+ *     depth) and `source.token` removed from the payment in it.
+ *   Those are the only changes. ip, source.transaction_url and everything
+ *   else are kept as received.
  * Card data: Moyasar's API never returns a full card number or a CVC. A
  * payment's source.number is already masked by Moyasar (e.g.
- * "4111-11XX-XXXX-1111"), and that is all we store. Nothing is ever added
- * to raw, and neither MOYASAR_SECRET_KEY nor MOYASAR_WEBHOOK_SECRET is passed
- * to anything in this file. The table's CHECK constraint refuses a raw that
- * contains a secret_token key, as a second line of defence.
+ * "4111-11XX-XXXX-1111"), and that is all we store. source.token (a saved-card
+ * token that could be used to charge the card again) is dropped. Nothing is
+ * ever added to raw, and neither MOYASAR_SECRET_KEY nor MOYASAR_WEBHOOK_SECRET
+ * is passed to anything in this file. The table's CHECK constraint refuses a
+ * raw that contains a secret_token key or a source.token key at any depth, as
+ * a second line of defence.
  *
  * NEVER CHANGES A PAYMENT RESULT. recordPaymentEvidence() never throws: any
  * failure (database error, thrown exception) is written to the function log
@@ -51,16 +55,33 @@ const FK_VIOLATION = '23503';
 
 const isObject = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 
-/** A deep copy of `value` with every `secret_token` key removed. */
-export function withoutSecretToken(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutSecretToken);
+/**
+ * A deep copy of `value` without the keys we never store:
+ *   - `secret_token` anywhere, when dropSecretToken is set (webhooks);
+ *   - `token` inside any `source` object (the payment's card token).
+ * Arrays keep their parent's key, matching the lax-mode jsonpath
+ * '$.**.source.token' in 0047's CHECK constraint.
+ */
+function scrub(value: unknown, parentKey: string | null, dropSecretToken: boolean): unknown {
+  if (Array.isArray(value)) return value.map((v) => scrub(v, parentKey, dropSecretToken));
   if (!isObject(value)) return value;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value)) {
-    if (k === 'secret_token') continue;
-    out[k] = withoutSecretToken(v);
+    if (dropSecretToken && k === 'secret_token') continue;
+    if (parentKey === 'source' && k === 'token') continue;
+    out[k] = scrub(v, k, dropSecretToken);
   }
   return out;
+}
+
+/** A deep copy of `value` with every `secret_token` key and every `source.token` removed. */
+export function withoutSecretToken(value: unknown): unknown {
+  return scrub(value, null, true);
+}
+
+/** A deep copy of `value` with every `source.token` removed. Nothing else changes. */
+export function withoutCardToken(value: unknown): unknown {
+  return scrub(value, null, false);
 }
 
 /** The indexed columns, read leniently from a Moyasar payment object. */
@@ -79,18 +100,18 @@ function paymentColumns(p: unknown) {
   };
 }
 
-/** A row for a payment fetched from GET /v1/payments/{id}. `raw` is the body as returned. */
+/** A row for a payment fetched from GET /v1/payments/{id}. `raw` is the body as returned, minus source.token. */
 export function fetchedPaymentEvidence(source: 'verify-payment' | 'return-page', payment: unknown): PaymentEvidenceRow {
   return {
     ...paymentColumns(payment),
     source,
     event_type: null,
     // jsonb NOT NULL: a body that parsed to JSON null is still recorded.
-    raw: payment === null || payment === undefined ? { unparsed: null } : payment
+    raw: payment === null || payment === undefined ? { unparsed: null } : withoutCardToken(payment)
   };
 }
 
-/** A row for a webhook body that passed the secret_token check. secret_token is removed. */
+/** A row for a webhook body that passed the secret_token check. secret_token and source.token are removed. */
 export function webhookEvidence(body: unknown): PaymentEvidenceRow {
   const b = isObject(body) ? body : {};
   return {

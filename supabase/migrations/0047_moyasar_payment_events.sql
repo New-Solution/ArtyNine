@@ -23,11 +23,14 @@
 --                              from the 3-D Secure return page
 --          = 'webhook'         a webhook body that passed the secret_token
 --                              check, with secret_token REMOVED
---   raw = Moyasar's JSON, unmodified apart from removing secret_token.
+--   raw = Moyasar's JSON, unmodified apart from removing secret_token
+--   (webhooks) and the payment's card token, source.token (both sources).
+--   ip, source.transaction_url and everything else are kept.
 --   Moyasar never returns a full card number or CVC: source.number is already
 --   masked by Moyasar (e.g. 4111-11XX-XXXX-1111). Nothing is added to raw.
---   Our secret key and webhook secret are never stored; a CHECK constraint
---   refuses any raw that contains a secret_token key at any depth.
+--   Our secret key and webhook secret are never stored. A CHECK constraint
+--   refuses any raw that contains a secret_token key or a source.token key at
+--   any depth.
 --
 -- WHO CAN DO WHAT
 --   service_role (the Edge Functions): insert (and, as the platform's admin
@@ -68,7 +71,11 @@ create table if not exists public.moyasar_payment_events (
   amount_halalas     integer,
   currency           text,
   raw                jsonb not null
-                     check (not jsonb_path_exists(raw, '$.**.secret_token')),
+                     -- Forbidden keys, at any depth: our webhook secret, and
+                     -- the payment's card token. ('$.**' includes the root.)
+                     constraint moyasar_payment_events_no_forbidden_keys
+                     check (    not jsonb_path_exists(raw, '$.**.secret_token')
+                            and not jsonb_path_exists(raw, '$.**.source.token')),
   received_at        timestamptz not null default now()
 );
 
@@ -132,6 +139,8 @@ select
   has_table_privilege('service_role', 'public.moyasar_payment_events', 'insert') as service_insert,
   exists (select 1 from pg_trigger where tgname = 'moyasar_payment_events_append_only'
             and tgrelid = 'public.moyasar_payment_events'::regclass) as append_only_trigger,
+  pg_get_constraintdef((select oid from pg_constraint where conname = 'moyasar_payment_events_no_forbidden_keys'))
+    like '%source.token%' as forbidden_keys_check,
   exists (select 1 from pg_indexes where indexname = 'moyasar_payment_events_payment_idx') as payment_idx,
   exists (select 1 from pg_indexes where indexname = 'moyasar_payment_events_booking_idx') as booking_idx;
 
@@ -203,6 +212,31 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
   END;
   ASSERT v_err IS NOT NULL, 'Case 2: a nested secret_token must be refused';
+  -- The card token: refused in a fetched payment (source.token) and in a webhook (data.source.token).
+  BEGIN
+    INSERT INTO public.moyasar_payment_events (source, raw)
+    VALUES ('verify-payment', '{"id":"p","source":{"type":"creditcard","token":"token_abc"}}');
+    v_err := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  ASSERT v_err LIKE '%moyasar_payment_events_no_forbidden_keys%',
+    format('Case 2: source.token must be refused by the forbidden-keys check, got %s', coalesce(v_err, 'no error'));
+  BEGIN
+    INSERT INTO public.moyasar_payment_events (source, raw)
+    VALUES ('webhook', '{"type":"payment_paid","data":{"source":{"token":"token_abc"}}}');
+    v_err := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  ASSERT v_err LIKE '%moyasar_payment_events_no_forbidden_keys%',
+    format('Case 2: data.source.token must be refused by the forbidden-keys check, got %s', coalesce(v_err, 'no error'));
+  -- ...but ip, source.transaction_url and a "token" key outside source are kept.
+  BEGIN
+    INSERT INTO public.moyasar_payment_events (source, raw)
+    VALUES ('verify-payment', '{"id":"p","ip":"1.2.3.4","metadata":{"token":"x"},"source":{"number":"4111-11XX-XXXX-1111","transaction_url":"https://example"}}');
+    v_err := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  ASSERT v_err IS NULL, format('Case 2: ip / transaction_url / non-source token must be accepted, got %s', v_err);
   PERFORM set_config('role', v_editor, true);
 
   -- 3. anon: cannot read, insert, update or delete.

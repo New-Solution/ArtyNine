@@ -40,9 +40,10 @@
  * EVIDENCE (migration 0047)
  * Every event that passes the secret_token check — payment or not, handled or
  * ignored — is stored in moyasar_payment_events (source 'webhook') before
- * anything else happens, with secret_token REMOVED from the body. Nothing
- * else is changed or added; Moyasar's payment data only ever carries masked
- * card details (no full number, no CVC). Verification-code events are not
+ * anything else happens, with secret_token REMOVED from the body and the
+ * payment's card token (data.source.token) removed. Nothing else is changed
+ * or added; Moyasar's payment data only ever carries masked card details (no
+ * full number, no CVC). Verification-code events are not
  * stored. A failed insert is logged and never changes the response.
  *
  * verify_jwt = false (config.toml): Moyasar sends no Supabase JWT.
@@ -100,7 +101,7 @@ Deno.serve(async (req: Request) => {
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
-  // Evidence: the body as received, minus secret_token. Never throws.
+  // Evidence: the body as received, minus secret_token and source.token. Never throws.
   await recordPaymentEvidence(admin, webhookEvidence(body));
 
   const parsed = parseWebhook(body);

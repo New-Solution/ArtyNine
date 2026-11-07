@@ -30,6 +30,7 @@ import { verifyAndConfirmPayment, type AdminClient } from './confirmPayment.ts';
 import { fetchMoyasarPayment } from './moyasar.ts';
 import {
   withoutSecretToken,
+  withoutCardToken,
   webhookEvidence,
   fetchedPaymentEvidence,
   recordPaymentEvidence,
@@ -65,6 +66,13 @@ function payment(over: Record<string, unknown> = {}) {
     ip: '1.2.3.4',
     ...over
   };
+}
+
+/** payment() as the evidence log must store it: source.token removed, all else kept. */
+function paymentWithoutCardToken() {
+  const p = payment();
+  const { token: _tok, ...source } = p.source as Record<string, unknown>;
+  return { ...p, source };
 }
 
 /** A paid Apple Pay payment as Moyasar returns it: no 3-D Secure, already
@@ -399,8 +407,12 @@ async function run() {
     assertEqual(stored.includes('secret_token'), false, 'webhook: no secret_token key anywhere in raw');
     assertEqual(stored.includes('whsec_super_secret') || stored.includes('nested'), false, 'webhook: no secret value in raw');
     const { secret_token: _t, ...rest } = original;
-    const expected = { ...rest, data: { ...rest.data, metadata: { booking_id: 'ART-1234567' } } };
-    assertEqual(row.raw, expected, 'webhook: everything except secret_token stored as received');
+    const { token: _tok, ...sourceKept } = rest.data.source;
+    const expected = { ...rest, data: { ...rest.data, metadata: { booking_id: 'ART-1234567' }, source: sourceKept } };
+    assertEqual(row.raw, expected, 'webhook: everything except secret_token and source.token stored as received');
+    assertEqual('token' in (row.raw as any).data.source, false, 'webhook: data.source.token stripped');
+    assertEqual([(row.raw as any).data.ip, (row.raw as any).data.source.transaction_url], ['1.2.3.4', 'https://secret.example'],
+      'webhook: ip and transaction_url kept');
     assertEqual(body, original, 'webhook: the incoming body is not mutated');
     assertEqual([row.source, row.event_type, row.moyasar_payment_id, row.booking_id, row.status, row.amount_halalas, row.currency],
       ['webhook', 'payment_paid', PID, 'ART-1234567', 'paid', 10000, 'SAR'], 'webhook: indexed columns read from data');
@@ -409,12 +421,19 @@ async function run() {
     assertEqual([nonPayment.moyasar_payment_id, nonPayment.raw], [null, { type: 'card_auth_succeeded' }], 'non-payment event stored without a payment id');
   }
   {
-    // A fetched payment is stored exactly as returned (including the fields
-    // auditCopy() drops); the only card data in it is Moyasar's masked number.
+    // A fetched payment is stored as returned (including the fields auditCopy()
+    // drops) minus source.token; the only card data in it is Moyasar's masked number.
     const raw = payment();
+    const original = structuredClone(raw);
     const row = fetchedPaymentEvidence('verify-payment', raw);
-    assertEqual(row.raw, raw, 'fetched: full response stored unmodified');
+    assertEqual(row.raw, paymentWithoutCardToken(), 'fetched: full response stored, minus source.token');
+    assertEqual('token' in (row.raw as any).source, false, 'fetched: source.token stripped');
+    assertEqual([(row.raw as any).ip, (row.raw as any).source.transaction_url], ['1.2.3.4', 'https://secret.example'],
+      'fetched: ip and transaction_url kept');
     assertEqual((row.raw as any).source.number, '4111-11XX-XXXX-1111', 'fetched: card number is the masked value Moyasar returns');
+    assertEqual(raw, original, 'fetched: the response object is not mutated');
+    assertEqual(withoutCardToken({ metadata: { token: 'x' }, source: [{ token: 'y', type: 'a' }] }),
+      { metadata: { token: 'x' }, source: [{ type: 'a' }] }, 'only token under source is stripped (also inside arrays)');
   }
 
   console.log('verifyAndConfirmPayment stores evidence before deciding');
@@ -425,7 +444,8 @@ async function run() {
     assertEqual(r.ok && r.state, 'confirmed', 'paid: still confirmed');
     assertEqual(s.paymentEvents.length, 1, 'paid: one evidence row inserted');
     const e = s.paymentEvents[0] ?? {};
-    assertEqual(e.raw, payment(), 'paid: raw is the full Moyasar response');
+    assertEqual(e.raw, paymentWithoutCardToken(), 'paid: raw is the full Moyasar response minus source.token');
+    assertEqual(JSON.stringify(e.raw).includes('tok_x'), false, 'paid: card token value not stored');
     assertEqual([e.source, e.event_type, e.booking_id, e.moyasar_payment_id, e.status, e.amount_halalas, e.currency],
       ['verify-payment', null, 'ART-1234567', PID, 'paid', 10000, 'SAR'], 'paid: columns');
   }

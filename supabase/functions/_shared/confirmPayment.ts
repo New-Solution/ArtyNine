@@ -119,11 +119,11 @@ export async function verifyAndConfirmPayment(
     return { ok: false, reason: fetched.reason, detail: fetched.detail };
   }
 
-  // 1b. Evidence: the full response exactly as Moyasar returned it, BEFORE
-  //     anything is decided, so every outcome (paid, failed, declined,
-  //     mismatch, already processed, unreadable) is on record. Moyasar only
-  //     returns masked card data (source.number like 4111-11XX-XXXX-1111, no
-  //     CVC); nothing is added. recordPaymentEvidence never throws, and its
+  // 1b. Evidence: the full response as Moyasar returned it, minus
+  //     source.token, BEFORE anything is decided, so every outcome (paid,
+  //     failed, declined, mismatch, already processed, unreadable) is on
+  //     record. Moyasar only returns masked card data (source.number like
+  //     4111-11XX-XXXX-1111, no CVC); nothing is added. recordPaymentEvidence never throws, and its
   //     result is deliberately ignored: logging can't change the answer.
   if (evidenceSource) {
     await recordPaymentEvidence(admin, fetchedPaymentEvidence(evidenceSource, fetched.payment), log);
