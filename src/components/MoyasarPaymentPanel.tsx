@@ -14,6 +14,13 @@
  * verify-payment (awaited by Moyasar.js before any 3-D Secure redirect, so the
  * payment is on record even if the customer never returns) -> Moyasar
  * redirects to callback_url -> the return handler in AppContext finishes.
+ *
+ * Apple Pay has no 3-D Secure step: the payment is usually already 'paid'
+ * when on_completed fires, so that first verify-payment call confirms the
+ * booking. Moyasar.js (v2.3.0) then closes the Apple Pay sheet and redirects
+ * to callback_url with ?id=…&status=paid exactly as for a card, and the return
+ * page's own verify-payment call answers 'confirmed' again (idempotent), so
+ * the customer lands on the same confirmation screen.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -35,6 +42,10 @@ interface Props {
   description: string;
   onExpired: () => void;
 }
+
+/** How long the Apple Pay sheet waits for verify-payment before Moyasar.js
+ *  moves on to the return page (which checks again). */
+const APPLE_PAY_VERIFY_WAIT_MS = 10_000;
 
 const formatClock = (ms: number) => {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -91,19 +102,29 @@ export const MoyasarPaymentPanel: React.FC<Props> = ({ bookingId, quote, descrip
           // What verify-payment matches the payment to. Never trusted alone:
           // the amount owed is the booking's, not the form's.
           metadata: { booking_id: bookingId },
-          ...(MOYASAR_METHODS.includes('applepay')
-            ? { apple_pay: { country: 'SA', label: 'Arty Café' } }
-            : {}),
+          apple_pay: {
+            country: 'SA',
+            label: 'Arty Café',
+            validate_merchant_url: 'https://api.moyasar.com/v1/applepay/initiate'
+          },
           on_completed: async payment => {
             // Record the payment before any 3-D Secure redirect. A failure here
             // is not the customer's problem: the return page and the
             // auto-cancel job both check again.
-            await verifyPayment(payment.id);
+            const verifying = verifyPayment(payment.id);
+            if (payment.source?.type === 'applepay') {
+              // The Apple Pay sheet stays open until this returns, and Apple
+              // gives up on it after about 30 s. Don't keep it waiting on a
+              // slow verify-payment: the redirect's return page verifies again.
+              await Promise.race([verifying, new Promise(r => window.setTimeout(r, APPLE_PAY_VERIFY_WAIT_MS))]);
+            } else {
+              await verifying;
+            }
           },
           on_failure: async () => {
             setFailure(t(
-              'The payment could not be started. Please check your card details and try again.',
-              'تعذّر بدء عملية الدفع. يرجى التحقق من بيانات البطاقة والمحاولة مرة أخرى.'
+              'The payment could not be started. Please check your payment details and try again.',
+              'تعذّر بدء عملية الدفع. يرجى التحقق من بيانات الدفع والمحاولة مرة أخرى.'
             ));
           }
         });
@@ -175,7 +196,7 @@ export const MoyasarPaymentPanel: React.FC<Props> = ({ bookingId, quote, descrip
 
       <div className="flex items-center justify-center gap-1.5 text-[11px] text-brand-muted pt-1">
         <Lock className="h-3.5 w-3.5 text-brand-sage" />
-        <span>{t('Card details go directly to Moyasar and are never stored by Arty.', 'تُرسل بيانات البطاقة مباشرة إلى Moyasar ولا يحتفظ بها Arty أبدًا.')}</span>
+        <span>{t('Payment details go directly to Moyasar and are never stored by Arty.', 'تُرسل بيانات الدفع مباشرة إلى Moyasar ولا يحتفظ بها Arty أبدًا.')}</span>
       </div>
     </div>
   );

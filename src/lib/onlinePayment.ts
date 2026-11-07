@@ -43,7 +43,7 @@ export interface MoyasarInitConfig {
   metadata?: Record<string, string>;
   fixed_width?: boolean;
   apple_pay?: { country: string; label: string; validate_merchant_url?: string };
-  on_completed?: (payment: { id: string; status: string }) => Promise<void>;
+  on_completed?: (payment: { id: string; status: string; source?: { type?: string } }) => Promise<void>;
   on_failure?: (error: unknown) => Promise<void>;
 }
 
@@ -92,18 +92,14 @@ export function loadMoyasar(): Promise<MoyasarGlobal> {
 }
 
 /**
- * Methods offered in the form. Cards (mada, Visa, Mastercard) by default.
- * Apple Pay needs the domain registered in the Moyasar dashboard (Settings →
- * Apple Pay Domains, file at /.well-known/apple-developer-merchantid-domain-association)
- * and STC Pay needs Moyasar to enable it on the account — add them through
- * VITE_MOYASAR_METHODS (e.g. "creditcard,applepay,stcpay") once done.
+ * Methods offered in the form: cards (mada, Visa, Mastercard) and Apple Pay.
+ * Moyasar.js shows the Apple Pay button only where Apple Pay can actually be
+ * used (HTTPS, Safari on an Apple device with a card in Wallet); everywhere
+ * else the form is cards only. Apple Pay needs the customer domain registered
+ * in the Moyasar dashboard (Settings → Apple Pay Domains), served from
+ * public/.well-known/apple-developer-merchantid-domain-association.
  */
-const SUPPORTED_METHODS = ['creditcard', 'applepay', 'stcpay'];
-export const MOYASAR_METHODS: string[] = (() => {
-  const raw = String(import.meta.env.VITE_MOYASAR_METHODS || 'creditcard');
-  const list = raw.split(',').map(s => s.trim().toLowerCase()).filter(m => SUPPORTED_METHODS.includes(m));
-  return list.length ? Array.from(new Set(list)) : ['creditcard'];
-})();
+export const MOYASAR_METHODS: string[] = ['creditcard', 'applepay'];
 
 /** What the database says a held booking owes. Null when it is not (or no
  *  longer) an unexpired hold. */

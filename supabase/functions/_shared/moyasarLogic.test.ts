@@ -60,6 +60,15 @@ function payment(over: Record<string, unknown> = {}) {
   };
 }
 
+/** A paid Apple Pay payment as Moyasar returns it: no 3-D Secure, already
+ *  'paid' when on_completed fires. */
+function applePayPayment(over: Record<string, unknown> = {}) {
+  return payment({
+    source: { type: 'applepay', company: 'mada', name: null, number: '4201-32XX-XXXX-1010', message: 'APPROVED', gateway_id: 'gw_x' },
+    ...over
+  });
+}
+
 // -----------------------------------------------------------------------------
 console.log('ids and keys');
 assertEqual(isMoyasarPaymentId(PID), true, 'uuid accepted');
@@ -86,6 +95,8 @@ assertEqual(readPayment(payment({ metadata: {} }))?.bookingId, null, 'no booking
 assertEqual(readPayment(payment({ metadata: { booking_id: '  ' } }))?.bookingId, null, 'blank booking id');
 assertEqual(readPayment({ id: 'nope', status: 'paid' }), null, 'bad id -> unreadable');
 assertEqual(readPayment(null), null, 'null -> unreadable');
+assertEqual(readPayment(applePayPayment())?.sourceType, 'applepay', 'Apple Pay payment readable, source type kept');
+assertEqual(readPayment(applePayPayment())?.bookingId, 'ART-1234567', 'Apple Pay booking id read from metadata');
 const audit = auditCopy(payment()) as any;
 assertEqual(audit.source.transaction_url, undefined, 'audit copy drops transaction_url');
 assertEqual(audit.source.token, undefined, 'audit copy drops token');
@@ -245,6 +256,36 @@ async function run() {
     assertEqual(r.ok && r.booking?.onlineAmount, 100, 'summary returned');
     assertEqual(r.ok && (r.booking as any)?.customerPhone, undefined, 'summary carries no phone');
     assertEqual(s.notifications.length, 0, 'no staff alert');
+  }
+  {
+    // Apple Pay: already paid on the first (on_completed) call -> confirmed,
+    // through exactly the same amount/currency/booking checks as a card.
+    const s = freshState();
+    const admin = fakeAdmin(s);
+    const r = await verifyAndConfirmPayment(admin, 'sk_test_abc', PID, fakeMoyasar(applePayPayment()), quiet);
+    assertEqual(r.ok && r.state, 'confirmed', 'Apple Pay paid -> confirmed');
+    assertEqual(s.rpcCalls, [{ fn: 'confirm_booking_payment', p_booking_id: 'ART-1234567', p_payment_id: PID, p_amount_halalas: 10000, p_currency: 'SAR' }],
+      'Apple Pay goes through the same confirm checks');
+    assertEqual(s.bookingPayments[PID]?.source_type, 'applepay', 'Apple Pay recorded as applepay');
+    assertEqual(r.ok && r.booking?.id, 'ART-1234567', 'Apple Pay: summary for the confirmation screen');
+    // The return page then asks again: same answer, same summary.
+    s.rpcResult = { outcome: 'already_confirmed', booking_payment_status: 'Deposit Paid' };
+    const r2 = await verifyAndConfirmPayment(admin, 'sk_test_abc', PID, fakeMoyasar(applePayPayment()), quiet);
+    assertEqual(r2.ok && r2.state, 'confirmed', 'Apple Pay: return page re-check still confirmed');
+    assertEqual(r2.ok && r2.booking?.id, 'ART-1234567', 'Apple Pay: return page gets the summary too');
+    assertEqual(s.notifications.length, 0, 'Apple Pay: no staff alert');
+  }
+  {
+    // Apple Pay keeps every other check: wrong amount -> mismatch.
+    const s = freshState({ rpcResult: { outcome: 'amount_mismatch', booking_payment_status: 'Awaiting Payment' } });
+    const r = await verifyAndConfirmPayment(fakeAdmin(s), 'sk_test_abc', PID, fakeMoyasar(applePayPayment({ amount: 100 })), quiet);
+    assertEqual(r.ok && r.state, 'mismatch', 'Apple Pay wrong amount -> mismatch');
+    // ...and an unpaid one is not confirmed.
+    const s2 = freshState();
+    const r2 = await verifyAndConfirmPayment(fakeAdmin(s2), 'sk_test_abc', PID,
+      fakeMoyasar(applePayPayment({ status: 'failed', source: { type: 'applepay', message: 'DECLINED' } })), quiet);
+    assertEqual(r2.ok && r2.state, 'failed', 'Apple Pay declined -> failed');
+    assertEqual(s2.rpcCalls.length, 0, 'Apple Pay declined: confirm not called');
   }
   {
     // Declined: recorded, nothing confirmed.

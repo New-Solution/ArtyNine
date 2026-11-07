@@ -32,19 +32,24 @@ the front end changes nothing for customers until step 6.
 | 2 | Edge Function secrets (test keys) | `npx supabase secrets set MOYASAR_SECRET_KEY=sk_test_… MOYASAR_MODE=test MOYASAR_WEBHOOK_SECRET=<long random string>` | `npx supabase secrets list` shows the three names (values hidden). |
 | 3 | Deploy functions | `npx supabase functions deploy verify-payment` · `npx supabase functions deploy moyasar-webhook` · `npx supabase functions deploy auto-cancel-bookings` · `npx supabase functions deploy notify-own-booking` | `config.toml` turns JWT verification off for `verify-payment` and `moyasar-webhook`; confirm in the dashboard (Functions → each → "Verify JWT" off). |
 | 4 | Webhook in Moyasar | Dashboard → Settings → Webhooks → Add Webhook. Endpoint `https://<project-ref>.supabase.co/functions/v1/moyasar-webhook`, method POST, secret token = `MOYASAR_WEBHOOK_SECRET`, events: `payment_paid`, `payment_failed`, `payment_refunded`, `payment_voided` | Moyasar shows the webhook active. |
-| 5 | Front-end key | Hosting env: `VITE_MOYASAR_PUBLISHABLE_KEY=pk_test_…` (optional `VITE_MOYASAR_METHODS=creditcard`), rebuild/redeploy | Settings → Online Payments shows "Moyasar: TEST key" and the switch is no longer greyed out. |
+| 5 | Front-end key | Hosting env: `VITE_MOYASAR_PUBLISHABLE_KEY=pk_test_…`, rebuild/redeploy | Settings → Online Payments shows "Moyasar: TEST key" and the switch is no longer greyed out. |
 | 6 | Turn it on | Settings → Online Payments → tick "Take payment online at checkout" → Save | Defaults: workshop deposit 100 SAR, birthday full price, hold 15 min. |
 
 To turn it **off** at any moment: untick and save. Holds already created keep
 working (they can still be paid or will expire); new bookings go back to the
 old flow.
 
-**Apple Pay / STC Pay** are off by default (cards: mada, Visa, Mastercard).
-Apple Pay: register the exact customer domain in Moyasar (Settings → Apple Pay
-Domains), put the downloaded file at
+**Methods:** cards (mada, Visa, Mastercard) and **Apple Pay** (set in
+`MOYASAR_METHODS`, `src/lib/onlinePayment.ts`). Moyasar.js shows the Apple Pay
+button only in Safari on an Apple device with a card in Wallet, over HTTPS;
+everyone else sees the card form alone. Apple Pay also needs the exact customer
+domain registered in Moyasar (Settings → Apple Pay Domains). The file Apple
+checks is served from
 `public/.well-known/apple-developer-merchantid-domain-association` (no
-extension), deploy, validate, then add `applepay` to `VITE_MOYASAR_METHODS`.
-STC Pay: ask Moyasar to enable it on the account, then add `stcpay`.
+extension, 228 bytes). Until the domain is validated, tapping the button opens
+the sheet and it closes straight away (merchant validation fails). Cards are
+unaffected. STC Pay: ask Moyasar to enable it on the account, then add
+`stcpay` to `MOYASAR_METHODS`.
 
 ---
 
@@ -141,6 +146,34 @@ Set Settings → Online Payments → hold to **5** minutes for these.
 | PAY-50 | Untick Online Payments, save; book a workshop. | Old flow (no Moyasar form); row is not a hold. |
 | PAY-51 | Untick while a customer has the Moyasar form open. | Their hold can still be paid and confirmed. |
 
+### G. Apple Pay
+
+Needs **Safari on an iPhone with a real card in Wallet**, with the site on the
+**test keys** (Settings → Online Payments shows "Moyasar: TEST key"). On test
+keys the real card is not charged. The customer domain must already be
+validated in Moyasar (Settings → Apple Pay Domains). Check first that
+`https://<customer domain>/.well-known/apple-developer-merchantid-domain-association`
+shows a single line of hex and not the site's HTML.
+
+**Test-mode amounts:** with Apple Pay on test keys, the result depends on the
+amount. **100–10,000 halalas (1–100 SAR) is approved**, so the 100 SAR workshop
+deposit approves. Larger amounts, such as a full-price birthday, can come back
+failed or declined **by design**. That is Moyasar's test behaviour, not a bug.
+
+| ID | Steps | Expected |
+|---|---|---|
+| PAY-60 | Open the payment step in Safari on the iPhone. Then open it in Chrome on a laptop or Android. | iPhone: a black Apple Pay button above the card form, with Moyasar's "or pay with" divider between them; the summary box, countdown and footer look as before. Elsewhere: no button and no divider, the card form exactly as in PAY-01. Nothing overlaps or overflows at phone width. |
+| PAY-61 | Workshop, 100 SAR deposit (PAY-01). Tap Apple Pay. | The sheet shows **Arty Café**, **100.00 SAR**. |
+| PAY-62 | Confirm with Face ID / Touch ID. | The sheet shows Done. The page goes to "Checking your payment…", then to **the same confirmation screen as a card payment** (PAY-02). Booking row: `Deposit Paid`, `moyasar_payment_id` and `paid_at` set. `booking_payments`: `status paid`, `outcome confirmed`, `source_type applepay`. No 3-D Secure page appears. |
+| PAY-63 | Arabic: switch to العربية, repeat PAY-61/62. | Form and divider right-to-left, the button still full width; the sheet's amount is in SAR; every message on the payment step, return page and confirmation in Arabic. |
+| PAY-64 | Tap Apple Pay, then cancel the sheet. | Back on the form, nothing charged, countdown still running, no `booking_payments` row. Paying by card or Apple Pay afterwards still works. |
+| PAY-65 | In test mode, pay an amount above 10,000 halalas with Apple Pay (e.g. a birthday at full price). | Can be **failed or declined, by design**. If it is: the return page says "Payment not completed…", the form is offered again while the hold lasts, and the row stays `Awaiting Payment`. `booking_payments` has the `failed` row with `source_type applepay`. |
+| PAY-66 | After PAY-62, query `select source_type, status, outcome, amount_halalas from booking_payments order by created_at desc limit 1;`. | `applepay / paid / confirmed / 10000`. Same amount, currency and booking checks as a card. |
+
+If the sheet opens and closes at once, the domain is not validated for the
+current mode. Check Settings → Apple Pay Domains in Moyasar and the
+`.well-known` file above.
+
 ---
 
 ## 4. Going live
@@ -149,6 +182,7 @@ Set Settings → Online Payments → hold to **5** minutes for these.
 2. `npx supabase secrets set MOYASAR_SECRET_KEY=sk_live_… MOYASAR_MODE=live` — the functions refuse to run if the key and mode disagree.
 3. Hosting env `VITE_MOYASAR_PUBLISHABLE_KEY=pk_live_…`, rebuild. Settings shows "LIVE key — real cards are charged".
 4. Add the webhook again under the **live** account (webhooks are per mode) with the same secret token.
+   Check the customer domain is also listed under Apple Pay Domains in live mode. Validate it there if it is not.
 5. One real payment of a small amount (temporarily set the workshop deposit to 1 SAR, or use a cheap test workshop), check it end to end, then refund it in the Moyasar dashboard and set the deposit back.
 6. Watch the first day: `select payment_status, count(*) from bookings where created_at > now() - interval '1 day' group by 1;` — any `Needs Refund`, or a growing `Expired` count, needs a look.
 
