@@ -1,4 +1,6 @@
--- STATUS: NOT APPLIED
+-- STATUS: APPLIED
+-- Applied manually in the Supabase SQL Editor on 7 Nov 2026; all checks passed, and the
+-- forbidden-keys constraint was confirmed to reject source.token directly.
 -- =============================================================================
 -- 0047 — MOYASAR PAYMENT EVENTS: AN APPEND-ONLY EVIDENCE LOG
 --
@@ -139,8 +141,15 @@ select
   has_table_privilege('service_role', 'public.moyasar_payment_events', 'insert') as service_insert,
   exists (select 1 from pg_trigger where tgname = 'moyasar_payment_events_append_only'
             and tgrelid = 'public.moyasar_payment_events'::regclass) as append_only_trigger,
-  pg_get_constraintdef((select oid from pg_constraint where conname = 'moyasar_payment_events_no_forbidden_keys'))
-    like '%source.token%' as forbidden_keys_check,
+  -- Postgres stores the jsonpath rewritten (e.g. '$.**."source"."token"'),
+  -- so check the constraint exists on this table, and match the definition
+  -- loosely rather than as the literal text written above.
+  exists (select 1 from pg_constraint c
+           where c.conname = 'moyasar_payment_events_no_forbidden_keys'
+             and c.conrelid = 'public.moyasar_payment_events'::regclass
+             and c.contype = 'c'
+             and pg_get_constraintdef(c.oid) like '%secret_token%'
+             and pg_get_constraintdef(c.oid) like '%source%token%') as forbidden_keys_check,
   exists (select 1 from pg_indexes where indexname = 'moyasar_payment_events_payment_idx') as payment_idx,
   exists (select 1 from pg_indexes where indexname = 'moyasar_payment_events_booking_idx') as booking_idx;
 
