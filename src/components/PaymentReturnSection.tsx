@@ -98,7 +98,7 @@ export const PaymentReturnSection: React.FC = () => {
 
   const check = useCallback(async () => {
     if (!paymentId) return;
-    const outcome = await verifyPayment(paymentId);
+    const outcome = await verifyPayment(paymentId, 'return-page');
 
     if (!outcome.ok) {
       // verify-payment unreachable. Keep trying a few times; never suggest

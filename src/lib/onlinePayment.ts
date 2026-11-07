@@ -152,10 +152,17 @@ export type VerifyOutcome =
  * Asks verify-payment to check a payment with Moyasar. Never throws. Safe to
  * call repeatedly for the same payment (the server is idempotent).
  */
-export async function verifyPayment(paymentId: string): Promise<VerifyOutcome> {
+export async function verifyPayment(
+  paymentId: string,
+  /** 'return-page' from the 3-D Secure callback page. Only labels the
+   *  server's evidence log entry; it does not affect verification. */
+  from?: 'return-page'
+): Promise<VerifyOutcome> {
   if (!supabase) return { ok: false, error: 'Supabase is not configured.' };
   try {
-    const { data, error } = await supabase.functions.invoke('verify-payment', { body: { paymentId } });
+    const { data, error } = await supabase.functions.invoke('verify-payment', {
+      body: from ? { paymentId, from } : { paymentId }
+    });
     let body: any = data;
     if (error) {
       // Non-2xx: the JSON body is still the function's answer when there is one.

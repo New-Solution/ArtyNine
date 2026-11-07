@@ -29,6 +29,7 @@
  */
 
 import { fetchMoyasarPayment, type FetchLike } from './moyasar.ts';
+import { fetchedPaymentEvidence, recordPaymentEvidence } from './paymentEvidence.ts';
 import {
   readPayment,
   auditCopy,
@@ -103,7 +104,11 @@ export async function verifyAndConfirmPayment(
   secretKey: string,
   paymentId: string,
   fetchImpl?: FetchLike,
-  log: (msg: string) => void = (m) => console.error(m)
+  log: (msg: string) => void = (m) => console.error(m),
+  /** When set, the fetched response is stored in moyasar_payment_events
+   *  (migration 0047) under this source. verify-payment sets it;
+   *  auto-cancel-bookings does not. */
+  evidenceSource?: 'verify-payment' | 'return-page'
 ): Promise<VerifyResult> {
   // 1. Moyasar's own record.
   const fetched = await fetchMoyasarPayment(paymentId, secretKey, fetchImpl);
@@ -112,6 +117,16 @@ export async function verifyAndConfirmPayment(
       log(`verifyAndConfirmPayment: fetching ${paymentId} failed: ${fetched.reason} ${fetched.detail ?? ''}`);
     }
     return { ok: false, reason: fetched.reason, detail: fetched.detail };
+  }
+
+  // 1b. Evidence: the full response exactly as Moyasar returned it, BEFORE
+  //     anything is decided, so every outcome (paid, failed, declined,
+  //     mismatch, already processed, unreadable) is on record. Moyasar only
+  //     returns masked card data (source.number like 4111-11XX-XXXX-1111, no
+  //     CVC); nothing is added. recordPaymentEvidence never throws, and its
+  //     result is deliberately ignored: logging can't change the answer.
+  if (evidenceSource) {
+    await recordPaymentEvidence(admin, fetchedPaymentEvidence(evidenceSource, fetched.payment), log);
   }
 
   const facts = readPayment(fetched.payment);

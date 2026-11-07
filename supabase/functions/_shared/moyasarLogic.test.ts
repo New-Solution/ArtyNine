@@ -28,6 +28,13 @@ import {
 } from './moyasarLogic.ts';
 import { verifyAndConfirmPayment, type AdminClient } from './confirmPayment.ts';
 import { fetchMoyasarPayment } from './moyasar.ts';
+import {
+  withoutSecretToken,
+  webhookEvidence,
+  fetchedPaymentEvidence,
+  recordPaymentEvidence,
+  type EvidenceClient
+} from './paymentEvidence.ts';
 
 let passed = 0;
 let failed = 0;
@@ -154,6 +161,10 @@ interface FakeState {
   rpcResult: { outcome: string; booking_payment_status: string | null } | null;
   rpcError?: string;
   failSelectOn?: string;
+  /** moyasar_payment_events rows (migration 0047). */
+  paymentEvents: Record<string, any>[];
+  /** Make the evidence insert return an error, or throw. */
+  evidenceFailure?: 'error' | 'throw';
 }
 
 function fakeAdmin(state: FakeState): AdminClient {
@@ -185,6 +196,15 @@ function fakeAdmin(state: FakeState): AdminClient {
         update(patch: Record<string, unknown>) { pendingUpdate = patch; return builder; },
         insert(row: Record<string, any>) {
           if (table === 'notifications') state.notifications.push(row);
+          if (table === 'moyasar_payment_events') {
+            if (state.evidenceFailure === 'throw') throw new Error('connection reset');
+            if (state.evidenceFailure === 'error') return Promise.resolve({ error: { message: 'relation does not exist', code: '42P01' } });
+            // Like the real foreign key.
+            if (row.booking_id && !state.bookings[row.booking_id]) {
+              return Promise.resolve({ error: { message: 'violates foreign key constraint', code: '23503' } });
+            }
+            state.paymentEvents.push(structuredClone(row));
+          }
           return Promise.resolve({ error: null });
         }
       };
@@ -209,6 +229,7 @@ function freshState(over: Partial<FakeState> = {}): FakeState {
     },
     bookingPayments: {},
     notifications: [],
+    paymentEvents: [],
     rpcCalls: [],
     rpcResult: { outcome: 'confirmed', booking_payment_status: 'Deposit Paid' },
     ...over
@@ -361,6 +382,133 @@ async function run() {
     assertEqual(!r.ok && r.reason, 'not_found', '404 -> not_found');
     const r2 = await verifyAndConfirmPayment(fakeAdmin(s), 'sk_test_abc', PID, fakeMoyasar({}, 401), quiet);
     assertEqual(!r2.ok && r2.reason, 'unauthorized', '401 -> unauthorized');
+  }
+
+  console.log('payment evidence (moyasar_payment_events, migration 0047)');
+  {
+    // secret_token is stripped from webhook bodies — top level and nested —
+    // and nothing else changes.
+    const body = {
+      id: 'evt-1', type: 'payment_paid', created_at: '2099-01-01T00:00:00Z', live: false,
+      secret_token: 'whsec_super_secret', account_name: 'Arty',
+      data: { ...payment(), metadata: { booking_id: 'ART-1234567', secret_token: 'nested' } }
+    };
+    const original = structuredClone(body);
+    const row = webhookEvidence(body);
+    const stored = JSON.stringify(row.raw);
+    assertEqual(stored.includes('secret_token'), false, 'webhook: no secret_token key anywhere in raw');
+    assertEqual(stored.includes('whsec_super_secret') || stored.includes('nested'), false, 'webhook: no secret value in raw');
+    const { secret_token: _t, ...rest } = original;
+    const expected = { ...rest, data: { ...rest.data, metadata: { booking_id: 'ART-1234567' } } };
+    assertEqual(row.raw, expected, 'webhook: everything except secret_token stored as received');
+    assertEqual(body, original, 'webhook: the incoming body is not mutated');
+    assertEqual([row.source, row.event_type, row.moyasar_payment_id, row.booking_id, row.status, row.amount_halalas, row.currency],
+      ['webhook', 'payment_paid', PID, 'ART-1234567', 'paid', 10000, 'SAR'], 'webhook: indexed columns read from data');
+    assertEqual(withoutSecretToken([{ secret_token: 1, a: 2 }]), [{ a: 2 }], 'secret_token stripped inside arrays');
+    const nonPayment = webhookEvidence({ type: 'card_auth_succeeded', secret_token: 'x' });
+    assertEqual([nonPayment.moyasar_payment_id, nonPayment.raw], [null, { type: 'card_auth_succeeded' }], 'non-payment event stored without a payment id');
+  }
+  {
+    // A fetched payment is stored exactly as returned (including the fields
+    // auditCopy() drops); the only card data in it is Moyasar's masked number.
+    const raw = payment();
+    const row = fetchedPaymentEvidence('verify-payment', raw);
+    assertEqual(row.raw, raw, 'fetched: full response stored unmodified');
+    assertEqual((row.raw as any).source.number, '4111-11XX-XXXX-1111', 'fetched: card number is the masked value Moyasar returns');
+  }
+
+  console.log('verifyAndConfirmPayment stores evidence before deciding');
+  {
+    // Paid -> evidence row with the full raw body.
+    const s = freshState();
+    const r = await verifyAndConfirmPayment(fakeAdmin(s), 'sk_test_abc', PID, fakeMoyasar(payment()), quiet, 'verify-payment');
+    assertEqual(r.ok && r.state, 'confirmed', 'paid: still confirmed');
+    assertEqual(s.paymentEvents.length, 1, 'paid: one evidence row inserted');
+    const e = s.paymentEvents[0] ?? {};
+    assertEqual(e.raw, payment(), 'paid: raw is the full Moyasar response');
+    assertEqual([e.source, e.event_type, e.booking_id, e.moyasar_payment_id, e.status, e.amount_halalas, e.currency],
+      ['verify-payment', null, 'ART-1234567', PID, 'paid', 10000, 'SAR'], 'paid: columns');
+  }
+  {
+    // Failed / declined -> evidence row.
+    const s = freshState();
+    const declined = payment({ status: 'failed', source: { type: 'creditcard', number: '4111-11XX-XXXX-1111', message: 'INSUFFICIENT FUNDS' } });
+    const r = await verifyAndConfirmPayment(fakeAdmin(s), 'sk_test_abc', PID, fakeMoyasar(declined), quiet, 'return-page');
+    assertEqual(r.ok && r.state, 'failed', 'failed: still failed');
+    assertEqual(s.paymentEvents.length, 1, 'failed: evidence row inserted');
+    assertEqual([s.paymentEvents[0]?.source, s.paymentEvents[0]?.status, s.paymentEvents[0]?.raw], ['return-page', 'failed', declined],
+      'failed: return-page source, full raw');
+  }
+  {
+    // Amount mismatch -> evidence on the first call AND on the already-processed retry.
+    const s = freshState({ rpcResult: { outcome: 'amount_mismatch', booking_payment_status: 'Awaiting Payment' } });
+    const admin = fakeAdmin(s);
+    const r1 = await verifyAndConfirmPayment(admin, 'sk_test_abc', PID, fakeMoyasar(payment({ amount: 100 })), quiet, 'verify-payment');
+    const r2 = await verifyAndConfirmPayment(admin, 'sk_test_abc', PID, fakeMoyasar(payment({ amount: 100 })), quiet, 'return-page');
+    assertEqual([r1.ok && r1.state, r2.ok && r2.state], ['mismatch', 'mismatch'], 'mismatch: answers unchanged');
+    assertEqual(s.paymentEvents.map((ev) => [ev.source, ev.amount_halalas]), [['verify-payment', 100], ['return-page', 100]],
+      'mismatch: evidence for the first call and the already-processed retry');
+    assertEqual(s.rpcCalls.length, 1, 'mismatch: evidence does not change the retry short-cut');
+  }
+  {
+    // Already confirmed (a re-check) -> evidence too.
+    const s = freshState({ rpcResult: { outcome: 'already_confirmed', booking_payment_status: 'Deposit Paid' } });
+    const r = await verifyAndConfirmPayment(fakeAdmin(s), 'sk_test_abc', PID, fakeMoyasar(payment()), quiet, 'return-page');
+    assertEqual([r.ok && r.state, s.paymentEvents.length], ['confirmed', 1], 'already processed: evidence row inserted');
+  }
+  {
+    // Unknown booking: the foreign key refuses the link; the evidence is kept without it.
+    const s = freshState();
+    const p = payment({ metadata: { booking_id: 'ART-0000000' } });
+    const r = await verifyAndConfirmPayment(fakeAdmin(s), 'sk_test_abc', PID, fakeMoyasar(p), quiet, 'verify-payment');
+    assertEqual(r.ok && r.state, 'not_found', 'unknown booking: answer unchanged');
+    assertEqual([s.paymentEvents.length, s.paymentEvents[0]?.booking_id, s.paymentEvents[0]?.raw?.metadata?.booking_id],
+      [1, null, 'ART-0000000'], 'unknown booking: stored with booking_id null, id still in raw');
+  }
+  {
+    // An unreadable answer from Moyasar is evidence too (stored before it is judged).
+    const s = freshState();
+    const r = await verifyAndConfirmPayment(fakeAdmin(s), 'sk_test_abc', PID, fakeMoyasar(payment({ id: PID2 })), quiet, 'verify-payment');
+    assertEqual([!r.ok && r.reason, s.paymentEvents.length], ['unavailable', 1], 'mismatched id: refused, but stored');
+  }
+  {
+    // auto-cancel-bookings passes no source: nothing stored.
+    const s = freshState();
+    await verifyAndConfirmPayment(fakeAdmin(s), 'sk_test_abc', PID, fakeMoyasar(payment()), quiet);
+    assertEqual(s.paymentEvents.length, 0, 'no evidence source: nothing stored');
+  }
+  {
+    // A failing or throwing insert never changes the result or side effects.
+    const cases: Array<[string, Record<string, unknown>, Partial<FakeState>]> = [
+      ['paid', payment(), {}],
+      ['failed', payment({ status: 'failed', source: { type: 'creditcard', message: 'DECLINED' } }), {}],
+      ['mismatch', payment({ amount: 100 }), { rpcResult: { outcome: 'amount_mismatch', booking_payment_status: 'Awaiting Payment' } }]
+    ];
+    for (const [label, p, over] of cases) {
+      const baseline = freshState(over);
+      const expected = await verifyAndConfirmPayment(fakeAdmin(baseline), 'sk_test_abc', PID, fakeMoyasar(p), quiet, 'verify-payment');
+      for (const mode of ['error', 'throw'] as const) {
+        const s = freshState({ ...over, evidenceFailure: mode });
+        const logged: string[] = [];
+        const r = await verifyAndConfirmPayment(fakeAdmin(s), 'sk_test_abc', PID, fakeMoyasar(p), (m) => logged.push(m), 'verify-payment');
+        assertEqual(r, expected, `${label}: evidence insert ${mode} -> identical result`);
+        assertEqual([s.rpcCalls.length, s.notifications.length, s.bookingPayments[PID]?.outcome ?? null],
+          [baseline.rpcCalls.length, baseline.notifications.length, baseline.bookingPayments[PID]?.outcome ?? null],
+          `${label}: evidence insert ${mode} -> same side effects`);
+        assertEqual(logged.some((m) => m.startsWith('recordPaymentEvidence:')), true, `${label}: evidence insert ${mode} is logged`);
+      }
+    }
+  }
+  {
+    // recordPaymentEvidence itself never throws, even if the client does.
+    const exploding: EvidenceClient = { from() { throw new Error('client gone'); } };
+    let threw = false;
+    try {
+      await recordPaymentEvidence(exploding, webhookEvidence({ type: 'payment_paid', data: payment() }), quiet);
+    } catch {
+      threw = true;
+    }
+    assertEqual(threw, false, 'recordPaymentEvidence never throws');
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

@@ -16,7 +16,10 @@
  *
  * WHAT IT DOES
  *   POST { paymentId } -> fetch GET /v1/payments/{id} from Moyasar with
- *   MOYASAR_SECRET_KEY -> record it in booking_payments -> if status is
+ *   MOYASAR_SECRET_KEY -> store Moyasar's full response, as returned, in the
+ *   evidence log moyasar_payment_events (migration 0047; source
+ *   'verify-payment', or 'return-page' when the body says from: 'return-page')
+ *   -> record it in booking_payments -> if status is
  *   'paid', confirm_booking_payment() (migration 0046) checks currency, the
  *   exact halalas the booking owes, that the payment pays nothing else, and
  *   that the place is still free -> booking becomes Deposit Paid / Paid.
@@ -92,8 +95,11 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, error: 'paymentId must be a Moyasar payment id.' }, 400);
   }
 
+  // Evidence label only; see contract.ts. Never affects the decision.
+  const evidenceSource = body?.from === 'return-page' ? 'return-page' : 'verify-payment';
+
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
-  const result = await verifyAndConfirmPayment(admin, secretKey, paymentId);
+  const result = await verifyAndConfirmPayment(admin, secretKey, paymentId, undefined, undefined, evidenceSource);
 
   if (!result.ok) {
     switch (result.reason) {

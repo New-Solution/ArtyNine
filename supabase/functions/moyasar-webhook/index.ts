@@ -37,6 +37,14 @@
  *   401  wrong or missing secret_token
  *   500  not configured, or Moyasar/the database did not answer — retried
  *
+ * EVIDENCE (migration 0047)
+ * Every event that passes the secret_token check — payment or not, handled or
+ * ignored — is stored in moyasar_payment_events (source 'webhook') before
+ * anything else happens, with secret_token REMOVED from the body. Nothing
+ * else is changed or added; Moyasar's payment data only ever carries masked
+ * card details (no full number, no CVC). Verification-code events are not
+ * stored. A failed insert is logged and never changes the response.
+ *
  * verify_jwt = false (config.toml): Moyasar sends no Supabase JWT.
  *
  * SECRETS: MOYASAR_WEBHOOK_SECRET, MOYASAR_SECRET_KEY, optional MOYASAR_MODE,
@@ -46,6 +54,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
 import { verifyAndConfirmPayment } from '../_shared/confirmPayment.ts';
 import { parseWebhook, secretKeyProblem, tokensMatch, keyMode, webhookVerification } from '../_shared/moyasarLogic.ts';
+import { recordPaymentEvidence, webhookEvidence } from '../_shared/paymentEvidence.ts';
 
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -89,6 +98,11 @@ Deno.serve(async (req: Request) => {
     return reply(401, { error: 'Unauthorized.' });
   }
 
+  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+
+  // Evidence: the body as received, minus secret_token. Never throws.
+  await recordPaymentEvidence(admin, webhookEvidence(body));
+
   const parsed = parseWebhook(body);
   if (parsed.kind === 'invalid') {
     console.error(`moyasar-webhook: unreadable event ${body?.id ?? ''}: ${parsed.reason}`);
@@ -106,7 +120,6 @@ Deno.serve(async (req: Request) => {
     return reply(200, { ignored: 'mode mismatch' });
   }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
   const result = await verifyAndConfirmPayment(admin, secretKey, parsed.paymentId);
 
   if (!result.ok) {

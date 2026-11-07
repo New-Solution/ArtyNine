@@ -14,6 +14,11 @@ export interface VerifyPaymentRequest {
    *  `id` query parameter Moyasar appends to the callback_url. Nothing else is
    *  accepted — amount, status and booking are read from Moyasar. */
   paymentId: string;
+  /** Who is asking, for the evidence log only (moyasar_payment_events.source,
+   *  migration 0047): 'return-page' from the 3-D Secure callback page,
+   *  omitted from the payment step. An unchecked label — it changes nothing
+   *  about how the payment is verified or decided. */
+  from?: 'return-page';
 }
 
 export interface VerifyPaymentResponse {
