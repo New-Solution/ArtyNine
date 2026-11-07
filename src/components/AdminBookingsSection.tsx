@@ -738,7 +738,7 @@ export const AdminBookingsSection: React.FC = () => {
                   <th className="p-4">{t('Workshop', 'الورشة')}</th>
                   <th className="p-4">{t('Date & Time', 'التاريخ والوقت')}</th>
                   <th className="p-4 text-center">{t('Artists', 'الفنانون')}</th>
-                  <th className="p-4 text-right cursor-pointer hover:text-brand-terracotta" onClick={() => { setSortField('totalPrice'); setSortAsc(!sortAsc); }}>
+                  <th className="p-4 text-end cursor-pointer hover:text-brand-terracotta" onClick={() => { setSortField('totalPrice'); setSortAsc(!sortAsc); }}>
                     {t('Total', 'الإجمالي')} {sortField === 'totalPrice' && (sortAsc ? '▲' : '▼')}
                   </th>
                   <th className="p-4">{t('Status', 'الحالة')}</th>
@@ -791,7 +791,8 @@ export const AdminBookingsSection: React.FC = () => {
                           </span>
                         </td>
                         <td className="p-4 text-center font-bold">{b.participants}</td>
-                        <td className="p-4 text-right font-bold text-brand-charcoal">
+                        {/* text-end, not text-right: the amount column mirrors in Arabic, matching the cell's items-end. */}
+                        <td className="p-4 text-end font-bold text-brand-charcoal">
                           {b.id.startsWith('Q-') ? '-' : <PaymentAmountsCell booking={b} align="end" />}
                         </td>
                         <td className="p-4">

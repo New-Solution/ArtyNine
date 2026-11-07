@@ -215,13 +215,25 @@ export function paymentBreakdown(b: PaidFields): PaymentBreakdown {
     ? NaN
     : Number(b.onlineAmount);
   const mode = b.paymentMode === 'deposit' || b.paymentMode === 'full' ? b.paymentMode : null;
-  // Paid online: a recorded Moyasar payment, or (on the confirmation screen,
-  // built from verify-payment's summary, which carries no payment id) a paid
-  // status with an online amount.
-  const online = !!mode && Number.isFinite(amount) && (!!b.moyasarPaymentId || isPaidStatus(b.paymentStatus));
+  // Paid online means BOTH a recorded Moyasar payment AND a status saying the
+  // money arrived (Deposit Paid / Paid) or arrived and is being / was returned
+  // (Needs Refund / Refunded). An expired hold, or a hold cancelled before
+  // paying, has an online amount but no payment: it was never paid.
+  const online = !!mode && Number.isFinite(amount) && isOnlinePaidRecord(b);
   if (!online) return { online: false, mode, total, paid: total, balance: 0 };
   const paid = round2(amount);
-  return { online: true, mode, total, paid, balance: mode === 'deposit' ? Math.max(0, round2(total - paid)) : 0 };
+  // A studio balance exists only while the payment is kept: a refunded or
+  // refund-due booking owes the studio nothing more.
+  const balance = mode === 'deposit' && isPaidStatus(b.paymentStatus) ? Math.max(0, round2(total - paid)) : 0;
+  return { online: true, mode, total, paid, balance };
+}
+
+/** Statuses a booking can have once Moyasar money actually arrived for it. */
+const ONLINE_PAID_STATUSES = ['Deposit Paid', 'Paid', 'Needs Refund', 'Refunded'];
+
+/** A Moyasar payment is recorded and the status says the money arrived. */
+export function isOnlinePaidRecord(b: { moyasarPaymentId?: string | null; paymentStatus?: string | null }): boolean {
+  return !!b.moyasarPaymentId && ONLINE_PAID_STATUSES.includes(String(b.paymentStatus ?? ''));
 }
 
 /**

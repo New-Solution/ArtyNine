@@ -29,21 +29,22 @@ export const PaymentAmountsCell: React.FC<{ booking: AmountFields; totalClassNam
   const sar = t('SAR', 'ريال');
 
   if (!pay.online) {
-    return <span className={totalClassName}>{booking.totalPrice} {sar}</span>;
+    return <span className={`whitespace-nowrap ${totalClassName ?? ''}`}>{booking.totalPrice} {sar}</span>;
   }
 
   return (
     <span className={`inline-flex flex-col gap-0.5 ${align === 'end' ? 'items-end text-end' : 'items-start text-start'}`}>
       <span className={totalClassName}>
         <span className="font-normal text-brand-charcoal/50">{t('Total', 'الإجمالي')}: </span>
-        <span className="ltr-numerals">{sarAmount(pay.total)}</span> {sar}
+        {/* The amount and its currency never split across lines. */}
+        <span className="whitespace-nowrap"><span className="ltr-numerals">{sarAmount(pay.total)}</span> {sar}</span>
       </span>
       <span className="text-[10px] font-semibold text-emerald-700">
-        {t('Paid online', 'مدفوع إلكترونيًا')}: <span className="ltr-numerals">{sarAmount(pay.paid)}</span> {sar}
+        {t('Paid online', 'مدفوع إلكترونيًا')}: <span className="whitespace-nowrap"><span className="ltr-numerals">{sarAmount(pay.paid)}</span> {sar}</span>
       </span>
       {pay.balance > 0 && (
         <span className="text-[10px] font-semibold text-amber-700">
-          {t('Balance due at studio', 'المتبقي في الاستوديو')}: <span className="ltr-numerals">{sarAmount(pay.balance)}</span> {sar}
+          {t('Balance due at studio', 'المتبقي في الاستوديو')}: <span className="whitespace-nowrap"><span className="ltr-numerals">{sarAmount(pay.balance)}</span> {sar}</span>
         </span>
       )}
     </span>

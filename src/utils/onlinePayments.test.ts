@@ -104,7 +104,27 @@ console.log('paid vs total');
 const dep150 = { totalPrice: 150, paymentStatus: 'Deposit Paid', paymentMode: 'deposit' as const, onlineAmount: '100.00', moyasarPaymentId: 'p1' };
 assertEqual(paymentBreakdown(dep150), { online: true, mode: 'deposit', total: 150, paid: 100, balance: 50 }, 'deposit 100 of 150 (numeric string from Postgres)');
 assertEqual(paymentBreakdown({ totalPrice: 1200, paymentStatus: 'Paid', paymentMode: 'full', onlineAmount: 1200, moyasarPaymentId: 'p2' }), { online: true, mode: 'full', total: 1200, paid: 1200, balance: 0 }, 'full payment');
-assertEqual(paymentBreakdown({ totalPrice: 150, paymentStatus: 'Deposit Paid', paymentMode: 'deposit', onlineAmount: 100 }).online, true, 'confirmation screen: paid status + amount, no payment id');
+assertEqual(paymentBreakdown({ totalPrice: 150, paymentStatus: 'Deposit Paid', paymentMode: 'deposit', onlineAmount: 100 }).online, false, 'no recorded Moyasar payment -> not paid online');
+assertEqual(paymentBreakdown({ totalPrice: 150, paymentStatus: 'Deposit Paid', paymentMode: 'deposit', onlineAmount: 100, moyasarPaymentId: 'verified' }).online, true, 'confirmation screen: verified payment id carried');
+
+console.log('never paid: expired and cancelled-unpaid holds');
+const expired = { totalPrice: 150, paymentStatus: 'Expired', paymentMode: 'deposit' as const, onlineAmount: '100.00', moyasarPaymentId: null };
+const cancelledHold = { totalPrice: 150, paymentStatus: 'Awaiting Payment', paymentMode: 'deposit' as const, onlineAmount: 100, moyasarPaymentId: null };
+assertEqual(paymentBreakdown(expired), { online: false, mode: 'deposit', total: 150, paid: 150, balance: 0 }, 'expired hold: not paid online, no balance');
+assertEqual(paymentBreakdown(cancelledHold), { online: false, mode: 'deposit', total: 150, paid: 150, balance: 0 }, 'cancelled unpaid hold: not paid online, no balance');
+assertEqual(collectedAmount(expired), 0, 'expired hold collects nothing');
+assertEqual(collectedAmount(cancelledHold), 0, 'cancelled unpaid hold collects nothing');
+assertEqual(studioBalanceDue(expired), 0, 'expired hold: no studio balance');
+assertEqual(studioBalanceDue(cancelledHold), 0, 'cancelled unpaid hold: no studio balance');
+assertEqual(paymentBreakdown({ ...expired, moyasarPaymentId: 'p-declined' }).online, false, 'expired with a declined payment on record: still not paid');
+assertEqual(paymentBreakdown({ ...cancelledHold, moyasarPaymentId: 'p-x' }).online, false, 'a payment id alone is not enough: status must say paid');
+
+console.log('refund states keep the paid record, drop the balance');
+const refundDue = { totalPrice: 150, paymentStatus: 'Needs Refund', paymentMode: 'deposit' as const, onlineAmount: 100, moyasarPaymentId: 'p3' };
+assertEqual(paymentBreakdown(refundDue), { online: true, mode: 'deposit', total: 150, paid: 100, balance: 0 }, 'Needs Refund: paid 100 shown, no studio balance');
+assertEqual(paymentBreakdown({ ...refundDue, paymentStatus: 'Refunded' }), { online: true, mode: 'deposit', total: 150, paid: 100, balance: 0 }, 'Refunded: paid 100 shown, no studio balance');
+assertEqual(collectedAmount(refundDue), 0, 'Needs Refund is not revenue');
+assertEqual(studioBalanceDue({ ...refundDue, paymentStatus: 'Refunded' }), 0, 'Refunded owes nothing');
 assertEqual(paymentBreakdown({ totalPrice: 150, paymentStatus: 'Awaiting Payment', paymentMode: 'deposit', onlineAmount: 100 }), { online: false, mode: 'deposit', total: 150, paid: 150, balance: 0 }, 'unpaid hold is not online-paid');
 assertEqual(paymentBreakdown({ totalPrice: 300, paymentStatus: 'Paid' }), { online: false, mode: null, total: 300, paid: 300, balance: 0 }, 'legacy booking unchanged');
 assertEqual(collectedAmount(dep150), 100, 'revenue counts the deposit, not the total');

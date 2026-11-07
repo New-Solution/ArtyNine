@@ -1,4 +1,5 @@
--- STATUS: NOT APPLIED
+-- STATUS: APPLIED
+-- Applied manually in the Supabase SQL Editor on 7 Nov 2026; all 15 manual tests passed.
 -- =============================================================================
 -- 0046 — ONLINE PAYMENTS (MOYASAR): HOLD, VERIFY, CONFIRM
 --
@@ -1231,7 +1232,7 @@ BEGIN
   -- 6. Staff are unchanged: what they send is what is written.
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000046c1","role":"authenticated"}', true);
-  PERFORM public.book_session_seats((v_seats - 'participants' - 'status') || '{"id":"TEST-0046-6","participants":1,"session_id":"TEST-0046-S2"}', 'TEST-0046-S2');
+  PERFORM public.book_session_seats((v_seats - 'participants' - 'status' - 'moyasar_payment_id' - 'paid_at') || '{"id":"TEST-0046-6","participants":1,"session_id":"TEST-0046-S2"}', 'TEST-0046-S2');
   PERFORM set_config('role', v_editor, true);
   SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0046-6';
   ASSERT r.payment_status = 'Paid' AND r.total_price = 1 AND r.payment_expires_at IS NULL,

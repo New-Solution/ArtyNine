@@ -83,6 +83,10 @@ export const PaymentReturnSection: React.FC = () => {
       paymentStatus: (b?.paymentStatus as Booking['paymentStatus']) ?? 'Paid',
       paymentMode: b?.paymentMode === 'full' ? 'full' : b?.paymentMode === 'deposit' ? 'deposit' : undefined,
       onlineAmount: b?.onlineAmount ?? undefined,
+      // The payment verify-payment just confirmed with Moyasar. Carried so the
+      // confirmation screen treats this exactly like any other online-paid
+      // booking (paymentBreakdown requires a recorded payment).
+      moyasarPaymentId: paymentId ?? undefined,
       createdAt: nowIso,
       timeline: []
     };
