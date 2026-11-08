@@ -1091,21 +1091,27 @@ export const BirthdayBookingSection: React.FC = () => {
               {estimatedTotal ? `${estimatedTotal} ${t('SAR', 'ريال')}` : '—'}
             </span>
           </div>
-          <div className="flex items-center justify-between gap-4">
-            <span className="font-semibold text-brand-charcoal">
-              {payMode === 'full' ? t('Due today', 'المستحق اليوم') : t('Deposit due today', 'العربون المستحق اليوم')}
-            </span>
-            <span className="font-display text-xl font-semibold text-brand-terracotta ltr-numerals">
-              {depositAmount} {t('SAR', 'ريال')}
-            </span>
-          </div>
+          {/* Payments off: nothing is charged online (0050 saves the booking
+              Unpaid), so the deposit is shown as due AT THE STUDIO, not today. */}
+          {(onlineLive || depositAmount > 0) && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="font-semibold text-brand-charcoal">
+                {!onlineLive
+                  ? t('Deposit due at the studio', 'العربون المستحق في الاستوديو')
+                  : payMode === 'full' ? t('Due today', 'المستحق اليوم') : t('Deposit due today', 'العربون المستحق اليوم')}
+              </span>
+              <span className="font-display text-xl font-semibold text-brand-terracotta ltr-numerals">
+                {depositAmount} {t('SAR', 'ريال')}
+              </span>
+            </div>
+          )}
           <p className="text-[11px] leading-relaxed text-brand-muted">
-            {payMode === 'full'
+            {!onlineLive
+              ? t('Pay at the studio — nothing charged online.', 'الدفع في الاستوديو — لا يُخصم أي مبلغ إلكترونيًا.')
+              : payMode === 'full'
               ? t('Paid in full online. Any cake upgrade is added at the studio. Cancel more than 24 hours ahead for a refund.', 'يُدفع المبلغ كاملًا إلكترونيًا. أي ترقية للكعكة تُضاف في الاستوديو. يُسترد المبلغ عند الإلغاء قبل أكثر من 24 ساعة.')
-              : onlineLive
-                // Online deposit: never refunded on a customer cancellation (0048).
-                ? t('The deposit is non-refundable. The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'العربون غير قابل للاسترداد. يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')
-                : t('The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')}
+              // Online deposit: never refunded on a customer cancellation (0048).
+              : t('The deposit is non-refundable. The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'العربون غير قابل للاسترداد. يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')}
           </p>
         </div>
       </div>
@@ -1449,9 +1455,12 @@ export const BirthdayBookingSection: React.FC = () => {
                   type="submit"
                   className="cursor-pointer rounded-full bg-brand-terracotta px-8 py-4 text-base font-semibold text-brand-cream shadow-button transition-colors hover:bg-brand-terracotta-hover active:scale-[0.99]"
                 >
-                  {payMode === 'full'
-                    ? <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR', 'ريال')}</>
-                    : <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR Deposit', 'ريال عربون')}</>}
+                  {!onlineLive
+                    // Nothing is charged online, so the button must not say "Pay".
+                    ? t('Confirm Booking — Pay at the studio', 'تأكيد الحجز — الدفع في الاستوديو')
+                    : payMode === 'full'
+                      ? <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR', 'ريال')}</>
+                      : <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR Deposit', 'ريال عربون')}</>}
                 </button>
               )}
             </div>
