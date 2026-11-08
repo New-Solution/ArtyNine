@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Plus, Trash2, Edit2, Check, X, ArrowUp, ArrowDown, Save, UserPlus, Shield, Info,
@@ -32,12 +32,61 @@ import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { displayPosition } from '../utils/staffPosition';
 import { CategoryArabicNames } from './CategoryArabicNames';
+import { SaveErrorBanner, useSaveError } from './ui/SaveErrorBanner';
+import { useServerDraft, ServerChangedNotice } from './ui/useServerDraft';
+
+/** What each section saves, for the failed-save message (EN + AR). */
+const SAVE_WHAT = {
+  stages: { en: 'the pipeline stages', ar: 'مراحل المسار' },
+  fields: { en: 'the workshop fields', ar: 'حقول الورشة' },
+  popup: { en: 'the booking pop-up', ar: 'النافذة المنبثقة للحجز' },
+  staff: { en: 'the staff registry', ar: 'سجل الموظفين' },
+  permissions: { en: 'console access and permissions', ar: 'الوصول إلى لوحة التحكم والصلاحيات' }
+};
 
 /** Arabic labels for the workshop field types. The English labels live in WORKSHOP_FIELD_TYPES (types.ts). */
 const FIELD_TYPE_AR: Record<string, string> = {
   short_text: 'نص قصير', long_text: 'نص طويل / منطقة نص', rich_text: 'نص منسق', number: 'رقم',
   dropdown: 'قائمة منسدلة', multi_select: 'اختيار متعدد', tags: 'وسوم', checkbox: 'مربع اختيار',
   date: 'تاريخ', time: 'وقت'
+};
+
+/**
+ * A small text box for one stage field. The value is held locally while the
+ * box has focus and saved once, on blur or Enter, and only if it changed.
+ * Writing on every keystroke (the old behaviour) re-rendered the box from the
+ * database mid-typing and could drop characters.
+ */
+const StageTextInput: React.FC<{
+  label: string;
+  value: string;
+  placeholder?: string;
+  rtl?: boolean;
+  onSave: (value: string) => Promise<unknown> | void;
+}> = ({ label, value, placeholder, rtl, onSave }) => {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const next = draft.trim();
+    setDraft(null);
+    if (next !== value.trim()) onSave(next);
+  };
+  return (
+    <div className="space-y-0.5">
+      <label className="block px-1.5 text-[9px] font-bold uppercase tracking-wider text-brand-charcoal/45">{label}</label>
+      <input
+        type="text"
+        dir={rtl ? 'rtl' : undefined}
+        lang={rtl ? 'ar' : undefined}
+        value={draft ?? value}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-brand-clay bg-brand-cream/40 px-2 py-1 text-[10px] font-semibold text-brand-charcoal"
+      />
+    </div>
+  );
 };
 
 export const AdminSettingsSection: React.FC = () => {
@@ -57,35 +106,63 @@ export const AdminSettingsSection: React.FC = () => {
   // and direct navigation lands on the right section.
   const activeTab = settingsSection;
 
+  // A failed save in any section on this page is shown in one banner at the
+  // top of the open section. Switching section clears it.
+  const save = useSaveError();
+  useEffect(() => { save.clear(); }, [activeTab]);
+
   // Nested sub-tab inside Workshop Detail Lists: which Workshop card is being configured.
   const [workshopListCard, setWorkshopListCard] = useState<WorkshopCardSection>('curriculum');
 
   // ---- Workshop card field configuration ----
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
 
+  // The field list is a local draft (useServerDraft): text edits are saved on
+  // blur instead of on every keystroke, discrete changes (type, toggles,
+  // order, add, delete) save at once, and a realtime update never wipes an
+  // unsaved edit.
+  const fieldsDraft = useServerDraft<WorkshopFieldConfig[]>(workshopFields);
+  const draftFields = fieldsDraft.draft;
+
   const cardFields = useMemo(
-    () => fieldsForCard(workshopFields, workshopListCard, true),
-    [workshopFields, workshopListCard]
+    () => fieldsForCard(draftFields, workshopListCard, true),
+    [draftFields, workshopListCard]
   );
 
+  const saveWorkshopFields = async (fields: WorkshopFieldConfig[]) => {
+    const ok = await save.run(() => updateWorkshopFields(fields), SAVE_WHAT.fields);
+    if (ok) fieldsDraft.markSaved(fields);
+    return ok;
+  };
+
+  /** Text edits (label, placeholder, options) stay local until blur. */
+  const editWorkshopFieldLocal = (fieldId: string, updates: Partial<WorkshopFieldConfig>) => {
+    fieldsDraft.setDraft(current => current.map(f => (f.fieldId === fieldId ? { ...f, ...updates } : f)));
+  };
+
+  /** Saves the draft when a text box loses focus, only if something changed. */
+  const commitWorkshopFieldsIfEdited = () => {
+    if (fieldsDraft.dirty) saveWorkshopFields(fieldsDraft.draft);
+  };
+
   const handleUpdateWorkshopField = (fieldId: string, updates: Partial<WorkshopFieldConfig>) => {
-    updateWorkshopFields(
-      workshopFields.map(f => (f.fieldId === fieldId ? { ...f, ...updates } : f))
+    saveWorkshopFields(
+      draftFields.map(f => (f.fieldId === fieldId ? { ...f, ...updates } : f))
     );
   };
 
   const handleToggleWorkshopField = (fieldId: string) => {
-    const field = workshopFields.find(f => f.fieldId === fieldId);
+    const field = draftFields.find(f => f.fieldId === fieldId);
     if (!field) return;
     handleUpdateWorkshopField(fieldId, { enabled: !field.enabled });
   };
 
   /** Reorders within the field's own card, leaving the other card untouched. */
   const handleMoveWorkshopField = (fieldId: string, direction: -1 | 1) => {
-    const field = workshopFields.find(f => f.fieldId === fieldId);
+    const field = draftFields.find(f => f.fieldId === fieldId);
     if (!field) return;
 
-    const siblings = fieldsForCard(workshopFields, field.cardSection, true);
+    const siblings = fieldsForCard(draftFields, field.cardSection, true);
     const index = siblings.findIndex(f => f.fieldId === fieldId);
     const target = index + direction;
     if (target < 0 || target >= siblings.length) return;
@@ -95,8 +172,8 @@ export const AdminSettingsSection: React.FC = () => {
     reordered.splice(target, 0, moved);
 
     const orderById = new Map(reordered.map((f, i) => [f.fieldId, i]));
-    updateWorkshopFields(
-      workshopFields.map(f =>
+    saveWorkshopFields(
+      draftFields.map(f =>
         orderById.has(f.fieldId) ? { ...f, displayOrder: orderById.get(f.fieldId)! } : f
       )
     );
@@ -104,7 +181,7 @@ export const AdminSettingsSection: React.FC = () => {
 
   const handleAddWorkshopField = () => {
     const stamp = Date.now();
-    const siblings = fieldsForCard(workshopFields, workshopListCard, true);
+    const siblings = fieldsForCard(draftFields, workshopListCard, true);
     const newField: WorkshopFieldConfig = {
       fieldId: `wf-${stamp}`,
       // Stable key, independent of the label so renaming never loses values.
@@ -118,7 +195,7 @@ export const AdminSettingsSection: React.FC = () => {
       customerVisible: false,
       createdAt: new Date().toISOString()
     };
-    updateWorkshopFields([...workshopFields, newField]);
+    saveWorkshopFields([...draftFields, newField]);
     setEditingFieldId(newField.fieldId);
   };
 
@@ -128,7 +205,7 @@ export const AdminSettingsSection: React.FC = () => {
    * brings them back.
    */
   const handleDeleteWorkshopField = (fieldId: string) => {
-    const field = workshopFields.find(f => f.fieldId === fieldId);
+    const field = draftFields.find(f => f.fieldId === fieldId);
     if (!field || field.system) return;
 
     const inUse = workshops.filter(w => w.customFields?.[field.fieldKey] !== undefined).length;
@@ -138,7 +215,7 @@ export const AdminSettingsSection: React.FC = () => {
 
     if (!window.confirm(t(`Delete the "${field.label}" field?${warning}\n\nDisabling it instead keeps it on the form configuration.`, `حذف الحقل "${field.label}"؟${warning}\n\nيؤدي تعطيله بدلًا من ذلك إلى إبقائه في إعدادات النموذج.`))) return;
 
-    updateWorkshopFields(workshopFields.filter(f => f.fieldId !== fieldId));
+    saveWorkshopFields(draftFields.filter(f => f.fieldId !== fieldId));
     setEditingFieldId(null);
   };
 
@@ -150,9 +227,8 @@ export const AdminSettingsSection: React.FC = () => {
   const [permDraft, setPermDraft] = useState<{
     role: StaffRole;
     hasConsoleAccess: boolean;
-    password: string;
     permissions: string[];
-  }>({ role: 'Staff', hasConsoleAccess: false, password: '', permissions: [] });
+  }>({ role: 'Staff', hasConsoleAccess: false, permissions: [] });
   const [permSaved, setPermSaved] = useState(false);
 
   const permissionsStaff = permissionsStaffId
@@ -167,7 +243,6 @@ export const AdminSettingsSection: React.FC = () => {
     setPermDraft({
       role: member.role || 'Staff',
       hasConsoleAccess: member.hasConsoleAccess === true,
-      password: member.password || '',
       permissions: sanitizePermissions(member.permissions)
     });
     setPermSaved(false);
@@ -185,19 +260,22 @@ export const AdminSettingsSection: React.FC = () => {
   const handleSavePermissions = async () => {
     if (!permissionsStaff) return;
 
-    await updateStaffMember(permissionsStaff.id, {
+    const ok = await save.run(() => updateStaffMember(permissionsStaff.id, {
       role: permDraft.role,
       hasConsoleAccess: permDraft.hasConsoleAccess,
       // Super Admin needs no page list; the role grants everything.
       permissions: permDraft.role === 'Super Admin' ? [] : sanitizePermissions(permDraft.permissions),
-      password: permDraft.hasConsoleAccess ? (permDraft.password || undefined) : undefined,
+      // No password here: staff has no password column (the old box was
+      // silently dropped by the mapper). A login is created only by the
+      // invite from Staff Management (provision-staff).
       // staff.user_id is established ONLY by the provision-staff Edge
       // Function now (audit finding C-3) — never written from here. This
       // used to write userId: permissionsStaff.id (the staff record's own
       // id, not a real Auth uuid) whenever access was toggled on, silently
       // overwriting a correctly-provisioned real user_id with a placeholder.
       normalizedPhone: normalizeCustomerPhone(permissionsStaff.phone)
-    });
+    }), SAVE_WHAT.permissions);
+    if (!ok) return;
 
     setPermSaved(true);
     setTimeout(() => setPermSaved(false), 2500);
@@ -226,11 +304,12 @@ export const AdminSettingsSection: React.FC = () => {
   const handleAddStage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStageName.trim()) return;
-    await addPipelineStage({
+    const ok = await save.run(() => addPipelineStage({
       name: newStageName.trim(),
       color: newStageColor,
       visibleToCustomer: true
-    });
+    }), SAVE_WHAT.stages);
+    if (!ok) return;
     setNewStageName('');
     triggerToast(t('Pipeline stage added successfully!', 'تمت إضافة مرحلة المسار بنجاح!'));
   };
@@ -239,15 +318,20 @@ export const AdminSettingsSection: React.FC = () => {
     if (!editingStageName.trim()) return;
     // The name is never sent: existing stages can't be renamed (see the
     // read-only name field below), only recoloured.
-    await updatePipelineStage(id, {
-      color: editingStageColor
-    });
+    const ok = await saveStage(id, { color: editingStageColor });
+    if (!ok) return;
     setEditingStageId(null);
     triggerToast(t('Stage updated successfully!', 'تم تحديث المرحلة بنجاح!'));
   };
 
+  /** Every stage write goes through here, so a failure is always shown. */
+  const saveStage = (id: string, updates: Parameters<typeof updatePipelineStage>[1]) =>
+    save.run(() => updatePipelineStage(id, updates), SAVE_WHAT.stages);
+
   const handleDeleteStageClick = async (id: string) => {
-    const res = await deletePipelineStage(id);
+    let res: Awaited<ReturnType<typeof deletePipelineStage>> | undefined;
+    const ok = await save.run(async () => { res = await deletePipelineStage(id); }, SAVE_WHAT.stages);
+    if (!ok || !res) return;
     if (!res.success) {
       setAlertModal({
         title: t('Action Blocked', 'الإجراء محظور'),
@@ -266,7 +350,7 @@ export const AdminSettingsSection: React.FC = () => {
     const temp = reordered[index];
     reordered[index] = reordered[targetIndex];
     reordered[targetIndex] = temp;
-    await reorderPipelineStages(reordered);
+    await save.run(() => reorderPipelineStages(reordered), SAVE_WHAT.stages);
   };
 
   // HTML5 Drag handlers for native drag-and-drop
@@ -280,7 +364,7 @@ export const AdminSettingsSection: React.FC = () => {
     const reordered = [...pipelineStages];
     const [removed] = reordered.splice(sourceIndex, 1);
     reordered.splice(targetIndex, 0, removed);
-    await reorderPipelineStages(reordered);
+    await save.run(() => reorderPipelineStages(reordered), SAVE_WHAT.stages);
   };
 
   // Workshop option lists are now configured per field inside the field editor
@@ -318,9 +402,13 @@ export const AdminSettingsSection: React.FC = () => {
       ...popupDraft,
       // Blank leading/trailing lines are trimmed away; everything the admin
       // typed inside a line, spaces included, is stored exactly as written.
-      instructions: popupDraft.instructions.filter(line => line.trim().length > 0)
+      instructions: popupDraft.instructions.filter(line => line.trim().length > 0),
+      ...(popupDraft.instructionsAr
+        ? { instructionsAr: popupDraft.instructionsAr.filter(line => line.trim().length > 0) }
+        : {})
     };
-    await updateSetting('prePaymentInstructions', newVal);
+    const ok = await save.run(() => updateSetting('prePaymentInstructions', newVal), SAVE_WHAT.popup);
+    if (!ok) return;
     setPopupDraft(null);
     setPopupSaved(true);
     triggerToast(t('Booking pop-up saved!', 'تم حفظ النافذة المنبثقة للحجز!'));
@@ -359,7 +447,8 @@ export const AdminSettingsSection: React.FC = () => {
     if (Object.keys(fieldErrors).length > 0) return;
 
     // Stored in the canonical format so duplicate checks and login matching work.
-    await addStaffMember({ ...staffForm, ...staffStorageFields(staffForm) });
+    const ok = await save.run(() => addStaffMember({ ...staffForm, ...staffStorageFields(staffForm) }), SAVE_WHAT.staff);
+    if (!ok) return;
     setStaffForm({
       name: '',
       position: '',
@@ -391,7 +480,8 @@ export const AdminSettingsSection: React.FC = () => {
     setStaffErrors(fieldErrors);
     if (Object.keys(fieldErrors).length > 0) return;
 
-    await updateStaffMember(id, { ...staffForm, ...staffStorageFields(staffForm) });
+    const ok = await save.run(() => updateStaffMember(id, { ...staffForm, ...staffStorageFields(staffForm) }), SAVE_WHAT.staff);
+    if (!ok) return;
     setEditingStaffId(null);
     setStaffForm({
       name: '',
@@ -406,7 +496,9 @@ export const AdminSettingsSection: React.FC = () => {
   };
 
   const handleDeleteStaffClick = async (id: string) => {
-    const res = await deleteStaffMember(id);
+    let res: Awaited<ReturnType<typeof deleteStaffMember>> | undefined;
+    const ok = await save.run(async () => { res = await deleteStaffMember(id); }, SAVE_WHAT.staff);
+    if (!ok || !res) return;
     if (!res.success) {
       setAlertModal({
         title: t('Staff Active Assignments', 'تكليفات نشطة للموظف'),
@@ -453,6 +545,7 @@ export const AdminSettingsSection: React.FC = () => {
           ? ''
           : 'bg-white border border-brand-clay/50 rounded-3xl p-6 md:p-8 shadow-xs'
       }>
+        <SaveErrorBanner error={save.error} onDismiss={save.clear} className="mb-4" />
         
         {/* =======================================================
             TAB: DATABASE & DATA RESET
@@ -599,21 +692,21 @@ export const AdminSettingsSection: React.FC = () => {
                                 label: t('Enabled', 'مفعّلة'),
                                 hint: t('Selectable for new updates', 'قابلة للاختيار في التحديثات الجديدة'),
                                 on: stage.enabled !== false,
-                                toggle: () => updatePipelineStage(stage.id, { enabled: stage.enabled === false })
+                                toggle: () => saveStage(stage.id, { enabled: stage.enabled === false })
                               },
                               {
                                 id: 'timeline',
                                 label: t('On customer timeline', 'على الجدول الزمني للعميل'),
                                 hint: t('Shown on My Pieces', 'تظهر في «أعمالي»'),
                                 on: stage.visibleToCustomer,
-                                toggle: () => updatePipelineStage(stage.id, { visibleToCustomer: !stage.visibleToCustomer })
+                                toggle: () => saveStage(stage.id, { visibleToCustomer: !stage.visibleToCustomer })
                               },
                               {
                                 id: 'notify',
                                 label: t('Notifies customer', 'إشعار العميل'),
                                 hint: t('Message sent on entering', 'تُرسل رسالة عند الدخول'),
                                 on: stage.notifyCustomer !== false,
-                                toggle: () => updatePipelineStage(stage.id, { notifyCustomer: stage.notifyCustomer === false })
+                                toggle: () => saveStage(stage.id, { notifyCustomer: stage.notifyCustomer === false })
                               }
                             ]).map(row => (
                               <button
@@ -642,16 +735,28 @@ export const AdminSettingsSection: React.FC = () => {
                               </button>
                             ))}
 
-                            <div className="space-y-0.5 border-t border-brand-clay/40 pt-1.5">
-                              <label className="block px-1.5 text-[9px] font-bold uppercase tracking-wider text-brand-charcoal/45">
-                                {t('Customer label', 'تسمية العميل')}
-                              </label>
-                              <input
-                                type="text"
+                            {/* Stage wording. Each box is edited locally and saved when
+                                it loses focus (or on Enter) — not on every keystroke. */}
+                            <div className="space-y-1.5 border-t border-brand-clay/40 pt-1.5">
+                              <StageTextInput
+                                label={t('Customer label', 'تسمية العميل')}
                                 value={stage.customerLabel || ''}
-                                onChange={e => updatePipelineStage(stage.id, { customerLabel: e.target.value })}
                                 placeholder={stage.name}
-                                className="w-full rounded-lg border border-brand-clay bg-brand-cream/40 px-2 py-1 text-[10px] font-semibold text-brand-charcoal"
+                                onSave={value => saveStage(stage.id, { customerLabel: value })}
+                              />
+                              <StageTextInput
+                                label={t('Stage name (Arabic)', 'اسم المرحلة (بالعربية)')}
+                                value={stage.nameAr || ''}
+                                placeholder={enumLabel('pieceStatus', stage.name, 'ar')}
+                                rtl
+                                onSave={value => saveStage(stage.id, { nameAr: value || null })}
+                              />
+                              <StageTextInput
+                                label={t('Customer label (Arabic)', 'تسمية العميل (بالعربية)')}
+                                value={stage.customerLabelAr || ''}
+                                placeholder={stage.nameAr || ''}
+                                rtl
+                                onSave={value => saveStage(stage.id, { customerLabelAr: value || null })}
                               />
                             </div>
                           </div>
@@ -753,6 +858,7 @@ export const AdminSettingsSection: React.FC = () => {
             ======================================================= */}
         {activeTab === 'settings-workshop-lists' && (
           <div className="space-y-6 text-left animate-in fade-in duration-200">
+            <ServerChangedNotice show={fieldsDraft.serverChanged} onLoad={fieldsDraft.discard} />
 
             <div>
               <h3 className="font-display text-xl font-extrabold text-brand-charcoal">{t('Workshop Detail Lists', 'قوائم تفاصيل الورشة')}</h3>
@@ -898,7 +1004,8 @@ export const AdminSettingsSection: React.FC = () => {
                             <input
                               type="text"
                               value={field.label}
-                              onChange={e => handleUpdateWorkshopField(field.fieldId, { label: e.target.value })}
+                              onChange={e => editWorkshopFieldLocal(field.fieldId, { label: e.target.value })}
+                              onBlur={commitWorkshopFieldsIfEdited}
                               className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-semibold"
                             />
                             <p className="text-[10px] text-brand-charcoal/45">
@@ -929,7 +1036,8 @@ export const AdminSettingsSection: React.FC = () => {
                             <input
                               type="text"
                               value={field.placeholder || ''}
-                              onChange={e => handleUpdateWorkshopField(field.fieldId, { placeholder: e.target.value })}
+                              onChange={e => editWorkshopFieldLocal(field.fieldId, { placeholder: e.target.value })}
+                              onBlur={commitWorkshopFieldsIfEdited}
                               className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-semibold"
                             />
                           </div>
@@ -977,7 +1085,8 @@ export const AdminSettingsSection: React.FC = () => {
                             <LineListTextarea
                               rows={4}
                               value={field.options || []}
-                              onChange={options => handleUpdateWorkshopField(field.fieldId, { options })}
+                              onChange={options => editWorkshopFieldLocal(field.fieldId, { options })}
+                              onBlur={commitWorkshopFieldsIfEdited}
                               className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-semibold"
                             />
                             {field.fieldKey === 'category' && (
@@ -1123,6 +1232,79 @@ export const AdminSettingsSection: React.FC = () => {
                   </div>
                 )}
 
+                {/* Arabic text — shown to customers browsing in Arabic. Each field
+                    falls back on its own when left empty (popupTextForLang). */}
+                <div className="space-y-4 p-4 border border-brand-clay/50 rounded-2xl bg-brand-cream/10">
+                  <div>
+                    <h4 className="text-xs font-bold text-brand-charcoal">{t('Arabic text', 'النص العربي')}</h4>
+                    <p className="text-[10px] text-brand-charcoal/60 mt-0.5">
+                      {t(
+                        'Shown to customers browsing in Arabic. A field left empty shows the built-in translation of the default text, or the English if you changed it.',
+                        'يُعرض للعملاء الذين يتصفحون بالعربية. الحقل الفارغ يعرض الترجمة المدمجة للنص الافتراضي، أو النص الإنجليزي إذا غيّرته.'
+                      )}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-brand-charcoal/80">{t('Pop-up Title (Arabic)', 'عنوان النافذة (بالعربية)')}</label>
+                    <input
+                      type="text"
+                      dir="rtl"
+                      lang="ar"
+                      value={popupForm.titleAr ?? ''}
+                      onChange={e => editPrePaymentSettings({ titleAr: e.target.value })}
+                      className="w-full bg-white border border-brand-clay/60 rounded-xl py-2.5 px-3 text-xs font-semibold text-brand-charcoal"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-brand-charcoal/80">{t('Message (Arabic)', 'الرسالة (بالعربية)')}</label>
+                    <textarea
+                      rows={3}
+                      dir="rtl"
+                      lang="ar"
+                      value={popupForm.messageAr ?? ''}
+                      onChange={e => editPrePaymentSettings({ messageAr: e.target.value })}
+                      className="w-full bg-white border border-brand-clay/60 rounded-xl p-3 text-xs font-semibold text-brand-charcoal leading-relaxed"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-brand-charcoal/80">{t('Short Instructions (Arabic, one per line)', 'التعليمات القصيرة (بالعربية، واحدة في كل سطر)')}</label>
+                    <textarea
+                      rows={4}
+                      dir="rtl"
+                      lang="ar"
+                      value={(popupForm.instructionsAr ?? []).join('\n')}
+                      onChange={e => editPrePaymentSettings({ instructionsAr: e.target.value.split('\n') })}
+                      className="w-full bg-white border border-brand-clay/60 rounded-xl p-3 text-xs font-semibold text-brand-charcoal leading-relaxed"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-brand-charcoal/80">{t('Confirm Button Label (Arabic)', 'تسمية زر التأكيد (بالعربية)')}</label>
+                      <input
+                        type="text"
+                        dir="rtl"
+                        lang="ar"
+                        value={popupForm.buttonLabelAr ?? ''}
+                        onChange={e => editPrePaymentSettings({ buttonLabelAr: e.target.value })}
+                        className="w-full bg-white border border-brand-clay/60 rounded-xl py-2.5 px-3 text-xs font-semibold text-brand-charcoal"
+                      />
+                    </div>
+                    {popupForm.requiredCheckbox && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-brand-charcoal/80">{t('Checkbox Label (Arabic)', 'تسمية مربع الموافقة (بالعربية)')}</label>
+                        <input
+                          type="text"
+                          dir="rtl"
+                          lang="ar"
+                          value={popupForm.checkboxLabelAr ?? ''}
+                          onChange={e => editPrePaymentSettings({ checkboxLabelAr: e.target.value })}
+                          className="w-full bg-white border border-brand-clay/60 rounded-xl py-2.5 px-3 text-xs font-semibold text-brand-charcoal"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Save */}
                 <div className="flex items-center justify-end gap-3 pt-1">
                   {popupSaved && !popupDirty && (
@@ -1220,7 +1402,19 @@ export const AdminSettingsSection: React.FC = () => {
               </p>
             </div>
 
+            {/* Adding and deleting staff is Super Admin only in the database
+                (staff_insert_super_admin / staff_delete_super_admin, 0001), so
+                the Register form and Delete buttons are shown only to a Super
+                Admin. Anyone on this page may still edit a profile. */}
+            {!canManagePermissions && !editingStaffId && (
+              <p className="flex items-start gap-2 rounded-xl border border-brand-clay bg-brand-sand/30 p-3 text-xs font-semibold text-brand-charcoal/75">
+                <Info className="h-4 w-4 shrink-0 text-brand-terracotta" />
+                <span>{t('Only a Super Admin can add or delete staff. You can still edit a profile.', 'يمكن للمدير العام وحده إضافة الموظفين أو حذفهم. لا يزال بإمكانك تعديل الملف.')}</span>
+              </p>
+            )}
+
             {/* Quick Add / Edit Form Block */}
+            {(canManagePermissions || editingStaffId) && (
             <form onSubmit={(e) => {
               e.preventDefault();
               if (editingStaffId) {
@@ -1298,28 +1492,8 @@ export const AdminSettingsSection: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Roles checkboxes */}
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-brand-charcoal">
-                    <input
-                      type="checkbox"
-                      checked={staffForm.canAssignWorkshops}
-                      onChange={e => setStaffForm(prev => ({ ...prev, canAssignWorkshops: e.target.checked }))}
-                      className="h-4 w-4 border-brand-clay text-brand-terracotta rounded"
-                    />
-                    <span>{t('Can tutor classes', 'يمكنه تدريس الدروس')}</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-brand-charcoal">
-                    <input
-                      type="checkbox"
-                      checked={staffForm.canAssignPieces}
-                      onChange={e => setStaffForm(prev => ({ ...prev, canAssignPieces: e.target.checked }))}
-                      className="h-4 w-4 border-brand-clay text-brand-terracotta rounded"
-                    />
-                    <span>{t('Can process pottery', 'يمكنه معالجة الفخار')}</span>
-                  </label>
-                </div>
+                {/* The "Can tutor classes" / "Can process pottery" toggles were
+                    removed: they were saved but nothing ever checked them. */}
 
                 <div className="flex gap-2">
                   {editingStaffId && (
@@ -1352,6 +1526,7 @@ export const AdminSettingsSection: React.FC = () => {
                 </div>
               </div>
             </form>
+            )}
 
             {/* List registry grid table */}
             <div className="border border-brand-clay/50 rounded-2xl overflow-hidden bg-white">
@@ -1442,14 +1617,16 @@ export const AdminSettingsSection: React.FC = () => {
                           >
                             <Edit2 className="h-3.5 w-3.5" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteStaffClick(member.id)}
-                            className="p-1.5 rounded-lg border border-brand-clay/40 hover:bg-red-50 text-red-600 hover:border-red-300 cursor-pointer"
-                            title={t('Delete Profile', 'حذف الملف')}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {canManagePermissions && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStaffClick(member.id)}
+                              className="p-1.5 rounded-lg border border-brand-clay/40 hover:bg-red-50 text-red-600 hover:border-red-300 cursor-pointer"
+                              title={t('Delete Profile', 'حذف الملف')}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1574,21 +1751,13 @@ export const AdminSettingsSection: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="font-bold text-brand-charcoal/80 block">{t('Password', 'كلمة المرور')}</label>
-                    <input
-                      type="text"
-                      value={permDraft.password}
-                      onChange={e => setPermDraft(prev => ({ ...prev, password: e.target.value }))}
-                      placeholder={t('Set a sign-in password', 'عيّن كلمة مرور لتسجيل الدخول')}
-                      className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-semibold text-brand-charcoal"
-                    />
-                    <p className="text-[10px] text-brand-charcoal/50">
-                      {lang === 'ar'
-                      ? <>يمكنه تسجيل الدخول بكلمة المرور هذه مع بريده الإلكتروني ({permissionsStaff.email || 'لا يوجد بريد إلكتروني مسجَّل'}) أو هاتفه ({permissionsStaff.phone}).</>
-                      : <>They can sign in with this password and either their email ({permissionsStaff.email || 'no email on file'}) or phone ({permissionsStaff.phone}).</>}
-                    </p>
-                  </div>
+                  {/* No password box: there is no password column, so whatever was
+                      typed here was silently discarded. Logins are created only
+                      by the invite (provision-staff) on Staff Management. */}
+                  <p className="flex items-start gap-2 rounded-xl border border-brand-clay bg-brand-sand/30 p-2.5 text-[11px] font-semibold text-brand-charcoal/75">
+                    <Info className="h-4 w-4 shrink-0 text-brand-terracotta" />
+                    <span>{t('To give someone a login, send an invite from Staff Management.', 'لمنح شخص ما حساب دخول، أرسل دعوة من صفحة إدارة الموظفين.')}</span>
+                  </p>
 
                   {/* Page permissions */}
                   {permDraft.role !== 'Super Admin' && (

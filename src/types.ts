@@ -867,9 +867,16 @@ export function isStageEnabled(stage: PipelineStage): boolean {
   return stage.enabled !== false;
 }
 
-/** Wording shown to the customer for a stage. */
-export function stageCustomerLabel(stage: PipelineStage): string {
-  return stage.customerLabel?.trim() || stage.name;
+/**
+ * Wording shown to the customer for a stage.
+ *   English: customer label, else the stage name.
+ *   Arabic:  Arabic customer label (customer_label_ar, 0045), else the Arabic
+ *            stage name (name_ar), else the English wording above.
+ */
+export function stageCustomerLabel(stage: PipelineStage, lang: 'en' | 'ar' = 'en'): string {
+  const english = stage.customerLabel?.trim() || stage.name;
+  if (lang !== 'ar') return english;
+  return stage.customerLabelAr?.trim() || stage.nameAr?.trim() || english;
 }
 
 export interface StaffWeeklyShift {
@@ -1334,7 +1341,10 @@ export const DEFAULT_WORKSHOP_FIELDS: WorkshopFieldConfig[] = [
 
   { fieldId: 'wf-room', fieldKey: 'room', cardSection: 'logistics', label: 'Studio Room / Table Station',
     fieldType: 'dropdown', required: false, enabled: true, displayOrder: 5,
-    customerVisible: false, system: true, boundTo: 'roomId', dataSource: 'studio-resources' },
+    // Visible by default, so Location stays on the customer workshop page.
+    // A stored workshopFieldConfig (seeded by 0001 with this OFF) still wins:
+    // tick it in Settings -> Workshop Detail Lists on an existing site.
+    customerVisible: true, system: true, boundTo: 'roomId', dataSource: 'studio-resources' },
 
   { fieldId: 'wf-materials', fieldKey: 'materials', cardSection: 'logistics',
     label: 'Materials Included (Press Enter key)', fieldType: 'tags',
@@ -1390,6 +1400,19 @@ export function fieldTypeUsesOptions(type: WorkshopFieldType): boolean {
 }
 
 /** Enabled fields for a card, in configured order. */
+/**
+ * Whether a built-in workshop field (bound to a Workshop property, e.g.
+ * 'duration', 'ageRange', 'staffId', 'roomId') may be shown on the customer
+ * workshop page: it must be enabled AND marked "Visible to Customers" in
+ * Settings -> Workshop Detail Lists. A field with no configuration at all
+ * stays visible, as before.
+ */
+export function isBuiltInFieldCustomerVisible(fields: WorkshopFieldConfig[], boundTo: string): boolean {
+  const field = fields.find(f => f.boundTo === boundTo);
+  if (!field) return true;
+  return field.enabled !== false && field.customerVisible !== false;
+}
+
 export function fieldsForCard(
   fields: WorkshopFieldConfig[],
   card: WorkshopCardSection,
@@ -1409,19 +1432,24 @@ export interface StudioTableConfig {
   status: 'Active' | 'Inactive' | 'Maintenance';
 }
 
+/**
+ * app_settings 'capacitySettings'.
+ *
+ * The seat total is NOT stored: it is always the sum of the tables' seats
+ * (tableSeatTotal in src/utils/tableSeatingUtils.ts). Older rows may still
+ * carry totalSeats, totalTables and maxGroupSize — never read; the next save
+ * from Settings -> Capacity drops them.
+ */
 export interface CapacitySettingsConfig {
-  totalTables: number;
-  totalSeats: number;
   defaultSeatsPerTable: number;
-  maxGroupSize: number;
   oneGroupPerTable: boolean;
   tables: StudioTableConfig[];
 }
 
 /**
  * Customer-facing birthday terms. Stored in settings so staff can edit them;
- * {deposit} and {cancellationDays} are filled in at render time so the wording
- * follows the configured values instead of being hardcoded.
+ * {deposit} is filled in at render time. The cancellation rule is NOT a
+ * setting: it is cancel_own_booking's fixed 24 hours (REFUND_NOTICE_HOURS).
  */
 export interface BirthdayTermsConfig {
   /** Bumped whenever staff change the wording; saved with each acceptance. */
@@ -1463,28 +1491,72 @@ export const DEFAULT_BIRTHDAY_TERMS: BirthdayTermsConfig = {
   ],
   trailingItems: [
     'A deposit of {deposit} SAR is required to confirm the booking.',
-    'Changes or cancellations must be made at least {cancellationDays} days before the scheduled event to receive a refund of the deposit.',
+    'Cancellations made more than 24 hours before the event are refunded. Within 24 hours of the event, there is no refund.',
     'Outside food and beverages are strictly prohibited.'
   ]
 };
 
-/** Substitutes the dynamic values into a terms line. */
-export function renderTermsLine(
-  line: string,
-  values: { deposit: number; cancellationDays: number }
-): string {
+/**
+ * Hours of notice that make a paid booking refundable on a customer
+ * cancellation. Fixed in the database — cancel_own_booking (migration 0048)
+ * refunds only when hours_notice > 24 — so it is a constant, never a setting.
+ */
+export const REFUND_NOTICE_HOURS = 24;
+
+/**
+ * Rewrites the retired "{cancellationDays} days" wording to the real rule.
+ *
+ * Terms saved before the Cancellation window setting was removed still
+ * contain the token, e.g. "...at least {cancellationDays} days before the
+ * scheduled event..." — which promised a multi-day rule the database never
+ * applied. Rendering and the terms editor both pass lines through here, so
+ * customers see the 24-hour rule straight away and the next save stores it.
+ */
+export function fixCancellationTermsLine(line: string): string {
+  if (!line.includes('{cancellationDays}')) return line;
   return line
-    .replace(/\{deposit\}/g, String(values.deposit))
-    .replace(/\{cancellationDays\}/g, String(values.cancellationDays));
+    // English: "at least {cancellationDays} days" / "{cancellationDays} days".
+    .replace(/(?:at least|a minimum of|minimum of)\s+\{cancellationDays\}\s+days?/gi, `more than ${REFUND_NOTICE_HOURS} hours`)
+    .replace(/\{cancellationDays\}\s+days?/gi, `more than ${REFUND_NOTICE_HOURS} hours`)
+    // Arabic: "{cancellationDays} أيام على الأقل" / "على الأقل {cancellationDays} أيام" / "{cancellationDays} أيام".
+    .replace(/\{cancellationDays\}\s*(?:أيام|يومًا|يوما|يوم)\s*على الأقل/g, `أكثر من ${REFUND_NOTICE_HOURS} ساعة`)
+    .replace(/على الأقل\s*\{cancellationDays\}\s*(?:أيام|يومًا|يوما|يوم)/g, `أكثر من ${REFUND_NOTICE_HOURS} ساعة`)
+    .replace(/\{cancellationDays\}\s*(?:أيام|يومًا|يوما|يوم)/g, `أكثر من ${REFUND_NOTICE_HOURS} ساعة`)
+    // Anything else: the bare number of hours.
+    .replace(/\{cancellationDays\}/g, String(REFUND_NOTICE_HOURS));
 }
 
+/** Applies fixCancellationTermsLine to every line of a terms document. */
+export function fixCancellationTerms(terms: BirthdayTermsConfig): BirthdayTermsConfig {
+  const lines = (list?: string[]) => list?.map(fixCancellationTermsLine);
+  return {
+    ...terms,
+    leadingItems: lines(terms.leadingItems) ?? [],
+    suppliesIntro: fixCancellationTermsLine(terms.suppliesIntro ?? ''),
+    supplies: lines(terms.supplies) ?? [],
+    trailingItems: lines(terms.trailingItems) ?? [],
+    ...(terms.leadingItemsAr ? { leadingItemsAr: lines(terms.leadingItemsAr) } : {}),
+    ...(terms.suppliesIntroAr !== undefined ? { suppliesIntroAr: fixCancellationTermsLine(terms.suppliesIntroAr) } : {}),
+    ...(terms.suppliesAr ? { suppliesAr: lines(terms.suppliesAr) } : {}),
+    ...(terms.trailingItemsAr ? { trailingItemsAr: lines(terms.trailingItemsAr) } : {})
+  };
+}
+
+/** Substitutes the dynamic values into a terms line. */
+export function renderTermsLine(line: string, values: { deposit: number }): string {
+  return fixCancellationTermsLine(line).replace(/\{deposit\}/g, String(values.deposit));
+}
+
+/**
+ * app_settings 'eventsSettings'. Only the birthday terms are live. Older rows
+ * may still carry minBirthdayNoticeDays, maxGuestsPerEvent, depositPercentage
+ * and cancellationNoticeDays: those controls were removed because nothing
+ * read them (notice days and party caps are fixed rules in queueUtils.ts and
+ * book_birthday_slot; the deposit comes from the package or Online Payments;
+ * the cancellation rule is REFUND_NOTICE_HOURS). They are left in the row
+ * untouched, never read.
+ */
 export interface EventsSettingsConfig {
-  minimumBirthdayBookingDays?: number;
-  minBirthdayNoticeDays?: number;
-  maxBirthdayGuests?: number;
-  maxGuestsPerEvent?: number;
-  depositPercentage?: number;
-  cancellationNoticeDays?: number;
   /** Editable birthday terms shown before final submission. */
   birthdayTerms?: BirthdayTermsConfig;
 }
@@ -1791,6 +1863,18 @@ export interface PrePaymentPopupConfig {
   buttonLabel: string;
   requiredCheckbox: boolean;
   checkboxLabel: string;
+  /**
+   * Optional Arabic text, shown to customers browsing in Arabic. Each field
+   * falls back on its own when empty (see popupTextForLang): to the built-in
+   * translation while the English is still the shipped default, otherwise to
+   * the English as typed. instructionsAr, when non-empty, replaces the whole
+   * list — it is its own Arabic list, not a line-by-line translation.
+   */
+  titleAr?: string;
+  messageAr?: string;
+  instructionsAr?: string[];
+  buttonLabelAr?: string;
+  checkboxLabelAr?: string;
 }
 
 export const DEFAULT_PREPAYMENT_POPUP: PrePaymentPopupConfig = {
@@ -1862,7 +1946,84 @@ export function migratePrePaymentPopup(raw: any): PrePaymentPopupConfig {
     requiredCheckbox: stored.requiredCheckbox !== false,
     checkboxLabel: typeof stored.checkboxLabel === 'string'
       ? stored.checkboxLabel
-      : DEFAULT_PREPAYMENT_POPUP.checkboxLabel
+      : DEFAULT_PREPAYMENT_POPUP.checkboxLabel,
+    // Arabic: kept only when present, so an English-only record stays as it was.
+    ...(typeof stored.titleAr === 'string' ? { titleAr: stored.titleAr } : {}),
+    ...(typeof stored.messageAr === 'string' ? { messageAr: stored.messageAr } : {}),
+    ...(Array.isArray(stored.instructionsAr)
+      ? { instructionsAr: stored.instructionsAr.filter((line: any) => typeof line === 'string' && line.trim()) }
+      : {}),
+    ...(typeof stored.buttonLabelAr === 'string' ? { buttonLabelAr: stored.buttonLabelAr } : {}),
+    ...(typeof stored.checkboxLabelAr === 'string' ? { checkboxLabelAr: stored.checkboxLabelAr } : {})
+  };
+}
+
+/**
+ * Arabic wording for the popup text the studio ships with, used only while a
+ * string still IS one of these defaults and no Arabic was typed for it in
+ * Settings. Matched string by string. Display only.
+ */
+export const DEFAULT_POPUP_AR: Array<{ en: string; ar: string }> = [
+  { en: 'Important Studio Safety & Timeline Instructions',
+    ar: 'تعليمات مهمة للسلامة والجدول الزمني في الاستوديو' },
+  { en: 'Please note the following studio rules before proceeding to payment.',
+    ar: 'يرجى الاطلاع على قواعد الاستوديو التالية قبل المتابعة إلى الدفع.' },
+  { en: 'Clay Processing Time: All pottery created in the studio takes 10 to 14 days to completely air dry, undergo bisque-firing, be hand-glazed, and fired a second time.',
+    ar: 'مدة تجهيز الفخار: تستغرق جميع القطع الفخارية التي تُصنع في الاستوديو من 10 إلى 14 يومًا لتجف تمامًا، ثم تخضع للحرق الأول، وتُزجَّج يدويًا، وتُحرق مرة ثانية.' },
+  { en: 'Live Tracker: Once booked, your piece will appear in your "My Pieces" collection tracker where you can track its lifecycle stages.',
+    ar: 'المتابعة المباشرة: بعد الحجز ستظهر قطعتك في متتبع «أعمالي» حيث يمكنك متابعة مراحلها.' },
+  { en: 'Safety Attire: We recommend wearing clothes you do not mind getting a little clay on (although aprons are provided!).',
+    ar: 'ملابس مناسبة: نوصي بارتداء ملابس لا تمانع أن يصيبها بعض الطين (علمًا بأن المآزر متوفرة!).' },
+  { en: 'Storage Window: Your finished pieces will be held at our collection shelves for up to 30 days post-firing.',
+    ar: 'مدة الحفظ: ستُحفظ قطعك المكتملة على أرفف الاستلام لدينا لمدة تصل إلى 30 يومًا بعد الحرق.' },
+  { en: 'I confirm I have read these safety rules and understand the 10-14 day firing timeline.',
+    ar: 'أؤكد أنني قرأت قواعد السلامة هذه وأفهم أن مدة الحرق من 10 إلى 14 يومًا.' },
+  { en: 'Continue to Payment', ar: 'المتابعة إلى الدفع' }
+];
+
+const normalizePopupText = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** The built-in Arabic for a shipped default string, or the string itself. */
+function defaultPopupArabic(text: string): string {
+  const known = DEFAULT_POPUP_AR.find(entry => normalizePopupText(entry.en) === normalizePopupText(text));
+  return known ? known.ar : text;
+}
+
+export interface PopupText {
+  title: string;
+  /** Paragraphs, already split. */
+  paragraphs: string[];
+  instructions: string[];
+  buttonLabel: string;
+  checkboxLabel: string;
+}
+
+/**
+ * What the customer reads, in their language. English: the stored text.
+ * Arabic: each field's Arabic when typed in Settings; otherwise the built-in
+ * translation of a shipped default; otherwise the English as typed.
+ */
+export function popupTextForLang(config: PrePaymentPopupConfig, lang: 'en' | 'ar'): PopupText {
+  const englishInstructions = config.instructions.filter(line => line.trim().length > 0);
+  if (lang !== 'ar') {
+    return {
+      title: config.title,
+      paragraphs: popupParagraphs(config.message),
+      instructions: englishInstructions,
+      buttonLabel: config.buttonLabel,
+      checkboxLabel: config.checkboxLabel
+    };
+  }
+  const pick = (ar: string | undefined, en: string) => (ar && ar.trim() ? ar : defaultPopupArabic(en));
+  const arInstructions = (config.instructionsAr || []).filter(line => line.trim().length > 0);
+  return {
+    title: pick(config.titleAr, config.title),
+    paragraphs: config.messageAr && config.messageAr.trim()
+      ? popupParagraphs(config.messageAr)
+      : popupParagraphs(config.message).map(defaultPopupArabic),
+    instructions: arInstructions.length > 0 ? arInstructions : englishInstructions.map(defaultPopupArabic),
+    buttonLabel: pick(config.buttonLabelAr, config.buttonLabel),
+    checkboxLabel: pick(config.checkboxLabelAr, config.checkboxLabel)
   };
 }
 

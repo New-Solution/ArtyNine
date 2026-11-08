@@ -566,12 +566,6 @@ export const AdminWorkshopFormSection: React.FC = () => {
     [staff, tutorStaffId]
   );
 
-  // Studio rooms and tables come from the shared option list and capacity settings.
-  const capacityConfig = useMemo(
-    () => appSettings?.find(s => s.id === 'capacitySettings')?.value,
-    [appSettings]
-  );
-
   // Rooms and table stations come from Settings → Capacity, never a fixed list.
   const studioSpaces: StudioSpace[] = useMemo(
     () => getStudioSpaces(studioResources),

@@ -3,19 +3,37 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   EventsSettingsConfig, BirthdayFormField, BirthdayTermsConfig,
-  DEFAULT_BIRTHDAY_TERMS, renderTermsLine
+  DEFAULT_BIRTHDAY_TERMS, renderTermsLine, fixCancellationTerms, REFUND_NOTICE_HOURS
 } from '../types';
 import {
-  Save, Check, Calendar, Gift, Info, Plus, Trash2, ChevronUp, ChevronDown, ListChecks, ShieldAlert
+  Save, Check, Gift, Info, Plus, Trash2, ChevronUp, ChevronDown, ListChecks, ShieldAlert
 } from 'lucide-react';
 import { LineListTextarea } from './ui/LineListTextarea';
 import { ContentLanguageTabs, ContentLang } from './ui/ContentLanguageTabs';
 import { useLanguage } from '../context/LanguageContext';
+import { BIRTHDAY_DAILY_MAX, BIRTHDAY_SAME_SLOT_MAX } from '../utils/queueUtils';
+import { useServerDraft, ServerChangedNotice } from './ui/useServerDraft';
+import { SaveErrorBanner, useSaveError } from './ui/SaveErrorBanner';
 
+const SAVE_TERMS = { en: 'the birthday terms', ar: 'شروط أعياد الميلاد' };
+const SAVE_FIELDS = { en: 'the birthday form fields', ar: 'حقول نموذج عيد الميلاد' };
+
+/**
+ * Settings -> Events / Birthday.
+ *
+ * Two things are edited here: the birthday terms customers accept, and the
+ * fields of the birthday booking form. The booking RULES (notice, party caps,
+ * cancellation) are fixed in code and the database and are only shown,
+ * read-only: the inputs that used to sit here were saved but never read.
+ *
+ * Both editors keep a local draft (useServerDraft): a realtime update never
+ * wipes unsaved edits, and text is saved when a field loses focus, not on
+ * every keystroke.
+ */
 export const AdminEventsSettings: React.FC = () => {
   const {
     updateSetting, birthdayFormFields, updateBirthdayFormFields,
@@ -23,42 +41,41 @@ export const AdminEventsSettings: React.FC = () => {
     appSettings: rawAppSettings
   } = useApp();
   const { lang, t } = useLanguage();
+
   const rawConfig = rawAppSettings.find(s => s.id === 'eventsSettings')?.value as EventsSettingsConfig | undefined;
 
-  const [minBirthdayNoticeDays, setMinBirthdayNoticeDays] = useState<number>(rawConfig?.minBirthdayNoticeDays ?? 4);
-  const [maxGuestsPerEvent, setMaxGuestsPerEvent] = useState<number>(rawConfig?.maxGuestsPerEvent ?? 30);
-  const [depositPercentage, setDepositPercentage] = useState<number>(rawConfig?.depositPercentage ?? 50);
-  const [cancellationNoticeDays, setCancellationNoticeDays] = useState<number>(rawConfig?.cancellationNoticeDays ?? 3);
-
-  const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+  const termsSave = useSaveError();
+  const fieldsSave = useSaveError();
 
   // ---- Editable birthday terms (customer-facing) ----
-  const [terms, setTerms] = useState<BirthdayTermsConfig>(rawConfig?.birthdayTerms || DEFAULT_BIRTHDAY_TERMS);
+  // Old wording with {cancellationDays} is rewritten to the 24-hour rule here,
+  // so the editor shows (and the next save stores) what the system does.
+  const termsDraft = useServerDraft<BirthdayTermsConfig>(
+    fixCancellationTerms(rawConfig?.birthdayTerms || DEFAULT_BIRTHDAY_TERMS)
+  );
+  const terms = termsDraft.draft;
+  const setTerms = termsDraft.setDraft;
+  const savedVersion = rawConfig?.birthdayTerms?.version || DEFAULT_BIRTHDAY_TERMS.version;
   const [termsSaved, setTermsSaved] = useState(false);
   const [termsLang, setTermsLang] = useState<ContentLang>('en');
 
-  useEffect(() => {
-    if (rawConfig?.birthdayTerms) setTerms(rawConfig.birthdayTerms);
-  }, [rawConfig]);
-
+  /**
+   * The ONLY way the terms change. Every save gets a new version stamp, so
+   * each acceptance records the wording that was agreed to. Nothing else in
+   * this section writes birthdayTerms.
+   */
   const handleSaveTerms = async () => {
-    // A new version stamp so each acceptance records the wording agreed to.
     const updated: BirthdayTermsConfig = {
       ...terms,
       version: `${new Date().toISOString().split('T')[0]}-${Date.now().toString().slice(-4)}`,
       updatedAt: new Date().toISOString()
     };
-
-    await updateSetting('eventsSettings', {
-      ...(rawConfig || {}),
-      minBirthdayNoticeDays: Number(minBirthdayNoticeDays),
-      maxGuestsPerEvent: Number(maxGuestsPerEvent),
-      depositPercentage: Number(depositPercentage),
-      cancellationNoticeDays: Number(cancellationNoticeDays),
-      birthdayTerms: updated
-    });
-
-    setTerms(updated);
+    const ok = await termsSave.run(
+      () => updateSetting('eventsSettings', { ...(rawConfig || {}), birthdayTerms: updated }),
+      SAVE_TERMS
+    );
+    if (!ok) return;
+    termsDraft.markSaved(updated);
     setTermsSaved(true);
     setTimeout(() => setTermsSaved(false), 2500);
   };
@@ -82,44 +99,61 @@ export const AdminEventsSettings: React.FC = () => {
     : terms;
 
   // ---- Birthday booking-form field editor (managed here only) ----
+  const fieldsDraft = useServerDraft<BirthdayFormField[]>(birthdayFormFields);
+  const fields = fieldsDraft.draft;
   const [fieldsSaved, setFieldsSaved] = useState(false);
 
-  const commitFields = async (next: BirthdayFormField[]) => {
-    await updateBirthdayFormFields(next.map((f, idx) => ({ ...f, order: idx })));
+  /** Saves the given list (or the current draft) as the booking form. */
+  const commitFields = async (next: BirthdayFormField[] = fieldsDraft.draft) => {
+    const ordered = next.map((f, idx) => ({ ...f, order: idx }));
+    const ok = await fieldsSave.run(() => updateBirthdayFormFields(ordered), SAVE_FIELDS);
+    if (!ok) return;
+    fieldsDraft.markSaved(ordered);
     setFieldsSaved(true);
     setTimeout(() => setFieldsSaved(false), 2500);
   };
 
+  /** Text edits stay local until the field loses focus (then commitFields()). */
+  const editFieldLocal = (id: string, updates: Partial<BirthdayFormField>) => {
+    fieldsDraft.setDraft(current => current.map(f => (f.id === id ? { ...f, ...updates } : f)));
+  };
+
+  /** Saves on blur, but only when something was actually edited. */
+  const commitIfEdited = () => {
+    if (fieldsDraft.dirty) commitFields();
+  };
+
+  /** Discrete changes (toggle, type, required) save straight away. */
   const handleFieldChange = (id: string, updates: Partial<BirthdayFormField>) => {
-    commitFields(birthdayFormFields.map(f => (f.id === id ? { ...f, ...updates } : f)));
+    commitFields(fields.map(f => (f.id === id ? { ...f, ...updates } : f)));
   };
 
   const handleToggleField = (id: string) => {
-    const field = birthdayFormFields.find(f => f.id === id);
+    const field = fields.find(f => f.id === id);
     if (!field) return;
     handleFieldChange(id, { enabled: !field.enabled });
   };
 
   const handleMoveField = (index: number, direction: -1 | 1) => {
     const target = index + direction;
-    if (target < 0 || target >= birthdayFormFields.length) return;
-    const next = [...birthdayFormFields];
+    if (target < 0 || target >= fields.length) return;
+    const next = [...fields];
     const [moved] = next.splice(index, 1);
     next.splice(target, 0, moved);
     commitFields(next);
   };
 
   const handleRemoveField = (id: string) => {
-    const field = birthdayFormFields.find(f => f.id === id);
+    const field = fields.find(f => f.id === id);
     if (!field || field.system) return;
     if (!window.confirm(t(`Remove the "${field.label}" field from the birthday booking form?`, `إزالة الحقل "${field.label}" من نموذج حجز عيد الميلاد؟`))) return;
-    commitFields(birthdayFormFields.filter(f => f.id !== id));
+    commitFields(fields.filter(f => f.id !== id));
   };
 
   const handleAddField = () => {
     const id = `bf-${Date.now()}`;
     commitFields([
-      ...birthdayFormFields,
+      ...fields,
       {
         id,
         key: `custom_${Date.now()}`,
@@ -127,40 +161,9 @@ export const AdminEventsSettings: React.FC = () => {
         type: 'short_text',
         required: false,
         enabled: true,
-        order: birthdayFormFields.length
+        order: fields.length
       }
     ]);
-  };
-
-  useEffect(() => {
-    if (rawConfig) {
-      if (rawConfig.minBirthdayNoticeDays !== undefined) setMinBirthdayNoticeDays(rawConfig.minBirthdayNoticeDays);
-      if (rawConfig.maxGuestsPerEvent !== undefined) setMaxGuestsPerEvent(rawConfig.maxGuestsPerEvent);
-      if (rawConfig.depositPercentage !== undefined) setDepositPercentage(rawConfig.depositPercentage);
-      if (rawConfig.cancellationNoticeDays !== undefined) setCancellationNoticeDays(rawConfig.cancellationNoticeDays);
-    }
-  }, [rawConfig]);
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (minBirthdayNoticeDays < 0) {
-      alert(t('Notice days must be a non-negative integer.', 'يجب أن تكون أيام الإشعار عددًا صحيحًا غير سالب.'));
-      return;
-    }
-
-    const updatedConfig: EventsSettingsConfig = {
-      ...(rawConfig || {}),
-      minBirthdayNoticeDays: Number(minBirthdayNoticeDays),
-      maxGuestsPerEvent: Number(maxGuestsPerEvent),
-      depositPercentage: Number(depositPercentage),
-      cancellationNoticeDays: Number(cancellationNoticeDays),
-      birthdayTerms: terms
-    };
-
-    await updateSetting('eventsSettings', updatedConfig);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
   };
 
   return (
@@ -168,128 +171,40 @@ export const AdminEventsSettings: React.FC = () => {
       {/* The page keeps the System Settings header above; this section's own
           title lives on the first card, so it is not repeated here. */}
 
-      {savedSuccess && (
-        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
-          <Check className="h-4 w-4 text-emerald-600" />
-          <span>{t('Events settings saved! Birthday booking form validation updated.', 'تم حفظ إعدادات الفعاليات! تم تحديث التحقق في نموذج حجز عيد الميلاد.')}</span>
-        </div>
-      )}
-
-      <form onSubmit={handleSave} className="space-y-6 bg-white border border-brand-clay/70 rounded-3xl p-5 sm:p-6 shadow-2xs">
+      {/* The booking rules, read-only. They used to be inputs here, saved to
+          eventsSettings and never read: notice days and party caps are fixed in
+          src/utils/queueUtils.ts and book_birthday_slot (0027), the cancellation
+          rule in cancel_own_booking (0048), and the deposit comes from each
+          package (or from Online Payments). */}
+      <div className="space-y-4 bg-white border border-brand-clay/70 rounded-3xl p-5 sm:p-6 shadow-2xs">
         <div className="border-b border-brand-clay/50 pb-3">
           <h3 className="font-display text-lg font-extrabold text-brand-charcoal flex items-center gap-2">
             <Gift className="h-5 w-5 text-brand-terracotta" />
-            <span>{t('Events & Birthday Settings', 'إعدادات الفعاليات وأعياد الميلاد')}</span>
+            <span>{t('Birthday Booking Rules', 'قواعد حجز أعياد الميلاد')}</span>
           </h3>
           <p className="text-xs text-brand-charcoal/70 mt-1">
-            {t('The booking rules the customer site enforces: notice periods, guest ceilings, deposit and cancellation window.', 'قواعد الحجز التي يطبّقها موقع العملاء: فترات الإشعار وحدود الضيوف والعربون ونافذة الإلغاء.')}
+            {t('These rules are fixed by the booking system and cannot be changed here.', 'هذه القواعد ثابتة في نظام الحجز ولا يمكن تغييرها من هنا.')}
           </p>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Min Birthday Booking Notice */}
-          <div className="p-5 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-3">
-            <div className="flex items-center gap-2 text-brand-terracotta">
-              <Gift className="h-5 w-5" />
-              <h3 className="font-display font-bold text-sm text-brand-charcoal">{t('Minimum Birthday Booking Notice (Days)', 'الحد الأدنى لإشعار حجز عيد الميلاد (بالأيام)')}</h3>
-            </div>
-            <p className="text-xs text-brand-charcoal/60 leading-relaxed">
-              {t('Customers must pick a date at least this many days in advance when submitting a birthday package request.', 'يجب على العملاء اختيار تاريخ قبل هذا العدد من الأيام على الأقل عند تقديم طلب باقة عيد ميلاد.')}
-            </p>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-brand-charcoal/70 uppercase block">{t('Notice Days', 'أيام الإشعار')}</label>
-              <input
-                type="number"
-                min={0}
-                required
-                value={minBirthdayNoticeDays}
-                onChange={e => setMinBirthdayNoticeDays(parseInt(e.target.value) || 0)}
-                className="w-full bg-white border border-brand-clay rounded-xl py-2 px-3 text-sm font-bold text-brand-charcoal font-mono"
-              />
-            </div>
-          </div>
-
-          {/* Max Guests Per Event */}
-          <div className="p-5 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-3">
-            <div className="flex items-center gap-2 text-brand-terracotta">
-              <Calendar className="h-5 w-5" />
-              <h3 className="font-display font-bold text-sm text-brand-charcoal font-display">{t('Maximum Guests Per Private Event', 'الحد الأقصى للضيوف لكل فعالية خاصة')}</h3>
-            </div>
-            <p className="text-xs text-brand-charcoal/60 leading-relaxed">
-              {t('Upper guest limit allowed per private event package reservation.', 'الحد الأعلى لعدد الضيوف المسموح به في كل حجز باقة فعالية خاصة.')}
-            </p>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-brand-charcoal/70 uppercase block">{t('Max Guests', 'الحد الأقصى للضيوف')}</label>
-              <input
-                type="number"
-                min={1}
-                required
-                value={maxGuestsPerEvent}
-                onChange={e => setMaxGuestsPerEvent(parseInt(e.target.value) || 1)}
-                className="w-full bg-white border border-brand-clay rounded-xl py-2 px-3 text-sm font-bold text-brand-charcoal font-mono"
-              />
-            </div>
-          </div>
-
-          {/* Deposit Percentage */}
-          <div className="p-5 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-3">
-            <div className="flex items-center gap-2 text-brand-terracotta">
-              <Info className="h-5 w-5" />
-              <h3 className="font-display font-bold text-sm text-brand-charcoal">{t('Event Reservation Deposit (%)', 'عربون حجز الفعالية (%)')}</h3>
-            </div>
-            <p className="text-xs text-brand-charcoal/60 leading-relaxed">
-              {t('Required deposit percentage for private event confirmations.', 'نسبة العربون المطلوبة لتأكيد الفعاليات الخاصة.')}
-            </p>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-brand-charcoal/70 uppercase block">{t('Deposit (%)', 'العربون (%)')}</label>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                required
-                value={depositPercentage}
-                onChange={e => setDepositPercentage(parseInt(e.target.value) || 0)}
-                className="w-full bg-white border border-brand-clay rounded-xl py-2 px-3 text-sm font-bold text-brand-charcoal font-mono"
-              />
-            </div>
-          </div>
-
-          {/* Cancellation Notice Days */}
-          <div className="p-5 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-3">
-            <div className="flex items-center gap-2 text-brand-terracotta">
-              <Calendar className="h-5 w-5" />
-              <h3 className="font-display font-bold text-sm text-brand-charcoal font-display">{t('Cancellation Notice Window (Days)', 'نافذة إشعار الإلغاء (بالأيام)')}</h3>
-            </div>
-            <p className="text-xs text-brand-charcoal/60 leading-relaxed">
-              {t('Minimum notice required for full deposit refund upon cancellation.', 'الحد الأدنى للإشعار المطلوب لاسترداد العربون كاملًا عند الإلغاء.')}
-            </p>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-brand-charcoal/70 uppercase block">{t('Cancellation Window (Days)', 'نافذة الإلغاء (بالأيام)')}</label>
-              <input
-                type="number"
-                min={0}
-                required
-                value={cancellationNoticeDays}
-                onChange={e => setCancellationNoticeDays(parseInt(e.target.value) || 0)}
-                className="w-full bg-white border border-brand-clay rounded-xl py-2 px-3 text-sm font-bold text-brand-charcoal font-mono"
-              />
-            </div>
-          </div>
-
-        </div>
-
-        {/* Save button */}
-        <div className="pt-2 flex justify-end">
-          <button
-            type="submit"
-            className="px-6 py-2.5 bg-brand-terracotta hover:bg-brand-terracotta/90 text-brand-cream rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
-          >
-            <Save className="h-4 w-4" />
-            <span>{t('Save Events Settings', 'حفظ إعدادات الفعاليات')}</span>
-          </button>
-        </div>
-      </form>
+        <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-brand-charcoal/80">
+          <li className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl">
+            <span className="block font-bold text-brand-charcoal">{t('Booking notice', 'مدة الإشعار المسبق')}</span>
+            {t('1 day for 3–4 people; 4 days for 5 or more.', 'يوم واحد لعدد 3–4 أشخاص، و4 أيام لعدد 5 أشخاص أو أكثر.')}
+          </li>
+          <li className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl">
+            <span className="block font-bold text-brand-charcoal">{t('Parties per day', 'عدد الحفلات في اليوم')}</span>
+            {t(`At most ${BIRTHDAY_DAILY_MAX} a day, and ${BIRTHDAY_SAME_SLOT_MAX} at the same time.`, `بحد أقصى ${BIRTHDAY_DAILY_MAX} في اليوم، و${BIRTHDAY_SAME_SLOT_MAX} في الوقت نفسه.`)}
+          </li>
+          <li className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl">
+            <span className="block font-bold text-brand-charcoal">{t('Cancellation', 'الإلغاء')}</span>
+            {t(`A paid booking cancelled more than ${REFUND_NOTICE_HOURS} hours before the start is refunded; within ${REFUND_NOTICE_HOURS} hours, no refund.`, `يُسترد الحجز المدفوع عند إلغائه قبل أكثر من ${REFUND_NOTICE_HOURS} ساعة من موعد البدء، ولا يوجد استرداد خلال ${REFUND_NOTICE_HOURS} ساعة.`)}
+          </li>
+          <li className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl">
+            <span className="block font-bold text-brand-charcoal">{t('Deposit and guests', 'العربون وعدد الضيوف')}</span>
+            {t('Set per package on the Birthday Event page; online payment amounts in Settings → Online Payments.', 'تُضبط لكل باقة في صفحة باقات أعياد الميلاد، ومبالغ الدفع الإلكتروني في الإعدادات ← الدفع الإلكتروني.')}
+          </li>
+        </ul>
+      </div>
 
 
       {/* ================================================================= */}
@@ -305,14 +220,13 @@ export const AdminEventsSettings: React.FC = () => {
             </h3>
             <p className="text-xs text-brand-charcoal/70 mt-1">
               {lang === 'ar'
-                ? <>تُعرض للعميل قبل تقديم حجز عيد الميلاد، ويجب أن يوافق عليها. استخدم <span className="font-mono font-bold">{'{deposit}'}</span> و<span className="font-mono font-bold">{'{cancellationDays}'}</span> ليتبع النص القيم المضبوطة بدل الأرقام الثابتة.</>
-                : <>Shown to the customer before they submit a birthday reservation, and they must accept it. Use <span className="font-mono font-bold">{'{deposit}'}</span> and{' '}<span className="font-mono font-bold">{'{cancellationDays}'}</span> so the wording follows the configured values instead of fixed numbers.</>}
+                ? <>تُعرض للعميل قبل تقديم حجز عيد الميلاد، ويجب أن يوافق عليها. استخدم <span className="font-mono font-bold">{'{deposit}'}</span> ليتبع النص عربون الباقة. قاعدة الإلغاء ثابتة: {REFUND_NOTICE_HOURS} ساعة.</>
+                : <>Shown to the customer before they submit a birthday reservation, and they must accept it. Use <span className="font-mono font-bold">{'{deposit}'}</span> so the wording follows the package's deposit. The cancellation rule is fixed: {REFUND_NOTICE_HOURS} hours.</>}
             </p>
-            {terms.version && (
-              <p className="text-[10px] font-mono font-bold text-brand-charcoal/45 mt-1">
-                {t('Current version:', 'النسخة الحالية:')} {terms.version}
-              </p>
-            )}
+            <p className="text-[10px] font-mono font-bold text-brand-charcoal/45 mt-1">
+              {t('Current version:', 'النسخة الحالية:')} {savedVersion}
+              {termsDraft.dirty && <span className="ms-2 text-amber-700">{t('(unsaved changes)', '(تغييرات غير محفوظة)')}</span>}
+            </p>
           </div>
 
           <button
@@ -325,6 +239,8 @@ export const AdminEventsSettings: React.FC = () => {
           </button>
         </div>
 
+        <SaveErrorBanner error={termsSave.error} onDismiss={termsSave.clear} />
+        <ServerChangedNotice show={termsDraft.serverChanged} onLoad={termsDraft.discard} />
         {termsSaved && (
           <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
             <Check className="h-4 w-4 text-emerald-600" />
@@ -476,7 +392,7 @@ export const AdminEventsSettings: React.FC = () => {
             <div className="text-xs space-y-2 text-brand-charcoal/85 leading-relaxed">
               {pv.leadingItems.map((line, idx) => (
                 <p key={idx} className="font-semibold">
-                  {renderTermsLine(line, { deposit: 500, cancellationDays: Number(cancellationNoticeDays) || 4 })}
+                  {renderTermsLine(line, { deposit: 500 })}
                 </p>
               ))}
               {pv.supplies.length > 0 && (
@@ -489,7 +405,7 @@ export const AdminEventsSettings: React.FC = () => {
               )}
               {pv.trailingItems.map((line, idx) => (
                 <p key={idx} className="font-medium">
-                  {renderTermsLine(line, { deposit: 500, cancellationDays: Number(cancellationNoticeDays) || 4 })}
+                  {renderTermsLine(line, { deposit: 500 })}
                 </p>
               ))}
             </div>
@@ -526,6 +442,8 @@ export const AdminEventsSettings: React.FC = () => {
           </button>
         </div>
 
+        <SaveErrorBanner error={fieldsSave.error} onDismiss={fieldsSave.clear} />
+        <ServerChangedNotice show={fieldsDraft.serverChanged} onLoad={fieldsDraft.discard} />
         {fieldsSaved && (
           <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
             <Check className="h-4 w-4 text-emerald-600" />
@@ -534,7 +452,7 @@ export const AdminEventsSettings: React.FC = () => {
         )}
 
         <div className="space-y-3">
-          {birthdayFormFields.map((field, index) => (
+          {fields.map((field, index) => (
             <div
               key={field.id}
               className={`border rounded-2xl p-4 space-y-3 ${
@@ -574,7 +492,7 @@ export const AdminEventsSettings: React.FC = () => {
                   <button
                     type="button"
                     title={t('Move down', 'نقل للأسفل')}
-                    disabled={index === birthdayFormFields.length - 1}
+                    disabled={index === fields.length - 1}
                     onClick={() => handleMoveField(index, 1)}
                     className="p-1.5 rounded-lg border border-brand-clay/60 text-brand-charcoal/60 hover:bg-brand-sand disabled:opacity-30 cursor-pointer"
                   >
@@ -598,7 +516,8 @@ export const AdminEventsSettings: React.FC = () => {
                   <input
                     type="text"
                     value={field.label}
-                    onChange={e => handleFieldChange(field.id, { label: e.target.value })}
+                    onChange={e => editFieldLocal(field.id, { label: e.target.value })}
+                    onBlur={commitIfEdited}
                     className="w-full bg-brand-cream/40 border border-brand-clay rounded-xl p-2 font-semibold"
                   />
                 </div>
@@ -644,7 +563,8 @@ export const AdminEventsSettings: React.FC = () => {
                     <input
                       type="text"
                       value={field.placeholder || ''}
-                      onChange={e => handleFieldChange(field.id, { placeholder: e.target.value })}
+                      onChange={e => editFieldLocal(field.id, { placeholder: e.target.value })}
+                      onBlur={commitIfEdited}
                       className="w-full bg-brand-cream/40 border border-brand-clay rounded-xl p-2 font-semibold"
                     />
                   </div>
@@ -653,7 +573,8 @@ export const AdminEventsSettings: React.FC = () => {
                     <input
                       type="text"
                       value={field.helpText || ''}
-                      onChange={e => handleFieldChange(field.id, { helpText: e.target.value })}
+                      onChange={e => editFieldLocal(field.id, { helpText: e.target.value })}
+                      onBlur={commitIfEdited}
                       className="w-full bg-brand-cream/40 border border-brand-clay rounded-xl p-2 font-semibold"
                     />
                   </div>
@@ -665,7 +586,8 @@ export const AdminEventsSettings: React.FC = () => {
                     <LineListTextarea
                       rows={4}
                       value={field.options || []}
-                      onChange={options => handleFieldChange(field.id, { options })}
+                      onChange={options => editFieldLocal(field.id, { options })}
+                      onBlur={commitIfEdited}
                       className="w-full bg-brand-cream/40 border border-brand-clay rounded-xl p-2 font-semibold"
                     />
                   </div>
