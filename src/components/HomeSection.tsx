@@ -23,7 +23,7 @@ import {
 } from './ui/CtaSectionWithGallery';
 import { formatDate } from '../utils/calendarConfig';
 import { selectFeaturedWorkshops, recentBookingsWindow } from '../utils/featuredWorkshops';
-import { STUDIO_PHONE } from '../utils/studioConfig';
+import { STUDIO_PHONE, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL, STUDIO_ADDRESS, STUDIO_HOURS, STUDIO_MAPS_URL } from '../utils/studioConfig';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
 import { useSessionSeats, useRecentBookings } from '../lib/sessionSeats';
@@ -914,12 +914,12 @@ export const HomeSection: React.FC = () => {
                             needs the bare international digits; the visible number
                             stays formatted. */}
                         <a
-                          href="https://wa.me/966548182404"
+                          href={STUDIO_WHATSAPP_URL}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="mt-1 block font-semibold text-brand-charcoal hover:text-brand-terracotta font-mono ltr-numerals"
                         >
-                          +966 54 818 2404
+                          {STUDIO_WHATSAPP_DISPLAY}
                         </a>
                       </div>
                     </div>
@@ -928,8 +928,8 @@ export const HomeSection: React.FC = () => {
                       <Mail className="h-5 w-5 text-brand-terracotta shrink-0 mt-0.5" />
                       <div className="min-w-0">
                         <span className="text-[10px] font-semibold text-brand-muted uppercase block">{t('Email Us', 'راسلنا عبر البريد الإلكتروني')}</span>
-                        <a href="mailto:arty.cafe85@gmail.com" className="mt-1 block break-words font-semibold text-brand-charcoal hover:text-brand-terracotta">
-                          arty.cafe85@gmail.com
+                        <a href={`mailto:${STUDIO_EMAIL}`} className="mt-1 block break-words font-semibold text-brand-charcoal hover:text-brand-terracotta">
+                          {STUDIO_EMAIL}
                         </a>
                       </div>
                     </div>
@@ -989,7 +989,7 @@ export const HomeSection: React.FC = () => {
                   <div className="border-t border-brand-clay py-4">
                     <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-muted">{t('Address', 'العنوان')}</dt>
                     <dd className="mt-1.5 text-brand-charcoal">
-                      3331 Ahmad Al Attas, Al Zahra District, Jeddah 23521, Saudi Arabia
+                      {STUDIO_ADDRESS}
                     </dd>
                   </div>
                 </Reveal>
@@ -998,7 +998,7 @@ export const HomeSection: React.FC = () => {
                   <div className="border-t border-brand-clay py-4">
                     <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-muted">{t('Opening Hours', 'ساعات العمل')}</dt>
                     <dd className="mt-1.5 text-brand-charcoal ltr-numerals">
-                      {t('Every day', 'يوميًا')}: 05:00 PM – 12:00 AM
+                      {t('Every day', 'يوميًا')}: {STUDIO_HOURS}
                     </dd>
                   </div>
                 </Reveal>
@@ -1039,7 +1039,7 @@ export const HomeSection: React.FC = () => {
                 transition={{ delay: 0.15, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
               >
                 <AnimatedMap
-                  href="https://maps.app.goo.gl/Br4QagaCrPKeJ8EW8"
+                  href={STUDIO_MAPS_URL}
                   label={t('Arty Café Jeddah', 'آرتي كافيه جدة')}
                   coordinates="21.5897° N, 39.1288° E"
                   className="h-72 md:h-96"

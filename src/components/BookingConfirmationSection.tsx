@@ -6,6 +6,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
+import { InfoPageNewTabLink } from './ui/InfoPage';
 import { Sparkles, Calendar, MapPin } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { STUDIO_PHONE } from '../utils/studioConfig';
@@ -370,6 +371,11 @@ export const BookingConfirmationSection: React.FC = () => {
           {isOnlineDeposit
             ? t('*Your deposit is non-refundable.', '*العربون غير قابل للاسترداد.')
             : t('*You can cancel free of charge up to 24 hours before your session directly from your bookings portal.', '*يمكنك الإلغاء مجانًا حتى 24 ساعة قبل جلستك مباشرة من بوابة حجوزاتك.')}
+        </p>
+        <p className="mt-2 text-center text-xs">
+          <InfoPageNewTabLink page="cancellation-policy">
+            {t('Read the full Cancellation & Refund Policy', 'اقرأ سياسة الإلغاء والاسترداد كاملة')}
+          </InfoPageNewTabLink>
         </p>
 
       </div>

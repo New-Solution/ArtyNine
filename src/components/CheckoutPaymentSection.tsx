@@ -16,6 +16,7 @@ import { timeLabel } from '../utils/availabilityLabel';
 import { CheckoutStepper } from './ui/CheckoutStepper';
 import { BackButton } from './ui/BackButton';
 import { MoyasarPaymentPanel } from './MoyasarPaymentPanel';
+import { InfoPageNewTabLink } from './ui/InfoPage';
 import { ONLINE_PAYMENTS_AVAILABLE, ONLINE_CHECKOUT_SHIPPED } from '../utils/featureFlags';
 import {
   ONLINE_PAYMENTS_SETTING_ID, normalizeOnlinePayments, estimateOnlineAmount, birthdayFullPrice
@@ -524,6 +525,20 @@ export const CheckoutPaymentSection: React.FC = () => {
 
           </form>
           )}
+
+          {/* Shown with the payment form AND with the Moyasar panel, so the
+              policy is one tap away at the moment of paying. A new tab: going
+              to the page in place would drop the hold being paid for. */}
+          <p className="mt-4 text-center text-[11px] text-brand-muted">
+            {t('By booking you agree to our', 'بإتمام الحجز فإنك توافق على')}{' '}
+            <InfoPageNewTabLink page="cancellation-policy">
+              {t('Cancellation & Refund Policy', 'سياسة الإلغاء والاسترداد')}
+            </InfoPageNewTabLink>{' '}
+            {t('and', 'و')}{' '}
+            <InfoPageNewTabLink page="terms">
+              {t('Terms & Conditions', 'الشروط والأحكام')}
+            </InfoPageNewTabLink>.
+          </p>
 
         </div>
 

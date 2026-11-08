@@ -16,6 +16,13 @@ import {
 import { useLiveTable, fetchTable } from '../lib/supabaseData';
 import { getDataClient, isStaffSessionActive, onDataClientChange } from '../lib/supabase';
 import { readPaymentReturn } from '../lib/onlinePayment';
+import { takeInfoPageFromUrl, type InfoPage } from '../utils/infoPages';
+
+/** Every page of the customer site. There is no router: this is the route. */
+export type CustomerTab =
+  | 'home' | 'workshops' | 'detail' | 'checkout-info' | 'checkout-payment' | 'confirmation'
+  | 'my-bookings' | 'my-pieces' | 'auth' | 'birthday-booking' | 'reset-password' | 'payment-return'
+  | InfoPage;
 import { notifySeatsChanged } from '../lib/sessionSeats';
 import { formatQueueNumber } from '../utils/queueUtils';
 import { generateBookingRefCode } from '../utils/idGeneration';
@@ -164,8 +171,8 @@ interface AppContextType {
   viewCustomerSite: () => void;
   /** Returns a signed-in staff member to the console. */
   returnToStaffConsole: () => void;
-  customerTab: 'home' | 'workshops' | 'detail' | 'checkout-info' | 'checkout-payment' | 'confirmation' | 'my-bookings' | 'my-pieces' | 'auth' | 'birthday-booking' | 'reset-password' | 'payment-return';
-  setCustomerTab: (tab: 'home' | 'workshops' | 'detail' | 'checkout-info' | 'checkout-payment' | 'confirmation' | 'my-bookings' | 'my-pieces' | 'auth' | 'birthday-booking' | 'reset-password' | 'payment-return') => void;
+  customerTab: CustomerTab;
+  setCustomerTab: (tab: CustomerTab) => void;
   adminTab: 'dashboard' | 'queue' | 'customers' | 'staff' | 'bookings' | 'workshops-admin' | 'events-admin' | 'pieces-admin' | 'system-health' | 'settings';
   setAdminTab: (tab: 'dashboard' | 'queue' | 'customers' | 'staff' | 'bookings' | 'workshops-admin' | 'events-admin' | 'pieces-admin' | 'system-health' | 'settings') => void;
   
@@ -667,10 +674,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     return () => data.subscription.unsubscribe();
   }, []);
-  const [customerTab, setCustomerTab] = useState<'home' | 'workshops' | 'detail' | 'checkout-info' | 'checkout-payment' | 'confirmation' | 'my-bookings' | 'my-pieces' | 'auth' | 'birthday-booking' | 'reset-password' | 'payment-return'>(
+  const [customerTab, setCustomerTab] = useState<CustomerTab>(
     // A return from Moyasar (3-D Secure / callback_url) opens the payment
-    // return screen straight away; see PaymentReturnSection.
-    () => (readPaymentReturn() ? 'payment-return' : 'home')
+    // return screen straight away; see PaymentReturnSection. A link to one of
+    // the public info pages (?page=terms, from the checkout's "opens in a new
+    // tab" policy link or from outside the site) opens that page.
+    () => (readPaymentReturn() ? 'payment-return' : takeInfoPageFromUrl() ?? 'home')
   );
   const [adminTab, setAdminTab] = useState<'dashboard' | 'queue' | 'customers' | 'staff' | 'bookings' | 'workshops-admin' | 'events-admin' | 'pieces-admin' | 'system-health' | 'settings'>('dashboard');
   

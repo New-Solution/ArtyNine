@@ -10,6 +10,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { Footer } from './ui/Footer';
 import { LanguageToggle } from './LanguageToggle';
 import { CustomerNotificationBell } from './ui/CustomerNotificationBell';
+import { STUDIO_WHATSAPP_URL, STUDIO_INSTAGRAM_URL, STUDIO_TIKTOK_URL, STUDIO_FACEBOOK_URL } from '../utils/studioConfig';
 
 export const CustomerHeader: React.FC = () => {
   const { customerTab, setCustomerTab, currentUser, setWorkshopsInitialCategory } = useApp();
@@ -149,12 +150,12 @@ const TikTokIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5' })
 );
 
 export const CustomerFooter: React.FC = () => {
-  const { goToStaffLogin, currentStaff, returnToStaffConsole } = useApp();
+  const { goToStaffLogin, currentStaff, returnToStaffConsole, setCustomerTab } = useApp();
   const { t } = useLanguage();
 
   /* Hours, the address and the front-desk number are deliberately absent:
-     they are all shown in "Slow down & visit us" on the home page, and a
-     second copy here is one more place to forget to update. */
+     they are shown in "Slow down & visit us" on the home page and on the
+     Contact page, both reading src/utils/studioConfig.ts. */
   return (
     <Footer
       logo={
@@ -173,22 +174,22 @@ export const CustomerFooter: React.FC = () => {
       socialLinks={[
         {
           icon: <WhatsAppIcon />,
-          href: 'https://wa.me/966548182404',
+          href: STUDIO_WHATSAPP_URL,
           label: t('WhatsApp', 'واتساب')
         },
         {
           icon: <Instagram className="h-5 w-5" />,
-          href: 'https://www.instagram.com/arty.cafe',
+          href: STUDIO_INSTAGRAM_URL,
           label: 'Instagram'
         },
         {
           icon: <TikTokIcon />,
-          href: 'https://www.tiktok.com/@artycafe',
+          href: STUDIO_TIKTOK_URL,
           label: 'TikTok'
         },
         {
           icon: <Facebook className="h-5 w-5" />,
-          href: 'https://www.facebook.com/people/Arty-Cafe/100041894486483/',
+          href: STUDIO_FACEBOOK_URL,
           label: 'Facebook'
         }
       ]}
@@ -215,6 +216,21 @@ export const CustomerFooter: React.FC = () => {
               label: t('Staff Login', 'دخول الموظفين'),
               onClick: () => goToStaffLogin()
             }
+      ]}
+      /* The public info pages. Open to everyone, signed in or not. */
+      legalLinks={[
+        {
+          label: t('Cancellation & Refund Policy', 'سياسة الإلغاء والاسترداد'),
+          onClick: () => setCustomerTab('cancellation-policy')
+        },
+        {
+          label: t('Terms & Conditions', 'الشروط والأحكام'),
+          onClick: () => setCustomerTab('terms')
+        },
+        {
+          label: t('Contact', 'تواصل معنا'),
+          onClick: () => setCustomerTab('contact')
+        }
       ]}
       copyright={{
         text: t('© 2026 Arty Café Jeddah.', '© ٢٠٢٦ آرتي كافيه جدة.'),

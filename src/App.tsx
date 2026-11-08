@@ -21,6 +21,9 @@ import { ResetPasswordSection } from './components/ResetPasswordSection';
 import { PaymentReturnSection } from './components/PaymentReturnSection';
 import { MigrationWarning } from './components/MigrationWarning';
 import { PageTransition } from './components/PageTransition';
+import { CancellationPolicySection } from './components/CancellationPolicySection';
+import { TermsSection } from './components/TermsSection';
+import { ContactSection } from './components/ContactSection';
 
 import { AdminSidebar, AdminTopBar } from './components/AdminSidebar';
 import { AdminLoginSection } from './components/AdminLoginSection';
@@ -115,6 +118,10 @@ export default function App() {
             {customerTab === 'reset-password' && <ResetPasswordSection />}
             {customerTab === 'payment-return' && <PaymentReturnSection />}
             {customerTab === 'birthday-booking' && <BirthdayBookingSection />}
+            {/* Public info pages: no sign-in, linked from the footer. */}
+            {customerTab === 'cancellation-policy' && <CancellationPolicySection />}
+            {customerTab === 'terms' && <TermsSection />}
+            {customerTab === 'contact' && <ContactSection />}
             </PageTransition>
           </main>
 
