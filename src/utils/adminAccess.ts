@@ -158,6 +158,26 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'settings-data-reset', label: 'Data Reset', labelAr: 'إعادة ضبط البيانات' }
 ];
 
+/**
+ * Settings sections only a Super Admin may see. Data Reset deletes live data
+ * for everyone, so it is hidden from every other role (the page also refuses
+ * to render it for them).
+ */
+export const SUPER_ADMIN_ONLY_SETTINGS_SECTIONS: SettingsSectionId[] = ['settings-data-reset'];
+
+/** Whether this staff member may see a Settings section. */
+export function canSeeSettingsSection(id: SettingsSectionId, staff?: StaffMember | null): boolean {
+  return !SUPER_ADMIN_ONLY_SETTINGS_SECTIONS.includes(id) || isSuperAdmin(staff);
+}
+
+/** The exact phrase a Super Admin must type to run Data Reset. */
+export const DATA_RESET_PHRASE = 'DELETE EVERYTHING';
+
+/** True only for the exact phrase (surrounding spaces ignored, case kept). */
+export function isDataResetConfirmed(typed: string): boolean {
+  return typed.trim() === DATA_RESET_PHRASE;
+}
+
 /** Maps a legacy stored section id onto its namespaced replacement. */
 const LEGACY_SECTION_IDS: Record<string, SettingsSectionId> = {
   'stages': 'settings-stages',

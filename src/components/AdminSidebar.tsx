@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, CalendarDays, Palette, ListOrdered, 
   Flame, HelpCircle, ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut, ShieldAlert, Settings, Sparkles, UserCheck
 , Megaphone } from 'lucide-react';
-import { SETTINGS_SECTIONS, getPageLabel, getSettingsSectionLabel } from '../utils/adminAccess';
+import { SETTINGS_SECTIONS, canSeeSettingsSection, getPageLabel, getSettingsSectionLabel } from '../utils/adminAccess';
 import { formatTime, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
 import { LanguageToggle } from './LanguageToggle';
 import { useLanguage } from '../context/LanguageContext';
@@ -116,7 +116,7 @@ export const AdminSidebar: React.FC = () => {
 
                   {!collapsed && settingsOpen && (
                     <div className="hidden lg:block ml-4 pl-3 border-l border-brand-cream/15 space-y-0.5">
-                      {SETTINGS_SECTIONS.map(section => {
+                      {SETTINGS_SECTIONS.filter(section => canSeeSettingsSection(section.id, currentStaff)).map(section => {
                         const isSectionActive = isActive && settingsSection === section.id;
                         return (
                           <button

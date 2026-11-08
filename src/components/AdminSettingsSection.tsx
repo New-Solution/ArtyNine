@@ -29,6 +29,7 @@ import { PotteryLoggingConsoleSettings } from './PotteryLoggingConsoleSettings';
 import { AdminCapacitySettings } from './AdminCapacitySettings';
 import { AdminEventsSettings } from './AdminEventsSettings';
 import { AdminOnlinePaymentsSettings } from './AdminOnlinePaymentsSettings';
+import { DataResetPanel } from './DataResetPanel';
 import { LineListTextarea } from './ui/LineListTextarea';
 import { usePagination, TablePager } from './ui/TablePager';
 import { useLanguage } from '../context/LanguageContext';
@@ -49,7 +50,7 @@ export const AdminSettingsSection: React.FC = () => {
     addPipelineStage, updatePipelineStage, deletePipelineStage, reorderPipelineStages,
     addStaffMember, updateStaffMember, deleteStaffMember,
     addWorkshopOption, updateWorkshopOption, deleteWorkshopOption, reorderWorkshopOptions,
-    updateSetting, pieces, workshops, removeAllData, reseedSampleData,
+    updateSetting, pieces, workshops, 
     currentStaff, settingsSection, workshopFields, updateWorkshopFields
   } = useApp();
   const { lang, t } = useLanguage();
@@ -460,61 +461,7 @@ export const AdminSettingsSection: React.FC = () => {
         {/* =======================================================
             TAB: DATABASE & DATA RESET
             ======================================================= */}
-        {activeTab === 'settings-data-reset' && (
-          <div className="space-y-6 text-left animate-in fade-in duration-200">
-            <div className="border-b border-brand-clay/40 pb-4">
-              <h2 className="font-display text-xl font-extrabold text-brand-charcoal">{t('Database Operations & Data Purge', 'عمليات قاعدة البيانات ومسح البيانات')}</h2>
-              <p className="text-xs text-brand-charcoal/70 mt-1">
-                {t('Manage IndexedDB persistent storage, perform full data wipes, or restore initial sample data.', 'إدارة التخزين الدائم IndexedDB، وإجراء مسح كامل للبيانات، أو استعادة البيانات النموذجية الأولية.')}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-5 bg-red-50/50 border border-red-200 rounded-2xl space-y-3">
-                <div className="flex items-center gap-2 text-red-700 font-bold text-sm">
-                  <Trash2 className="h-5 w-5" />
-                  <span>{t('Wipe All Website Data', 'مسح جميع بيانات الموقع')}</span>
-                </div>
-                <p className="text-xs text-brand-charcoal/70 leading-relaxed">
-                  {t('Permanently deletes all customer accounts, bookings, queue entries, pottery pieces, workshops, and events. Staff profiles and studio configuration (pipeline stages, birthday packages, option lists) are preserved.', 'يحذف نهائيًا جميع حسابات العملاء والحجوزات وإدخالات الطابور وقطع الفخار والورش والفعاليات. تُحفظ ملفات الموظفين وإعدادات الاستوديو (مراحل المسار وباقات أعياد الميلاد وقوائم الخيارات).')}
-                </p>
-                <button
-                  onClick={async () => {
-                    if (window.confirm(t('Are you sure you want to completely remove ALL data from the website? This cannot be undone.', 'هل أنت متأكد من إزالة جميع بيانات الموقع بالكامل؟ لا يمكن التراجع عن هذا الإجراء.'))) {
-                      await removeAllData();
-                      alert(t('All website data has been wiped clean.', 'تم مسح جميع بيانات الموقع بالكامل.'));
-                    }
-                  }}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  <span>{t('Purge All Data Now', 'مسح جميع البيانات الآن')}</span>
-                </button>
-              </div>
-
-              <div className="p-5 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-3">
-                <div className="flex items-center gap-2 text-brand-terracotta font-bold text-sm">
-                  <RotateCcw className="h-5 w-5" />
-                  <span>{t('Restore Sample Data', 'استعادة البيانات النموذجية')}</span>
-                </div>
-                <p className="text-xs text-brand-charcoal/70 leading-relaxed">
-                  {t('Re-populates the website database with initial default sample workshops, sessions, queue items, and staff records.', 'يعيد ملء قاعدة بيانات الموقع بورش وجلسات وعناصر طابور وسجلات موظفين نموذجية افتراضية.')}
-                </p>
-                <button
-                  onClick={async () => {
-                    if (window.confirm(t('Do you want to restore initial sample data to the website?', 'هل تريد استعادة البيانات النموذجية الأولية للموقع؟'))) {
-                      await reseedSampleData();
-                    }
-                  }}
-                  className="px-4 py-2 bg-brand-terracotta hover:bg-brand-terracotta/90 text-brand-cream rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  <span>{t('Re-seed Sample Data', 'إعادة زرع البيانات النموذجية')}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeTab === 'settings-data-reset' && <DataResetPanel />}
         
         {/* =======================================================
             TAB: POTTERY LOGGING CONSOLE
