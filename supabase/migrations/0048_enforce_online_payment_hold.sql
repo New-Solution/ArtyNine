@@ -807,9 +807,13 @@ BEGIN
     format('Case 4d: deposit setting 75 must charge 75, got %s / %s', r.online_amount, r.online_amount_halalas);
 
   -- 5. A signed-out guest + payments ON -> forced hold too.
+  --    Every forged payment field, but not customer_id: 0044 replaces it only
+  --    for a SIGNED-IN customer (auth.uid() not null); a guest's customer_id
+  --    is kept by design, so the forged TEST-0048-OTHER (no such customer)
+  --    would just fail the foreign key. Case 3 covers the signed-in case.
   PERFORM set_config('role', 'anon', true);
   PERFORM set_config('request.jwt.claims', '{"role":"anon"}', true);
-  PERFORM public.book_session_seats(v_web || v_forged || '{"id":"TEST-0048-5"}', 'TEST-0048-S');
+  PERFORM public.book_session_seats(v_web || (v_forged - 'customer_id') || '{"id":"TEST-0048-5"}', 'TEST-0048-S');
   PERFORM set_config('role', v_editor, true);
   SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-5';
   ASSERT r.payment_status = 'Awaiting Payment' AND r.online_amount = 100 AND r.moyasar_payment_id IS NULL,
