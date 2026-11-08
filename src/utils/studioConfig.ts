@@ -32,8 +32,15 @@ export const STUDIO_ADDRESS_SHORT = 'Ahmad Al Attas St, Jeddah';
 export const STUDIO_ADDRESS_SHORT_AR = 'شارع أحمد العطاس، جدة';
 export const STUDIO_MAPS_URL = 'https://maps.app.goo.gl/Br4QagaCrPKeJ8EW8';
 
-/** Shown after "Every day" / "يوميًا". */
-export const STUDIO_HOURS = '05:00 PM – 12:00 AM';
+/**
+ * Opening hours, every day. Rendered by <StudioHours />, which writes the
+ * Arabic as Arabic (مساءً / منتصف الليل, not PM / AM) and isolates only the
+ * digits, so the line never reorders in RTL.
+ */
+export const STUDIO_HOURS = {
+  en: { opens: '05:00 PM', closes: '12:00 AM' },
+  ar: { opens: '5:00', opensPeriod: 'مساءً', closes: '12:00', closesPeriod: 'منتصف الليل' }
+} as const;
 
 export const STUDIO_INSTAGRAM_HANDLE = '@arty.cafe';
 export const STUDIO_INSTAGRAM_URL = 'https://www.instagram.com/arty.cafe';

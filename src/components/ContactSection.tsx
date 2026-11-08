@@ -12,10 +12,11 @@ import { MapPin, Clock, Phone, Mail, Instagram, Facebook, MessageCircle, Buildin
 import { useLanguage } from '../context/LanguageContext';
 import {
   STUDIO_PHONE, STUDIO_PHONE_TEL, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL,
-  STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_MAPS_URL, STUDIO_HOURS, STUDIO_INSTAGRAM_URL, STUDIO_INSTAGRAM_HANDLE,
+  STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_MAPS_URL, STUDIO_INSTAGRAM_URL, STUDIO_INSTAGRAM_HANDLE,
   STUDIO_TIKTOK_URL, STUDIO_FACEBOOK_URL
 } from '../utils/studioConfig';
 import { InfoPageLayout, InfoSection, ConfirmWithClient, InfoPageLink } from './ui/InfoPage';
+import { StudioHours } from './ui/StudioHours';
 
 const linkClass = 'font-semibold text-brand-charcoal hover:text-brand-terracotta break-words';
 
@@ -51,7 +52,7 @@ export const ContactSection: React.FC = () => {
         </Row>
 
         <Row icon={Clock} label={t('Opening Hours', 'ساعات العمل')}>
-          <p className="ltr-numerals">{t('Every day', 'يوميًا')}: {STUDIO_HOURS}</p>
+          <p><StudioHours /></p>
         </Row>
 
         <Row icon={Phone} label={t('Call Front Desk', 'اتصل بالاستقبال')}>
@@ -66,7 +67,7 @@ export const ContactSection: React.FC = () => {
           <a href={`mailto:${STUDIO_EMAIL}`} className={linkClass}>{STUDIO_EMAIL}</a>
         </Row>
 
-        <Row icon={Instagram} label="Instagram">
+        <Row icon={Instagram} label={t('Instagram', 'إنستغرام')}>
           <a href={STUDIO_INSTAGRAM_URL} {...external} dir="ltr" className={linkClass}>{STUDIO_INSTAGRAM_HANDLE}</a>
         </Row>
       </div>

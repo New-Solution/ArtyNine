@@ -23,7 +23,8 @@ import {
 } from './ui/CtaSectionWithGallery';
 import { formatDate } from '../utils/calendarConfig';
 import { selectFeaturedWorkshops, recentBookingsWindow } from '../utils/featuredWorkshops';
-import { STUDIO_PHONE, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL, STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_HOURS, STUDIO_MAPS_URL } from '../utils/studioConfig';
+import { STUDIO_PHONE, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL, STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_MAPS_URL } from '../utils/studioConfig';
+import { StudioHours } from './ui/StudioHours';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
 import { useSessionSeats, useRecentBookings } from '../lib/sessionSeats';
@@ -997,8 +998,8 @@ export const HomeSection: React.FC = () => {
                 <Reveal index={3}>
                   <div className="border-t border-brand-clay py-4">
                     <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-muted">{t('Opening Hours', 'ساعات العمل')}</dt>
-                    <dd className="mt-1.5 text-brand-charcoal ltr-numerals">
-                      {t('Every day', 'يوميًا')}: {STUDIO_HOURS}
+                    <dd className="mt-1.5 text-brand-charcoal">
+                      <StudioHours />
                     </dd>
                   </div>
                 </Reveal>
