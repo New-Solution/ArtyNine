@@ -1,6 +1,0 @@
-{
-  "name": "Arty Café",
-  "description": "An elegant art café in Jeddah, Saudi Arabia offering pottery and painting workshops, live queue management, and firing trackers.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
