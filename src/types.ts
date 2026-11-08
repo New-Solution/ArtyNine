@@ -1390,6 +1390,19 @@ export function fieldTypeUsesOptions(type: WorkshopFieldType): boolean {
 }
 
 /** Enabled fields for a card, in configured order. */
+/**
+ * Whether a built-in workshop field (bound to a Workshop property, e.g.
+ * 'duration', 'ageRange', 'staffId', 'roomId') may be shown on the customer
+ * workshop page: it must be enabled AND marked "Visible to Customers" in
+ * Settings -> Workshop Detail Lists. A field with no configuration at all
+ * stays visible, as before.
+ */
+export function isBuiltInFieldCustomerVisible(fields: WorkshopFieldConfig[], boundTo: string): boolean {
+  const field = fields.find(f => f.boundTo === boundTo);
+  if (!field) return true;
+  return field.enabled !== false && field.customerVisible !== false;
+}
+
 export function fieldsForCard(
   fields: WorkshopFieldConfig[],
   card: WorkshopCardSection,

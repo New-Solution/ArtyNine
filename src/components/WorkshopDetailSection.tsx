@@ -19,6 +19,7 @@ import { Edit, ChevronLeft, ChevronRight } from 'lucide-react';
 import { BackButton } from './ui/BackButton';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
+import { isBuiltInFieldCustomerVisible } from '../types';
 
 export const WorkshopDetailSection: React.FC = () => {
   const { 
@@ -372,10 +373,16 @@ export const WorkshopDetailSection: React.FC = () => {
               original per-cell borders take over unchanged. */}
           <div className="grid grid-cols-2 gap-px bg-brand-clay sm:grid-cols-2 sm:gap-0 sm:bg-brand-cream lg:grid-cols-4 rounded-[22px] border border-brand-clay overflow-hidden">
             {[
-              { label: t('Duration', 'المدة'), value: durationLabel(workshop.duration, lang) },
-              { label: t('Ages', 'الأعمار'), value: ageRangeLabel(workshop.ageRange, lang) },
-              { label: t('Tutor', 'المدرّب'), value: workshopTutorName },
-              { label: t('Location', 'الموقع'), value: workshop.room.split('(')[0] },
+              // Built-in fields follow their "Visible to Customers" toggle in
+              // Settings -> Workshop Detail Lists, like the custom ones below.
+              ...([
+                { boundTo: 'duration', label: t('Duration', 'المدة'), value: durationLabel(workshop.duration, lang) },
+                { boundTo: 'ageRange', label: t('Ages', 'الأعمار'), value: ageRangeLabel(workshop.ageRange, lang) },
+                { boundTo: 'staffId', label: t('Tutor', 'المدرّب'), value: workshopTutorName },
+                { boundTo: 'roomId', label: t('Location', 'الموقع'), value: workshop.room.split('(')[0] }
+              ]
+                .filter(cell => isBuiltInFieldCustomerVisible(workshopFields, cell.boundTo))
+                .map(({ label, value }) => ({ label, value }))),
               ...customerVisibleFields.map(field => {
                 const raw = workshop?.customFields?.[field.fieldKey];
                 const text = Array.isArray(raw) ? raw.join(', ') : raw;
