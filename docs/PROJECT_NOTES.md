@@ -4,7 +4,7 @@ For the long-term maintainers. This is the map: what runs where, what each
 piece is for, and where to look when something goes wrong. Detailed procedures
 live in the files linked from here; this file does not repeat them.
 
-Last reviewed: 8 Nov 2026 (after migration 0050).
+Last reviewed: 8 Nov 2026 (after migration 0050; 0051 written, not yet applied).
 
 **Never write a secret value in this file, in a commit, or in a chat.** Names
 only. Values live in the Supabase dashboard / CLI secrets and in the Cloudflare
@@ -41,7 +41,10 @@ Pages project settings.
   manual (see §4 and §5).
 - **Data access in the app:** `src/lib/supabaseDb.ts` (`sdb`, imported as
   `db` in `AppContext.tsx`) is a thin wrapper over Supabase tables. `db.x.clear()`
-  is a live `DELETE` on production, not a cache clear.
+  is a live `DELETE` on production, not a cache clear. Since 0051 no app code
+  calls it on a data table, and the database refuses a non–Super Admin
+  statement that empties bookings, customers, pieces, workshops, sessions,
+  events or the queue.
 
 Key places in the code:
 
@@ -211,6 +214,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0048 | Backstop trigger for payment holds; cancellation never marks unpaid as Refunded | Applied |
 | 0049 | Bookings need a signed-in caller (no guest `customer_id`) | Applied |
 | 0050 | Payments OFF: website bookings always `Unpaid` (+ backstop trigger) | Applied |
+| 0051 | Data Reset only via `reset_all_data()` (Super Admin + phrase); guard refuses non–Super Admin table wipes | **Not applied yet** |
 
 Re-running an old test block after a later migration can fail by design (e.g.
 0046/0048 guest cases are refused after 0049). That is not a regression.
@@ -394,9 +398,11 @@ select pg_get_functiondef('public.book_session_seats(jsonb,text)'::regprocedure)
   `select`) and the test block (`DO $$` → `END $$;`, without `/*` `*/`) as two
   separate queries.
 - **Settings → Data Reset deletes live data** (bookings, customers, queue,
-  pieces, notifications…) for everyone. Since 8 Nov 2026 it is shown only to a
-  Super Admin and needs "DELETE EVERYTHING" typed — but that is the UI only:
-  the database still allows staff writes generally (see §11).
+  pieces, notifications…) for everyone. It is shown only to a Super Admin,
+  needs "DELETE EVERYTHING" typed, and (0051) is a single call to
+  `reset_all_data()`, which the database refuses for anyone but a Super Admin
+  with that phrase. It leaves a "Data Reset" staff notification naming who ran
+  it.
 - **Never fake a payment in the UI.** The simulated checkout recorded `Paid`
   for money that never moved, for months. Payment status must come from the
   database or from a staff action.
@@ -428,9 +434,12 @@ Other docs: `docs/manual-test-payments.md` (payments runbook + tests),
 
 ## 11. Open housekeeping (8 Nov 2026)
 
-- **Data Reset is not enforced server-side.** The deletes run under each
-  table's RLS, which lets staff write; a `SECURITY DEFINER` reset function
-  checking `is_super_admin()` (or a guard against bulk deletes) would close it.
+- **Apply 0051** (Data Reset enforced server-side). Until then the new
+  console build's Data Reset button fails with "function reset_all_data does
+  not exist" (nothing is deleted).
+- **0051's limit:** a staff account can still delete rows one at a time
+  (staff need DELETE for normal work); only "empty the table in one go" is
+  refused.
 - **0001–0034** have no STATUS line (older than the convention).
 - **54 unused local variables** reported by `tsc --noUnusedLocals` (unused
   imports were removed); each needs a look, see `docs/parked-work.md`.

@@ -473,13 +473,14 @@ re-tinting the existing text.
 
 The `500` deposit fallback is repeated in four places rather than read from one source.
 
-### Data Reset is hidden, not enforced, server-side
+### Data Reset — enforced server-side by 0051 (once applied)
 
-Settings → Data Reset is shown only to a Super Admin and needs "DELETE EVERYTHING" typed (8 Nov
-2026). The deletes themselves run as the signed-in staff member under each table's RLS, which
-allows staff writes generally, so the database does not limit a bulk delete to Super Admins. A
-server-side guard (a `SECURITY DEFINER` reset function checking `is_super_admin()`, or a
-statement-level trigger refusing mass deletes from non–Super Admins) would close it.
+Settings → Data Reset is Super Admin only in the UI and, from migration 0051, in the database:
+the reset is one call to `reset_all_data()`, which refuses unless the caller is a Super Admin and
+sends "DELETE EVERYTHING", and a guard trigger refuses any non–Super Admin statement that empties
+bookings, customers, pieces, workshops, workshop_sessions, events or queue. Remaining limit: a staff
+account can still delete rows one by one (staff need DELETE for normal work). notifications and
+piece_history are not guarded (staff legitimately empty them; piece history cascades).
 
 ### 54 unused local variables
 

@@ -408,7 +408,6 @@ interface AppContextType {
     id: string,
     opts: { hours: number; participants: number; tableIds: string[] }
   ) => Promise<{ success: boolean; message?: string; newId?: string }>;
-  reorderQueue: (newQueue: QueueItem[]) => void;
   updatePieceStatus: (id: string, status: PotteryPiece['status'], performerUser?: string, reason?: string, smsVariant?: KilnSmsVariant) => void;
   addPiece: (piece: Omit<PotteryPiece, 'id' | 'daysElapsed' | 'expectedCompletion' | 'notes'> & Partial<Pick<PotteryPiece, 'expectedCompletion' | 'notes'>>) => void;
   updatePiece: (id: string, updates: Partial<PotteryPiece>) => Promise<void>;
@@ -423,7 +422,7 @@ interface AppContextType {
     id: string; name: string; pieceCode?: string; customerName: string; customerPhone: string;
   }) => Promise<SendPickupReminderOutcome>;
   markNotificationAsRead: (id: string) => Promise<void>;
-  clearAllNotifications: (type?: 'customer' | 'staff') => Promise<void>;
+  clearAllNotifications: (type: 'customer' | 'staff') => Promise<void>;
   runAllTests: () => void;
   toggleTestResult: (id: string) => void;
   isTestRunning: boolean;
@@ -464,7 +463,8 @@ interface AppContextType {
   reorderEventOptions: (type: EventOption['type'], newOptions: EventOption[]) => Promise<void>;
 
   updateSetting: (id: string, value: any) => Promise<void>;
-  removeAllData: () => Promise<void>;
+  /** Settings -> Data Reset. Super Admin only, enforced by reset_all_data (0051). Returns rows deleted per table. */
+  removeAllData: (confirmPhrase: string) => Promise<Record<string, number>>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -2889,11 +2889,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, newId };
   };
 
-  const reorderQueue = async (newQueue: QueueItem[]) => {
-    await db.queue.clear();
-    await db.queue.bulkAdd(newQueue);
-  };
-
   /**
    * Computes the customer-facing message for a status, applies the
    * notifyCustomer/dedup gates, writes both notification rows (customer
@@ -3235,14 +3230,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await db.notifications.update(id, { isRead: true });
   };
 
-  const clearAllNotifications = async (type?: 'customer' | 'staff') => {
-    if (type) {
-      const items = await db.notifications.where('type').equals(type).toArray();
-      const keys = items.map(item => item.id);
-      await db.notifications.bulkDelete(keys);
-    } else {
-      await db.notifications.clear();
-    }
+  // Clears one kind of notification (the staff bell uses 'staff'). There is
+  // deliberately no "clear everything": wiping all notifications is part of
+  // the Super Admin Data Reset (reset_all_data, 0051).
+  const clearAllNotifications = async (type: 'customer' | 'staff') => {
+    const items = await db.notifications.where('type').equals(type).toArray();
+    const keys = items.map(item => item.id);
+    await db.notifications.bulkDelete(keys);
   };
 
   const runAllTests = () => {
@@ -4409,22 +4403,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    *    packages, resources, settings — which is no longer re-created by the
    *    client and could not be recovered without re-running the migration.
    */
-  const removeAllData = async () => {
+  const removeAllData = async (confirmPhrase: string): Promise<Record<string, number>> => {
+    // One server call: reset_all_data (migration 0051) checks the caller is a
+    // Super Admin and the phrase, then deletes everything in one transaction.
+    // Nothing here deletes tables directly any more — a non–Super Admin who
+    // tried would be refused by the database (refuse_table_wipe).
+    const client = getDataClient();
+    if (!client) throw new Error(SUPABASE_NOT_CONFIGURED);
+    const { data, error } = await client.rpc('reset_all_data', { p_confirm: confirmPhrase });
+    if (error) throw new Error(error.message);
+
     localStorage.removeItem('artycafe_current_user');
     localStorage.removeItem('artycafe_pending_booking');
-
-    // Operational records only, children before parents.
-    await db.pieceHistory.clear();
-    await db.notifications.clear();
-    await db.queue.clear();
-    await db.pieces.clear();
-    await db.bookings.clear();
-    await db.workshopSessions.clear();
-    await db.workshops.clear();
-    await db.events.clear();
-    await db.customers.clear();
-
     setCurrentUser(null);
+    return (data ?? {}) as Record<string, number>;
   };
 
   const loggingFieldsSetting = appSettings.find(s => s.id === 'potteryLoggingConsoleFields')?.value;
@@ -4596,7 +4588,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cancelBooking, cancelOwnBooking, updateBookingStatus,
       addCategoryIfMissing, updateCategoryNameAr, assignBookingStaff, updateWorkshopSession, appendBookingTimeline,
       getFreshAssignmentSources, getFreshStaff, getCustomerPieceCount,
-      addQueueItem, addStaffNotification, updateQueueStatus, updateQueueItem, reorderQueue, returnQueueItemToWaiting,
+      addQueueItem, addStaffNotification, updateQueueStatus, updateQueueItem, returnQueueItemToWaiting,
       assignQueueTables, seatQueueItem, changeQueueItemTables,
       updatePieceStatus, addPiece, updatePiece, deletePiece, markNotificationAsRead, clearAllNotifications,
       overduePickupPieces, markPieceCollected, sendPickupReminder,

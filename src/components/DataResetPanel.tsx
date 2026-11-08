@@ -10,9 +10,10 @@
  * is not behind a browser confirm() any more: the Super Admin must type the
  * exact phrase DATA_RESET_PHRASE ("DELETE EVERYTHING") first.
  *
- * Server-side: the deletes run as the signed-in staff member under the
- * tables' RLS policies, which allow writes to staff generally — the database
- * does not yet restrict this to Super Admins. Hiding it here is the UI half.
+ * Server-side (migration 0051): the reset is one call to reset_all_data(),
+ * which refuses unless the caller is a Super Admin AND sends the phrase, and a
+ * guard trigger refuses any non–Super Admin statement that empties a core
+ * table. Hiding the section here is only the UI half.
  */
 
 import React, { useState } from 'react';
@@ -43,13 +44,18 @@ export const DataResetPanel: React.FC = () => {
     setRunning(true);
     setResult(null);
     try {
-      await removeAllData();
+      const counts = await removeAllData(typed);
+      const total = Object.values(counts).reduce((sum, n) => sum + (Number(n) || 0), 0);
       setTyped('');
-      setResult({ ok: true, message: t('All website data has been deleted.', 'تم حذف جميع بيانات الموقع.') });
+      setResult({
+        ok: true,
+        message: t(`All website data has been deleted (${total} rows).`, `تم حذف جميع بيانات الموقع (${total} سجل).`)
+      });
     } catch (err: any) {
       setResult({
         ok: false,
-        message: t('The reset stopped part-way: ', 'توقفت إعادة الضبط في منتصفها: ') + (err?.message || String(err))
+        // reset_all_data runs in one transaction: a failure deletes nothing.
+        message: t('Nothing was deleted: ', 'لم يُحذف أي شيء: ') + (err?.message || String(err))
       });
     } finally {
       setRunning(false);
