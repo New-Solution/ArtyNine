@@ -148,7 +148,7 @@ export const AdminCapacitySettings: React.FC = () => {
       <div className="border-b border-brand-clay/40 pb-4">
         <h2 className="font-display text-xl font-extrabold text-brand-charcoal">{t('Studio & Queue Capacity Configuration', 'إعدادات سعة الاستوديو والطابور')}</h2>
         <p className="text-xs text-brand-charcoal/70 mt-1">
-          {t('Manage live queue seat allocation, the table inventory and its seats. The studio’s seat total is the sum of the tables’ seats.', 'إدارة تخصيص مقاعد الطابور المباشر وجرد الطاولات ومقاعدها. إجمالي مقاعد الاستوديو هو مجموع مقاعد الطاولات.')}
+          {t('Manage live queue seat allocation, the table inventory and its seats. The studio’s seat total is the sum of the active tables’ seats.', 'إدارة تخصيص مقاعد الطابور المباشر وجرد الطاولات ومقاعدها. إجمالي مقاعد الاستوديو هو مجموع مقاعد الطاولات النشطة.')}
         </p>
       </div>
 
@@ -186,7 +186,7 @@ export const AdminCapacitySettings: React.FC = () => {
           <div className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-1">
             <span className="text-xs font-bold text-brand-charcoal/80 block">{t('Total Studio Seats', 'إجمالي مقاعد الاستوديو')}</span>
             <span className="block py-2 text-sm font-bold text-brand-charcoal font-mono">{totalSeats}</span>
-            <span className="block text-[10px] text-brand-charcoal/55">{t('Sum of the tables’ seats', 'مجموع مقاعد الطاولات')}</span>
+            <span className="block text-[10px] text-brand-charcoal/55">{t('Sum of the active tables’ seats', 'مجموع مقاعد الطاولات النشطة')}</span>
           </div>
 
           <div className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-1">

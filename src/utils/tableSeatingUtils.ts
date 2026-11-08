@@ -161,14 +161,17 @@ export function tableNamesFor(tableIds: string[] | undefined, tables: StudioTabl
 }
 
 /**
- * The studio's seat total: the sum of every configured table's seats.
+ * The studio's seat total: the sum of the seats of the ACTIVE tables.
+ * Inactive and Maintenance tables cannot be seated, so they are not capacity.
  *
  * The ONE definition, used by Settings -> Capacity, the Live Queue header and
  * the Table Inventory. There used to be a separately typed "Total Studio
  * Seats" number as well, and the two could disagree on the same page.
  */
-export function tableSeatTotal(tables: Array<{ seats?: number | string | null }>): number {
-  return tables.reduce((sum, t) => sum + (Number(t.seats) || 0), 0);
+export function tableSeatTotal(tables: Array<{ seats?: number | string | null; status?: string | null }>): number {
+  return tables
+    .filter(t => t.status === 'Active')
+    .reduce((sum, t) => sum + (Number(t.seats) || 0), 0);
 }
 
 /** Aggregate counters for the Live Queue header metrics and Table Inventory. */
