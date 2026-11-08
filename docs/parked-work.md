@@ -7,38 +7,22 @@ is forgotten or accidental — each was found during other work and consciously 
 
 ## LAUNCH BLOCKER
 
-### The payment flow is simulated — no money moves
+### The payment flow is simulated — no money moves — RESOLVED
 
-`CheckoutPaymentSection.completePayment()` resolves an 800ms `setTimeout` and then writes the
-booking. There is **no Moyasar integration, no provider call, no card capture, and no payment
-record**. Every booking in the database marked `Paid` or `Deposit Paid` was marked so by the client
-without any money changing hands.
+Real payments arrived with Moyasar (migration 0046, Edge Functions `verify-payment` /
+`moyasar-webhook`; runbook in `docs/manual-test-payments.md`). The leftover simulation — a fake
+card / Apple Pay / STC Pay form and an 800ms timer that wrote `Paid` when online payments were OFF
+— was removed on 8 Nov 2026: with payments off a website booking is now saved `Unpaid` ("Pay at the
+studio"), and migration 0050 forces `Unpaid` in the database for non-staff callers. The false STC
+Pay copy went with it. Bookings already written `Paid` by the simulation were left untouched; see
+the query in `docs/PROJECT_NOTES.md` §8 to list them.
 
-The site's stated purpose is taking payment for workshop and birthday bookings, so **it cannot
-launch in this state**. This is not a defect in the booking logic — capacity, locking and
-idempotency are all real and tested — it is that the step between choosing a session and holding a
-confirmed booking does not exist.
+### Customer-triggered SMS has no access path — RESOLVED for self-cancel
 
-The STC Pay copy at `CheckoutPaymentSection.tsx:383` — *"A payment authorization notification will
-be pushed to your STC Pay app"* — is false for the same reason. It should be written when the real
-flow exists and describes what that flow actually does, not before. Fixing the wording now would
-just produce a different false statement.
-
-### Customer-triggered SMS has no access path
-
-`send-sms` is gated on `is_staff()` (`supabase/functions/send-sms/index.ts`), verified against
-Supabase Auth. That is correct for what it does today — every existing caller is a staff action:
-booking cancellation by staff, piece status changes, pickup reminders.
-
-But it means **any future customer-triggered send cannot use it as-is**. That covers a booking
-confirmation SMS, and the already-recorded self-cancellation gap (see *"No SMS or in-app
-notification on customer self-cancellation"* below, which is the same wall from the other side).
-Solving one solves both, and the shape of the solution — a `SECURITY DEFINER` wrapper, a
-server-side trigger, or a separate function with its own narrower authorisation — should be decided
-once for both rather than twice.
-
-No booking-confirmation SMS or email is wanted (client decision), so this is only a blocker for the
-self-cancel notification today.
+`send-sms` stays staff-only. The customer self-cancel SMS now goes through its own narrowly
+authorised Edge Function, `notify-own-booking` (proves the caller owns the booking, reads phone and
+wording from the row). No booking-confirmation SMS or email is wanted (client decision), so there
+is no other customer-triggered send today.
 
 ### N7 — password reset always reports success
 
@@ -419,15 +403,12 @@ it. If they match, the space is outside that element and the tab row's `mb-8` or
 is where to look. Also worth checking whether a second form is still in the DOM — search the
 subtree for the "Create Account" heading.
 
-### No SMS or in-app notification on customer self-cancellation
+### No SMS or in-app notification on customer self-cancellation — RESOLVED
 
-A customer cancelling their own booking gets **zero** confirmation beyond what is on screen at that
-moment. `send-sms` requires an active staff session, so the call inside the flow takes a 401 and
-fails silently; the in-app notification is separately blocked by RLS. The cancellation itself
-always succeeds.
-
-Needs a product decision on whether self-cancel should have its own notification path — e.g. a
-service-role-permitted send for this specific case.
+In-app: written inside `cancel_own_booking` (0031; wording updated in 0048). SMS:
+`notify-own-booking`, which sends only a registered template that is true for the booking — none
+for a booking that was never paid or a refund that is still due (no such template is registered
+yet).
 
 ---
 
@@ -491,6 +472,20 @@ re-tinting the existing text.
 ### Deposit fallback hardcoded
 
 The `500` deposit fallback is repeated in four places rather than read from one source.
+
+### Data Reset is hidden, not enforced, server-side
+
+Settings → Data Reset is shown only to a Super Admin and needs "DELETE EVERYTHING" typed (8 Nov
+2026). The deletes themselves run as the signed-in staff member under each table's RLS, which
+allows staff writes generally, so the database does not limit a bulk delete to Super Admins. A
+server-side guard (a `SECURITY DEFINER` reset function checking `is_super_admin()`, or a
+statement-level trigger refusing mass deletes from non–Super Admins) would close it.
+
+### 54 unused local variables
+
+`tsc --noUnusedLocals` still reports 54 unused locals / destructured values (unused imports were
+removed on 8 Nov 2026). Left alone on purpose: some are destructured from `useApp()` or kept for
+behaviour; each needs a look rather than a bulk delete.
 
 ### Studio phone number hardcoded
 

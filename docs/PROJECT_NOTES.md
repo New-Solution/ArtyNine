@@ -4,7 +4,7 @@ For the long-term maintainers. This is the map: what runs where, what each
 piece is for, and where to look when something goes wrong. Detailed procedures
 live in the files linked from here; this file does not repeat them.
 
-Last reviewed: 8 Nov 2026 (after migration 0049).
+Last reviewed: 8 Nov 2026 (after migration 0049; 0050 written, not yet applied).
 
 **Never write a secret value in this file, in a commit, or in a chat.** Names
 only. Values live in the Supabase dashboard / CLI secrets and in the Cloudflare
@@ -34,7 +34,8 @@ Pages project settings.
   paid) is enforced **in Postgres** with RLS and `SECURITY DEFINER` functions,
   never trusted from the browser.
 - **Edge Functions** do the things that need a secret: talking to Moyasar,
-  sending SMS, creating staff logins, and the scheduled auto-cancel job.
+  sending SMS, creating staff logins, and the scheduled auto-cancel job
+  (triggered every 5 minutes by **pg_cron** in the Supabase project).
 - **Hosting:** Cloudflare Pages. Pushing `main` rebuilds the front end.
   Pushing does **not** apply migrations or deploy Edge Functions; both are
   manual (see §4 and §5).
@@ -91,7 +92,7 @@ Only public values belong here. Change one → **redeploy** for it to take effec
 Not read by the code (safe to remove from Cloudflare if present):
 `VITE_MOYASAR_METHODS` (payment methods are fixed in `src/lib/onlinePayment.ts`,
 `MOYASAR_METHODS`), `GEMINI_API_KEY`, `APP_URL`, `DISABLE_HMR` (AI Studio
-template leftovers).
+template leftovers, removed from `.env.example` / `vite.config.ts` on 8 Nov 2026).
 
 **Never** put the service-role key in Cloudflare or any `VITE_` variable.
 
@@ -131,7 +132,7 @@ keeps it on. **Never run `supabase config push`** (see the warning in
 |---|---|---|
 | `verify-payment` | the customer's browser after paying (and the 3-D Secure return page) | Fetches the payment from Moyasar with the secret key, logs it, and calls `confirm_booking_payment()`. The only normal path to "paid". |
 | `moyasar-webhook` | Moyasar | Backup confirmation path: checks the secret token, re-fetches the payment, same confirm call. |
-| `auto-cancel-bookings` | a scheduler (configured outside the repo) | Cancels no-shows and expires unpaid holds, after first checking Moyasar for a payment that arrived without the customer coming back. Sends the no-show SMS. |
+| `auto-cancel-bookings` | **pg_cron** in the Supabase project, **every 5 minutes** (job set up in the dashboard, not in a migration) | Cancels no-shows and expires unpaid holds, after first checking Moyasar for a payment that arrived without the customer coming back. Sends the no-show SMS. |
 | `notify-own-booking` | the customer's browser after self-cancelling | Sends the cancellation SMS, only with a registered template that is true for the booking (none for unpaid or refund-due). |
 | `send-sms` | staff console | Sends one SMS (staff only, `is_staff()` checked). |
 | `send-sms-hook` | Supabase Auth | Delivers phone sign-in codes through our SMS provider. |
@@ -165,7 +166,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0003 | Customer site write path | Applied (inferred) |
 | 0004 | Assign a staff member to a birthday/event booking | Applied (inferred) |
 | 0005 | Sign in with phone or email | Applied (inferred) |
-| 0006 | Pottery pipeline clean-up (header mislabelled "0003") | Applied (inferred) |
+| 0006 | Pottery pipeline clean-up | Applied (inferred) |
 | 0007 | Pottery lifecycle: 3 customer-facing stages | Applied (inferred) |
 | 0008 | Café table assignment for the Live Queue | Applied (inferred) |
 | 0009 | Seed table inventory | Applied (inferred) |
@@ -199,7 +200,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0037 | Arabic birthday-package fields | ⚠ header says NOT YET APPLIED — check (§11) |
 | 0038 | Arabic workshop materials list | ⚠ header says NOT YET APPLIED — check (§11) |
 | 0039 | Arabic birthday-package lists | ⚠ header says NOT YET APPLIED — check (§11) |
-| 0040 | Stop anonymous writes to existing customer rows | ⚠ header says NOT YET APPLIED, but its code is live inside applied 0041 |
+| 0040 | Stop anonymous writes to existing customer rows | Superseded by 0041 (its guard is live through 0041) |
 | 0041 | Claim a customer record by verified phone | Applied |
 | 0042 | No empty customer inserts | Applied |
 | 0043 | Retire the sign-in lookup | Applied |
@@ -209,6 +210,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0047 | Moyasar payment evidence log (append-only) | Applied |
 | 0048 | Backstop trigger for payment holds; cancellation never marks unpaid as Refunded | Applied |
 | 0049 | Bookings need a signed-in caller (no guest `customer_id`) | Applied |
+| 0050 | Payments OFF: website bookings always `Unpaid` (+ backstop trigger) | **Not applied yet** |
 
 Re-running an old test block after a later migration can fail by design (e.g.
 0046/0048 guest cases are refused after 0049). That is not a regression.
@@ -222,7 +224,11 @@ Full runbook, deploy order and the manual test plan:
 
 1. **Switch:** Settings → Online Payments (`app_settings` id `onlinePayments`).
    Workshop = deposit (default 100 SAR, never refunded), birthday = full price,
-   hold 15 minutes. Off = old pay-at-studio flow.
+   hold 15 minutes. **Off = pay at the studio:** the checkout takes no payment,
+   the booking is saved `Unpaid`, and the confirmation says "Pay at the studio"
+   (0050 enforces `Unpaid` in the database once applied). Until 8 Nov 2026 the
+   off-mode checkout faked a payment and wrote `Paid`; see §8 for the query
+   that lists those bookings.
 2. **Booking (customer must be signed in, 0049):** `book_session_seats` /
    `book_birthday_slot` create a **hold** — `Pending / Awaiting Payment`,
    price computed by the database, `payment_expires_at = now + hold`. The
@@ -340,6 +346,21 @@ Online setting as the database reads it:
 select public.online_payments_config();
 ```
 
+Website bookings marked paid with no online payment — the old simulated
+checkout wrote these with payments off. Some may have been genuinely paid at
+the studio later; the last timeline entry helps tell them apart. Read-only:
+
+```sql
+select id, created_at, customer_name, customer_phone, workshop_title, date, time,
+       total_price, payment_status, status,
+       timeline->-1->>'action' as last_timeline_action
+from public.bookings
+where source = 'Website'
+  and payment_status in ('Paid', 'Deposit Paid')
+  and moyasar_payment_id is null
+order by created_at desc;
+```
+
 Which version of a function is live (look for the migration's marker comment):
 
 ```sql
@@ -373,8 +394,12 @@ select pg_get_functiondef('public.book_session_seats(jsonb,text)'::regprocedure)
   `select`) and the test block (`DO $$` → `END $$;`, without `/*` `*/`) as two
   separate queries.
 - **Settings → Data Reset deletes live data** (bookings, customers, queue,
-  pieces, notifications…) for everyone, after one browser confirm. Treat it as
-  a production delete button.
+  pieces, notifications…) for everyone. Since 8 Nov 2026 it is shown only to a
+  Super Admin and needs "DELETE EVERYTHING" typed — but that is the UI only:
+  the database still allows staff writes generally (see §11).
+- **Never fake a payment in the UI.** The simulated checkout recorded `Paid`
+  for money that never moved, for months. Payment status must come from the
+  database or from a staff action.
 - **Shell quoting on Windows:** `notepad supabase\migrations\…` typed into a
   bash shell drops the backslashes and creates an empty file in the repo root;
   use forward slashes.
@@ -397,21 +422,22 @@ select pg_get_functiondef('public.book_session_seats(jsonb,text)'::regprocedure)
 Other docs: `docs/manual-test-payments.md` (payments runbook + tests),
 `docs/manual-test-admin.md`, `docs/manual-test-customer.md`,
 `docs/manual-test-m1-capacity.md`, `docs/stage-3-ui-notes.md`,
-`docs/parked-work.md` (partly out of date, see §11).
+`docs/parked-work.md` (deferred issues; updated 8 Nov 2026).
 
 ---
 
 ## 11. Open housekeeping (8 Nov 2026)
 
+- **Apply 0050** (website bookings `Unpaid` when payments are off). Steps are
+  in its header; the front end already sends `Unpaid`.
+- **Bookings recorded `Paid` by the old simulated checkout:** listed by the
+  query in §8. Existing data was deliberately not changed.
+- **Data Reset is not enforced server-side.** The deletes run under each
+  table's RLS, which lets staff write; a `SECURITY DEFINER` reset function
+  checking `is_super_admin()` (or a guard against bulk deletes) would close it.
 - **Migrations 0035–0039:** headers say NOT YET APPLIED. Check with
   `select table_name, column_name from information_schema.columns where column_name in ('title_ar','name_ar','pricing_label_ar','materials_ar') and table_schema = 'public';`
   and correct the headers to match.
-- **0040:** header says NOT YET APPLIED; its guard is live through 0041. The
-  header should say "superseded by 0041 (applied)".
 - **0001–0034** have no STATUS line (older than the convention).
-- **`docs/parked-work.md`** still lists the simulated payment and the
-  self-cancel SMS gap as open; both are solved.
-- **STC Pay copy** in `CheckoutPaymentSection.tsx` ("…pushed to your STC Pay
-  app") is shown only in the old offline flow and STC Pay is not enabled.
-- **With online payments OFF**, the checkout still records website bookings as
-  `Paid` after an 800 ms timer (the pre-Moyasar simulation).
+- **54 unused local variables** reported by `tsc --noUnusedLocals` (unused
+  imports were removed); each needs a look, see `docs/parked-work.md`.

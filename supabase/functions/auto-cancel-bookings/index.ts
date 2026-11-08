@@ -29,11 +29,11 @@
  * it is "the only place MSHASTRA_USERNAME / MSHASTRA_PASSWORD are ever
  * read"). Driving this from Postgres would mean either copying those
  * secrets into the database — breaking that invariant and doubling the
- * places a credential can leak from — or having pg_cron call out over
- * pg_net to this function anyway. Neither pg_cron nor pg_net is enabled on
- * this project today (only pgcrypto is declared, in 0001_init), so the SQL
- * route also costs two extensions for no gain. The scheduler calls this
- * function directly instead.
+ * places a credential can leak from. So the work stays here, and the
+ * schedule lives in Postgres: a pg_cron job in the Supabase project calls
+ * this function every 5 minutes (set up in the dashboard, not in a
+ * migration). The job only triggers it; no credentials move into the
+ * database beyond what the cron call itself needs.
  *
  * AUTHORIZATION
  * Unlike send-sms, this has no human caller to authorize: it runs on a
