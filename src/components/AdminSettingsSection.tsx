@@ -33,6 +33,7 @@ import { enumLabel } from '../utils/enumLabels';
 import { displayPosition } from '../utils/staffPosition';
 import { CategoryArabicNames } from './CategoryArabicNames';
 import { SaveErrorBanner, useSaveError } from './ui/SaveErrorBanner';
+import { useServerDraft, ServerChangedNotice } from './ui/useServerDraft';
 
 /** What each section saves, for the failed-save message (EN + AR). */
 const SAVE_WHAT = {
@@ -116,32 +117,52 @@ export const AdminSettingsSection: React.FC = () => {
   // ---- Workshop card field configuration ----
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
 
+  // The field list is a local draft (useServerDraft): text edits are saved on
+  // blur instead of on every keystroke, discrete changes (type, toggles,
+  // order, add, delete) save at once, and a realtime update never wipes an
+  // unsaved edit.
+  const fieldsDraft = useServerDraft<WorkshopFieldConfig[]>(workshopFields);
+  const draftFields = fieldsDraft.draft;
+
   const cardFields = useMemo(
-    () => fieldsForCard(workshopFields, workshopListCard, true),
-    [workshopFields, workshopListCard]
+    () => fieldsForCard(draftFields, workshopListCard, true),
+    [draftFields, workshopListCard]
   );
 
-  const saveWorkshopFields = (fields: WorkshopFieldConfig[]) =>
-    save.run(() => updateWorkshopFields(fields), SAVE_WHAT.fields);
+  const saveWorkshopFields = async (fields: WorkshopFieldConfig[]) => {
+    const ok = await save.run(() => updateWorkshopFields(fields), SAVE_WHAT.fields);
+    if (ok) fieldsDraft.markSaved(fields);
+    return ok;
+  };
+
+  /** Text edits (label, placeholder, options) stay local until blur. */
+  const editWorkshopFieldLocal = (fieldId: string, updates: Partial<WorkshopFieldConfig>) => {
+    fieldsDraft.setDraft(current => current.map(f => (f.fieldId === fieldId ? { ...f, ...updates } : f)));
+  };
+
+  /** Saves the draft when a text box loses focus, only if something changed. */
+  const commitWorkshopFieldsIfEdited = () => {
+    if (fieldsDraft.dirty) saveWorkshopFields(fieldsDraft.draft);
+  };
 
   const handleUpdateWorkshopField = (fieldId: string, updates: Partial<WorkshopFieldConfig>) => {
     saveWorkshopFields(
-      workshopFields.map(f => (f.fieldId === fieldId ? { ...f, ...updates } : f))
+      draftFields.map(f => (f.fieldId === fieldId ? { ...f, ...updates } : f))
     );
   };
 
   const handleToggleWorkshopField = (fieldId: string) => {
-    const field = workshopFields.find(f => f.fieldId === fieldId);
+    const field = draftFields.find(f => f.fieldId === fieldId);
     if (!field) return;
     handleUpdateWorkshopField(fieldId, { enabled: !field.enabled });
   };
 
   /** Reorders within the field's own card, leaving the other card untouched. */
   const handleMoveWorkshopField = (fieldId: string, direction: -1 | 1) => {
-    const field = workshopFields.find(f => f.fieldId === fieldId);
+    const field = draftFields.find(f => f.fieldId === fieldId);
     if (!field) return;
 
-    const siblings = fieldsForCard(workshopFields, field.cardSection, true);
+    const siblings = fieldsForCard(draftFields, field.cardSection, true);
     const index = siblings.findIndex(f => f.fieldId === fieldId);
     const target = index + direction;
     if (target < 0 || target >= siblings.length) return;
@@ -152,7 +173,7 @@ export const AdminSettingsSection: React.FC = () => {
 
     const orderById = new Map(reordered.map((f, i) => [f.fieldId, i]));
     saveWorkshopFields(
-      workshopFields.map(f =>
+      draftFields.map(f =>
         orderById.has(f.fieldId) ? { ...f, displayOrder: orderById.get(f.fieldId)! } : f
       )
     );
@@ -160,7 +181,7 @@ export const AdminSettingsSection: React.FC = () => {
 
   const handleAddWorkshopField = () => {
     const stamp = Date.now();
-    const siblings = fieldsForCard(workshopFields, workshopListCard, true);
+    const siblings = fieldsForCard(draftFields, workshopListCard, true);
     const newField: WorkshopFieldConfig = {
       fieldId: `wf-${stamp}`,
       // Stable key, independent of the label so renaming never loses values.
@@ -174,7 +195,7 @@ export const AdminSettingsSection: React.FC = () => {
       customerVisible: false,
       createdAt: new Date().toISOString()
     };
-    saveWorkshopFields([...workshopFields, newField]);
+    saveWorkshopFields([...draftFields, newField]);
     setEditingFieldId(newField.fieldId);
   };
 
@@ -184,7 +205,7 @@ export const AdminSettingsSection: React.FC = () => {
    * brings them back.
    */
   const handleDeleteWorkshopField = (fieldId: string) => {
-    const field = workshopFields.find(f => f.fieldId === fieldId);
+    const field = draftFields.find(f => f.fieldId === fieldId);
     if (!field || field.system) return;
 
     const inUse = workshops.filter(w => w.customFields?.[field.fieldKey] !== undefined).length;
@@ -194,7 +215,7 @@ export const AdminSettingsSection: React.FC = () => {
 
     if (!window.confirm(t(`Delete the "${field.label}" field?${warning}\n\nDisabling it instead keeps it on the form configuration.`, `حذف الحقل "${field.label}"؟${warning}\n\nيؤدي تعطيله بدلًا من ذلك إلى إبقائه في إعدادات النموذج.`))) return;
 
-    saveWorkshopFields(workshopFields.filter(f => f.fieldId !== fieldId));
+    saveWorkshopFields(draftFields.filter(f => f.fieldId !== fieldId));
     setEditingFieldId(null);
   };
 
@@ -837,6 +858,7 @@ export const AdminSettingsSection: React.FC = () => {
             ======================================================= */}
         {activeTab === 'settings-workshop-lists' && (
           <div className="space-y-6 text-left animate-in fade-in duration-200">
+            <ServerChangedNotice show={fieldsDraft.serverChanged} onLoad={fieldsDraft.discard} />
 
             <div>
               <h3 className="font-display text-xl font-extrabold text-brand-charcoal">{t('Workshop Detail Lists', 'قوائم تفاصيل الورشة')}</h3>
@@ -982,7 +1004,8 @@ export const AdminSettingsSection: React.FC = () => {
                             <input
                               type="text"
                               value={field.label}
-                              onChange={e => handleUpdateWorkshopField(field.fieldId, { label: e.target.value })}
+                              onChange={e => editWorkshopFieldLocal(field.fieldId, { label: e.target.value })}
+                              onBlur={commitWorkshopFieldsIfEdited}
                               className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-semibold"
                             />
                             <p className="text-[10px] text-brand-charcoal/45">
@@ -1013,7 +1036,8 @@ export const AdminSettingsSection: React.FC = () => {
                             <input
                               type="text"
                               value={field.placeholder || ''}
-                              onChange={e => handleUpdateWorkshopField(field.fieldId, { placeholder: e.target.value })}
+                              onChange={e => editWorkshopFieldLocal(field.fieldId, { placeholder: e.target.value })}
+                              onBlur={commitWorkshopFieldsIfEdited}
                               className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-semibold"
                             />
                           </div>
@@ -1061,7 +1085,8 @@ export const AdminSettingsSection: React.FC = () => {
                             <LineListTextarea
                               rows={4}
                               value={field.options || []}
-                              onChange={options => handleUpdateWorkshopField(field.fieldId, { options })}
+                              onChange={options => editWorkshopFieldLocal(field.fieldId, { options })}
+                              onBlur={commitWorkshopFieldsIfEdited}
                               className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-semibold"
                             />
                             {field.fieldKey === 'category' && (
