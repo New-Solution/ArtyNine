@@ -4,7 +4,7 @@ For the long-term maintainers. This is the map: what runs where, what each
 piece is for, and where to look when something goes wrong. Detailed procedures
 live in the files linked from here; this file does not repeat them.
 
-Last reviewed: 8 Nov 2026 (after migration 0049; 0050 written, not yet applied).
+Last reviewed: 8 Nov 2026 (after migration 0050).
 
 **Never write a secret value in this file, in a commit, or in a chat.** Names
 only. Values live in the Supabase dashboard / CLI secrets and in the Cloudflare
@@ -210,7 +210,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0047 | Moyasar payment evidence log (append-only) | Applied |
 | 0048 | Backstop trigger for payment holds; cancellation never marks unpaid as Refunded | Applied |
 | 0049 | Bookings need a signed-in caller (no guest `customer_id`) | Applied |
-| 0050 | Payments OFF: website bookings always `Unpaid` (+ backstop trigger) | **Not applied yet** |
+| 0050 | Payments OFF: website bookings always `Unpaid` (+ backstop trigger) | Applied |
 
 Re-running an old test block after a later migration can fail by design (e.g.
 0046/0048 guest cases are refused after 0049). That is not a regression.
@@ -226,9 +226,9 @@ Full runbook, deploy order and the manual test plan:
    Workshop = deposit (default 100 SAR, never refunded), birthday = full price,
    hold 15 minutes. **Off = pay at the studio:** the checkout takes no payment,
    the booking is saved `Unpaid`, and the confirmation says "Pay at the studio"
-   (0050 enforces `Unpaid` in the database once applied). Until 8 Nov 2026 the
-   off-mode checkout faked a payment and wrote `Paid`; see §8 for the query
-   that lists those bookings.
+   (0050 enforces `Unpaid` in the database). Until 8 Nov 2026 the off-mode
+   checkout faked a payment and wrote `Paid`; the §8 query found no such
+   bookings on 8 Nov 2026.
 2. **Booking (customer must be signed in, 0049):** `book_session_seats` /
    `book_birthday_slot` create a **hold** — `Pending / Awaiting Payment`,
    price computed by the database, `payment_expires_at = now + hold`. The
@@ -428,10 +428,6 @@ Other docs: `docs/manual-test-payments.md` (payments runbook + tests),
 
 ## 11. Open housekeeping (8 Nov 2026)
 
-- **Apply 0050** (website bookings `Unpaid` when payments are off). Steps are
-  in its header; the front end already sends `Unpaid`.
-- **Bookings recorded `Paid` by the old simulated checkout:** listed by the
-  query in §8. Existing data was deliberately not changed.
 - **Data Reset is not enforced server-side.** The deletes run under each
   table's RLS, which lets staff write; a `SECURITY DEFINER` reset function
   checking `is_super_admin()` (or a guard against bulk deletes) would close it.

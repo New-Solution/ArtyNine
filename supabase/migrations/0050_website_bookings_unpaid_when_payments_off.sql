@@ -1,6 +1,7 @@
--- STATUS: NOT APPLIED
--- Written 8 Nov 2026. Apply manually in the Supabase SQL Editor, then run the
--- MANUAL TESTS block at the bottom.
+-- STATUS: APPLIED
+-- Applied manually in the Supabase SQL Editor on 8 Nov 2026; every verification
+-- column true and all manual tests passed. The read-only check for bookings the
+-- old simulated checkout had marked Paid returned no rows.
 -- =============================================================================
 -- 0050 — WEBSITE BOOKINGS ARE UNPAID WHEN ONLINE PAYMENTS ARE OFF
 --
