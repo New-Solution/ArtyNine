@@ -867,9 +867,16 @@ export function isStageEnabled(stage: PipelineStage): boolean {
   return stage.enabled !== false;
 }
 
-/** Wording shown to the customer for a stage. */
-export function stageCustomerLabel(stage: PipelineStage): string {
-  return stage.customerLabel?.trim() || stage.name;
+/**
+ * Wording shown to the customer for a stage.
+ *   English: customer label, else the stage name.
+ *   Arabic:  Arabic customer label (customer_label_ar, 0045), else the Arabic
+ *            stage name (name_ar), else the English wording above.
+ */
+export function stageCustomerLabel(stage: PipelineStage, lang: 'en' | 'ar' = 'en'): string {
+  const english = stage.customerLabel?.trim() || stage.name;
+  if (lang !== 'ar') return english;
+  return stage.customerLabelAr?.trim() || stage.nameAr?.trim() || english;
 }
 
 export interface StaffWeeklyShift {
@@ -1853,6 +1860,18 @@ export interface PrePaymentPopupConfig {
   buttonLabel: string;
   requiredCheckbox: boolean;
   checkboxLabel: string;
+  /**
+   * Optional Arabic text, shown to customers browsing in Arabic. Each field
+   * falls back on its own when empty (see popupTextForLang): to the built-in
+   * translation while the English is still the shipped default, otherwise to
+   * the English as typed. instructionsAr, when non-empty, replaces the whole
+   * list — it is its own Arabic list, not a line-by-line translation.
+   */
+  titleAr?: string;
+  messageAr?: string;
+  instructionsAr?: string[];
+  buttonLabelAr?: string;
+  checkboxLabelAr?: string;
 }
 
 export const DEFAULT_PREPAYMENT_POPUP: PrePaymentPopupConfig = {
@@ -1924,7 +1943,84 @@ export function migratePrePaymentPopup(raw: any): PrePaymentPopupConfig {
     requiredCheckbox: stored.requiredCheckbox !== false,
     checkboxLabel: typeof stored.checkboxLabel === 'string'
       ? stored.checkboxLabel
-      : DEFAULT_PREPAYMENT_POPUP.checkboxLabel
+      : DEFAULT_PREPAYMENT_POPUP.checkboxLabel,
+    // Arabic: kept only when present, so an English-only record stays as it was.
+    ...(typeof stored.titleAr === 'string' ? { titleAr: stored.titleAr } : {}),
+    ...(typeof stored.messageAr === 'string' ? { messageAr: stored.messageAr } : {}),
+    ...(Array.isArray(stored.instructionsAr)
+      ? { instructionsAr: stored.instructionsAr.filter((line: any) => typeof line === 'string' && line.trim()) }
+      : {}),
+    ...(typeof stored.buttonLabelAr === 'string' ? { buttonLabelAr: stored.buttonLabelAr } : {}),
+    ...(typeof stored.checkboxLabelAr === 'string' ? { checkboxLabelAr: stored.checkboxLabelAr } : {})
+  };
+}
+
+/**
+ * Arabic wording for the popup text the studio ships with, used only while a
+ * string still IS one of these defaults and no Arabic was typed for it in
+ * Settings. Matched string by string. Display only.
+ */
+export const DEFAULT_POPUP_AR: Array<{ en: string; ar: string }> = [
+  { en: 'Important Studio Safety & Timeline Instructions',
+    ar: 'تعليمات مهمة للسلامة والجدول الزمني في الاستوديو' },
+  { en: 'Please note the following studio rules before proceeding to payment.',
+    ar: 'يرجى الاطلاع على قواعد الاستوديو التالية قبل المتابعة إلى الدفع.' },
+  { en: 'Clay Processing Time: All pottery created in the studio takes 10 to 14 days to completely air dry, undergo bisque-firing, be hand-glazed, and fired a second time.',
+    ar: 'مدة تجهيز الفخار: تستغرق جميع القطع الفخارية التي تُصنع في الاستوديو من 10 إلى 14 يومًا لتجف تمامًا، ثم تخضع للحرق الأول، وتُزجَّج يدويًا، وتُحرق مرة ثانية.' },
+  { en: 'Live Tracker: Once booked, your piece will appear in your "My Pieces" collection tracker where you can track its lifecycle stages.',
+    ar: 'المتابعة المباشرة: بعد الحجز ستظهر قطعتك في متتبع «أعمالي» حيث يمكنك متابعة مراحلها.' },
+  { en: 'Safety Attire: We recommend wearing clothes you do not mind getting a little clay on (although aprons are provided!).',
+    ar: 'ملابس مناسبة: نوصي بارتداء ملابس لا تمانع أن يصيبها بعض الطين (علمًا بأن المآزر متوفرة!).' },
+  { en: 'Storage Window: Your finished pieces will be held at our collection shelves for up to 30 days post-firing.',
+    ar: 'مدة الحفظ: ستُحفظ قطعك المكتملة على أرفف الاستلام لدينا لمدة تصل إلى 30 يومًا بعد الحرق.' },
+  { en: 'I confirm I have read these safety rules and understand the 10-14 day firing timeline.',
+    ar: 'أؤكد أنني قرأت قواعد السلامة هذه وأفهم أن مدة الحرق من 10 إلى 14 يومًا.' },
+  { en: 'Continue to Payment', ar: 'المتابعة إلى الدفع' }
+];
+
+const normalizePopupText = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** The built-in Arabic for a shipped default string, or the string itself. */
+function defaultPopupArabic(text: string): string {
+  const known = DEFAULT_POPUP_AR.find(entry => normalizePopupText(entry.en) === normalizePopupText(text));
+  return known ? known.ar : text;
+}
+
+export interface PopupText {
+  title: string;
+  /** Paragraphs, already split. */
+  paragraphs: string[];
+  instructions: string[];
+  buttonLabel: string;
+  checkboxLabel: string;
+}
+
+/**
+ * What the customer reads, in their language. English: the stored text.
+ * Arabic: each field's Arabic when typed in Settings; otherwise the built-in
+ * translation of a shipped default; otherwise the English as typed.
+ */
+export function popupTextForLang(config: PrePaymentPopupConfig, lang: 'en' | 'ar'): PopupText {
+  const englishInstructions = config.instructions.filter(line => line.trim().length > 0);
+  if (lang !== 'ar') {
+    return {
+      title: config.title,
+      paragraphs: popupParagraphs(config.message),
+      instructions: englishInstructions,
+      buttonLabel: config.buttonLabel,
+      checkboxLabel: config.checkboxLabel
+    };
+  }
+  const pick = (ar: string | undefined, en: string) => (ar && ar.trim() ? ar : defaultPopupArabic(en));
+  const arInstructions = (config.instructionsAr || []).filter(line => line.trim().length > 0);
+  return {
+    title: pick(config.titleAr, config.title),
+    paragraphs: config.messageAr && config.messageAr.trim()
+      ? popupParagraphs(config.messageAr)
+      : popupParagraphs(config.message).map(defaultPopupArabic),
+    instructions: arInstructions.length > 0 ? arInstructions : englishInstructions.map(defaultPopupArabic),
+    buttonLabel: pick(config.buttonLabelAr, config.buttonLabel),
+    checkboxLabel: pick(config.checkboxLabelAr, config.checkboxLabel)
   };
 }
 

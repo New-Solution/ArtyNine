@@ -50,6 +50,44 @@ const FIELD_TYPE_AR: Record<string, string> = {
   date: 'تاريخ', time: 'وقت'
 };
 
+/**
+ * A small text box for one stage field. The value is held locally while the
+ * box has focus and saved once, on blur or Enter, and only if it changed.
+ * Writing on every keystroke (the old behaviour) re-rendered the box from the
+ * database mid-typing and could drop characters.
+ */
+const StageTextInput: React.FC<{
+  label: string;
+  value: string;
+  placeholder?: string;
+  rtl?: boolean;
+  onSave: (value: string) => Promise<unknown> | void;
+}> = ({ label, value, placeholder, rtl, onSave }) => {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const next = draft.trim();
+    setDraft(null);
+    if (next !== value.trim()) onSave(next);
+  };
+  return (
+    <div className="space-y-0.5">
+      <label className="block px-1.5 text-[9px] font-bold uppercase tracking-wider text-brand-charcoal/45">{label}</label>
+      <input
+        type="text"
+        dir={rtl ? 'rtl' : undefined}
+        lang={rtl ? 'ar' : undefined}
+        value={draft ?? value}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-brand-clay bg-brand-cream/40 px-2 py-1 text-[10px] font-semibold text-brand-charcoal"
+      />
+    </div>
+  );
+};
+
 export const AdminSettingsSection: React.FC = () => {
   const {
     pipelineStages, staff, workshopOptions, appSettings,
@@ -343,7 +381,10 @@ export const AdminSettingsSection: React.FC = () => {
       ...popupDraft,
       // Blank leading/trailing lines are trimmed away; everything the admin
       // typed inside a line, spaces included, is stored exactly as written.
-      instructions: popupDraft.instructions.filter(line => line.trim().length > 0)
+      instructions: popupDraft.instructions.filter(line => line.trim().length > 0),
+      ...(popupDraft.instructionsAr
+        ? { instructionsAr: popupDraft.instructionsAr.filter(line => line.trim().length > 0) }
+        : {})
     };
     const ok = await save.run(() => updateSetting('prePaymentInstructions', newVal), SAVE_WHAT.popup);
     if (!ok) return;
@@ -673,16 +714,28 @@ export const AdminSettingsSection: React.FC = () => {
                               </button>
                             ))}
 
-                            <div className="space-y-0.5 border-t border-brand-clay/40 pt-1.5">
-                              <label className="block px-1.5 text-[9px] font-bold uppercase tracking-wider text-brand-charcoal/45">
-                                {t('Customer label', 'تسمية العميل')}
-                              </label>
-                              <input
-                                type="text"
+                            {/* Stage wording. Each box is edited locally and saved when
+                                it loses focus (or on Enter) — not on every keystroke. */}
+                            <div className="space-y-1.5 border-t border-brand-clay/40 pt-1.5">
+                              <StageTextInput
+                                label={t('Customer label', 'تسمية العميل')}
                                 value={stage.customerLabel || ''}
-                                onChange={e => saveStage(stage.id, { customerLabel: e.target.value })}
                                 placeholder={stage.name}
-                                className="w-full rounded-lg border border-brand-clay bg-brand-cream/40 px-2 py-1 text-[10px] font-semibold text-brand-charcoal"
+                                onSave={value => saveStage(stage.id, { customerLabel: value })}
+                              />
+                              <StageTextInput
+                                label={t('Stage name (Arabic)', 'اسم المرحلة (بالعربية)')}
+                                value={stage.nameAr || ''}
+                                placeholder={enumLabel('pieceStatus', stage.name, 'ar')}
+                                rtl
+                                onSave={value => saveStage(stage.id, { nameAr: value || null })}
+                              />
+                              <StageTextInput
+                                label={t('Customer label (Arabic)', 'تسمية العميل (بالعربية)')}
+                                value={stage.customerLabelAr || ''}
+                                placeholder={stage.nameAr || ''}
+                                rtl
+                                onSave={value => saveStage(stage.id, { customerLabelAr: value || null })}
                               />
                             </div>
                           </div>
@@ -1153,6 +1206,79 @@ export const AdminSettingsSection: React.FC = () => {
                     />
                   </div>
                 )}
+
+                {/* Arabic text — shown to customers browsing in Arabic. Each field
+                    falls back on its own when left empty (popupTextForLang). */}
+                <div className="space-y-4 p-4 border border-brand-clay/50 rounded-2xl bg-brand-cream/10">
+                  <div>
+                    <h4 className="text-xs font-bold text-brand-charcoal">{t('Arabic text', 'النص العربي')}</h4>
+                    <p className="text-[10px] text-brand-charcoal/60 mt-0.5">
+                      {t(
+                        'Shown to customers browsing in Arabic. A field left empty shows the built-in translation of the default text, or the English if you changed it.',
+                        'يُعرض للعملاء الذين يتصفحون بالعربية. الحقل الفارغ يعرض الترجمة المدمجة للنص الافتراضي، أو النص الإنجليزي إذا غيّرته.'
+                      )}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-brand-charcoal/80">{t('Pop-up Title (Arabic)', 'عنوان النافذة (بالعربية)')}</label>
+                    <input
+                      type="text"
+                      dir="rtl"
+                      lang="ar"
+                      value={popupForm.titleAr ?? ''}
+                      onChange={e => editPrePaymentSettings({ titleAr: e.target.value })}
+                      className="w-full bg-white border border-brand-clay/60 rounded-xl py-2.5 px-3 text-xs font-semibold text-brand-charcoal"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-brand-charcoal/80">{t('Message (Arabic)', 'الرسالة (بالعربية)')}</label>
+                    <textarea
+                      rows={3}
+                      dir="rtl"
+                      lang="ar"
+                      value={popupForm.messageAr ?? ''}
+                      onChange={e => editPrePaymentSettings({ messageAr: e.target.value })}
+                      className="w-full bg-white border border-brand-clay/60 rounded-xl p-3 text-xs font-semibold text-brand-charcoal leading-relaxed"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-brand-charcoal/80">{t('Short Instructions (Arabic, one per line)', 'التعليمات القصيرة (بالعربية، واحدة في كل سطر)')}</label>
+                    <textarea
+                      rows={4}
+                      dir="rtl"
+                      lang="ar"
+                      value={(popupForm.instructionsAr ?? []).join('\n')}
+                      onChange={e => editPrePaymentSettings({ instructionsAr: e.target.value.split('\n') })}
+                      className="w-full bg-white border border-brand-clay/60 rounded-xl p-3 text-xs font-semibold text-brand-charcoal leading-relaxed"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-brand-charcoal/80">{t('Confirm Button Label (Arabic)', 'تسمية زر التأكيد (بالعربية)')}</label>
+                      <input
+                        type="text"
+                        dir="rtl"
+                        lang="ar"
+                        value={popupForm.buttonLabelAr ?? ''}
+                        onChange={e => editPrePaymentSettings({ buttonLabelAr: e.target.value })}
+                        className="w-full bg-white border border-brand-clay/60 rounded-xl py-2.5 px-3 text-xs font-semibold text-brand-charcoal"
+                      />
+                    </div>
+                    {popupForm.requiredCheckbox && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-brand-charcoal/80">{t('Checkbox Label (Arabic)', 'تسمية مربع الموافقة (بالعربية)')}</label>
+                        <input
+                          type="text"
+                          dir="rtl"
+                          lang="ar"
+                          value={popupForm.checkboxLabelAr ?? ''}
+                          onChange={e => editPrePaymentSettings({ checkboxLabelAr: e.target.value })}
+                          className="w-full bg-white border border-brand-clay/60 rounded-xl py-2.5 px-3 text-xs font-semibold text-brand-charcoal"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 {/* Save */}
                 <div className="flex items-center justify-end gap-3 pt-1">
