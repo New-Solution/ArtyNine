@@ -1341,7 +1341,10 @@ export const DEFAULT_WORKSHOP_FIELDS: WorkshopFieldConfig[] = [
 
   { fieldId: 'wf-room', fieldKey: 'room', cardSection: 'logistics', label: 'Studio Room / Table Station',
     fieldType: 'dropdown', required: false, enabled: true, displayOrder: 5,
-    customerVisible: false, system: true, boundTo: 'roomId', dataSource: 'studio-resources' },
+    // Visible by default, so Location stays on the customer workshop page.
+    // A stored workshopFieldConfig (seeded by 0001 with this OFF) still wins:
+    // tick it in Settings -> Workshop Detail Lists on an existing site.
+    customerVisible: true, system: true, boundTo: 'roomId', dataSource: 'studio-resources' },
 
   { fieldId: 'wf-materials', fieldKey: 'materials', cardSection: 'logistics',
     label: 'Materials Included (Press Enter key)', fieldType: 'tags',
