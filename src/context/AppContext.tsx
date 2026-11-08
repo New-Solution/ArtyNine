@@ -72,6 +72,12 @@ import { pieceTextForKey, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVarian
 import { customerPieceTitle, staffPieceTitle } from '../utils/pieceNotifications';
 import { bookingCancellationSms, cancellationSmsKind } from '../../supabase/functions/_shared/bookingSmsTemplates';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
+
+/** A phone number + password that Supabase's phone sign-in did not accept. */
+const PHONE_SIGNIN_FAILED = {
+  en: 'Incorrect phone number or password. If you signed up with an email address, sign in with your email.',
+  ar: 'رقم الجوال أو كلمة المرور غير صحيحة. إذا سجّلت باستخدام بريد إلكتروني، فسجّل الدخول ببريدك الإلكتروني.'
+} as const;
 import { toE164Saudi, isPhoneSetupPending } from '../utils/phoneAuth';
 import { isCaptchaError, CAPTCHA_FAILED_MESSAGE, type CaptchaProvider } from '../utils/captcha';
 import { getConfiguredTables, computeTableStates, validateTableSelection } from '../utils/tableSeatingUtils';
@@ -199,6 +205,8 @@ interface AppContextType {
     Promise<{
       success: boolean;
       error?: string;
+      /** Arabic for `error`, when one exists. Screens show it in Arabic mode. */
+      errorAr?: string;
       needsPasswordSetup?: boolean;
       /** The masked address the claim confirmation will be sent to, if known. */
       claimEmailHint?: string;
@@ -862,9 +870,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    *   - an identifier with nothing behind it is answered exactly like a real
    *     account, so this cannot be used to discover who is on file.
    *
-   * Supabase Auth still mints every session. A phone sign-in only needs the
-   * address the account lives at, and the RPC releases that solely to a caller
-   * who has already proved they hold the password.
+   * Supabase Auth mints every session and checks every password. A phone
+   * number is signed in only through Supabase's own phone sign-in; an account
+   * that lives at an email address signs in with that email. (The
+   * phone-to-email lookup, customer_signin_email(), was retired in 0052: it
+   * checked passwords outside Supabase Auth, without its rate limiting or the
+   * CAPTCHA.)
    */
   /**
    * After Supabase Auth has already authenticated `authUser` for `email`,
@@ -915,9 +926,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const looksLikeEmail = typedEmail.includes('@');
 
     // Phone accounts (VITE_PHONE_AUTH only): a phone-like identifier is tried
-    // as a Supabase phone sign-in first. Any failure falls through to the
-    // unchanged path below, which ends in the same "Incorrect phone number or
-    // password." — so the two cannot be told apart.
+    // as a Supabase phone sign-in. Any failure falls through to the path
+    // below, which ends in the same PHONE_SIGNIN_FAILED message whatever the
+    // reason — so a wrong password and an unknown number cannot be told apart.
     if (PHONE_AUTH_ENABLED && !looksLikeEmail) {
       const e164 = toE164Saudi(input);
       if (e164) {
@@ -968,9 +979,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Scoped to an email-typed identifier only: with an email already
       // in hand, signInWithPassword() can be attempted directly. A
       // phone-typed identifier reaching this route has no equivalent
-      // path today — customer_signin_email() requires row.user_id to
-      // already be set (it reads auth.users through that id), so it
-      // cannot resolve the real email for a still-unclaimed row. That
+      // path: a phone is never resolved to an email address (the old
+      // customer_signin_email() lookup was retired in 0052). That
       // narrower case keeps today's "claim" messaging below, unchanged.
       if (looksLikeEmail) {
         const { data: attemptData, error: attemptError } = await supabase.auth.signInWithPassword({
@@ -1025,27 +1035,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Step 2 — a password is expected. Signing in by phone needs the address
-    // the auth account lives at; the RPC returns it only once the password
-    // checks out, and returns nothing at all for a wrong one or an unknown
-    // identifier, so the two are indistinguishable.
-    let email = typedEmail;
+    // Step 2 — a password is expected. A phone number reaching this point was
+    // not accepted by Supabase's phone sign-in above (wrong password, unknown
+    // number, or an account that lives at an email address), and it is never
+    // looked up to find an email: customer_signin_email() did that, checking
+    // the password outside Supabase Auth, and was retired in 0052. One answer
+    // for every case, pointing email accounts at their email.
     if (!looksLikeEmail) {
-      const { data: resolvedEmail, error: lookupError } = await supabase.rpc('customer_signin_email', {
-        p_identifier: input,
-        p_password: password
-      });
-
-      if (lookupError) {
-        console.error('customer_signin_email failed:', lookupError.message);
-        return { success: false, error: 'Could not sign you in right now. Please try again.' };
-      }
-
-      if (typeof resolvedEmail !== 'string' || !resolvedEmail.includes('@')) {
-        return { success: false, error: 'Incorrect phone number or password.' };
-      }
-      email = canonicalEmail(resolvedEmail);
+      return { success: false, error: PHONE_SIGNIN_FAILED.en, errorAr: PHONE_SIGNIN_FAILED.ar };
     }
+    const email = typedEmail;
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email, password, options: { captchaToken: await captcha?.() }
