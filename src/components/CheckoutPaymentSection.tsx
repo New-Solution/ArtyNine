@@ -234,8 +234,16 @@ export const CheckoutPaymentSection: React.FC = () => {
         if (isExpiredHold) refCodeRef.current = generateBookingRefCode();
         // 0046: the database could not price this for online payment.
         const notPayableOnline = /cannot be paid online|package is no longer available/i.test(raw);
+        // 0049: the database refuses a signed-out booking (the session ended
+        // between the details step and here, e.g. signed out in another tab).
+        const needsSignIn = /sign in to complete your booking/i.test(raw);
         setSubmitError(
-          isExpiredHold
+          needsSignIn
+            ? t(
+                'You are no longer signed in. Please sign in again to finish your booking — nothing has been charged.',
+                'لم تعد مسجّلًا الدخول. يرجى تسجيل الدخول مرة أخرى لإتمام حجزك — لم يتم خصم أي مبلغ.'
+              )
+          : isExpiredHold
             ? t(
                 'The time to pay for this booking ran out and the place was released. Nothing was charged — please press the button to try again.',
                 'انتهت مهلة الدفع لهذا الحجز وتم تحرير المكان. لم يُخصم أي مبلغ — يرجى الضغط على الزر للمحاولة مرة أخرى.'
