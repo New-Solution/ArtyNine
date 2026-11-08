@@ -127,7 +127,6 @@ export const BirthdayBookingSection: React.FC = () => {
 
   // Terms come from Settings → Events & Birthday, never hardcoded here.
   const terms: BirthdayTermsConfig = eventsSettings?.birthdayTerms || DEFAULT_BIRTHDAY_TERMS;
-  const cancellationDays = Number(eventsSettings?.cancellationNoticeDays) || 4;
 
   // Arabic terms exist only when their body is non-empty. When they do AND the visitor
   // reads Arabic, the WHOLE Arabic set replaces the English one; languages never mix.
@@ -574,7 +573,7 @@ export const BirthdayBookingSection: React.FC = () => {
       terms.suppliesIntro,
       ...terms.supplies.map((item, i) => `${i + 1}. ${item}`),
       ...terms.trailingItems
-    ].map(line => renderTermsLine(line, { deposit: depositAmount, cancellationDays }));
+    ].map(line => renderTermsLine(line, { deposit: depositAmount }));
 
     // Arabic twin of the snapshot, only when Arabic terms exist. Built like the English
     // one (same substitutions, numbering baked in) and mirrors what step 4 displays:
@@ -589,7 +588,7 @@ export const BirthdayBookingSection: React.FC = () => {
               ]
             : []),
           ...arTrailing
-        ].map(line => renderTermsLine(line, { deposit: depositAmount, cancellationDays }))
+        ].map(line => renderTermsLine(line, { deposit: depositAmount }))
       : undefined;
     // Which set the customer was actually looking at right now.
     const termsShownLang: 'en' | 'ar' = showArabicTerms ? 'ar' : 'en';
@@ -1368,7 +1367,7 @@ export const BirthdayBookingSection: React.FC = () => {
                       <div className="mt-4 space-y-3 text-xs leading-relaxed text-brand-ink">
                               {shownTerms.leadingItems.map((line, idx) => (
                                 <p key={idx} className="font-semibold text-brand-charcoal">
-                                  {renderTermsLine(line, { deposit: depositAmount, cancellationDays })}
+                                  {renderTermsLine(line, { deposit: depositAmount })}
                                 </p>
                               ))}
 
@@ -1376,7 +1375,7 @@ export const BirthdayBookingSection: React.FC = () => {
                                 <div>
                                   {(!showArabicTerms || shownTerms.suppliesIntro) && (
                                     <p className="mb-1 font-semibold text-brand-charcoal">
-                                      {renderTermsLine(shownTerms.suppliesIntro, { deposit: depositAmount, cancellationDays })}
+                                      {renderTermsLine(shownTerms.suppliesIntro, { deposit: depositAmount })}
                                     </p>
                                   )}
                                   <ol className="list-decimal space-y-0.5 ps-5 font-medium">
@@ -1387,7 +1386,7 @@ export const BirthdayBookingSection: React.FC = () => {
 
                               {shownTerms.trailingItems.map((line, idx) => (
                                 <p key={idx} className="font-medium">
-                                  {renderTermsLine(line, { deposit: depositAmount, cancellationDays })}
+                                  {renderTermsLine(line, { deposit: depositAmount })}
                                 </p>
                               ))}
                       </div>

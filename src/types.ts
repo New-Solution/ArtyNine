@@ -1420,8 +1420,8 @@ export interface CapacitySettingsConfig {
 
 /**
  * Customer-facing birthday terms. Stored in settings so staff can edit them;
- * {deposit} and {cancellationDays} are filled in at render time so the wording
- * follows the configured values instead of being hardcoded.
+ * {deposit} is filled in at render time. The cancellation rule is NOT a
+ * setting: it is cancel_own_booking's fixed 24 hours (REFUND_NOTICE_HOURS).
  */
 export interface BirthdayTermsConfig {
   /** Bumped whenever staff change the wording; saved with each acceptance. */
@@ -1463,28 +1463,72 @@ export const DEFAULT_BIRTHDAY_TERMS: BirthdayTermsConfig = {
   ],
   trailingItems: [
     'A deposit of {deposit} SAR is required to confirm the booking.',
-    'Changes or cancellations must be made at least {cancellationDays} days before the scheduled event to receive a refund of the deposit.',
+    'Cancellations made more than 24 hours before the event are refunded. Within 24 hours of the event, there is no refund.',
     'Outside food and beverages are strictly prohibited.'
   ]
 };
 
-/** Substitutes the dynamic values into a terms line. */
-export function renderTermsLine(
-  line: string,
-  values: { deposit: number; cancellationDays: number }
-): string {
+/**
+ * Hours of notice that make a paid booking refundable on a customer
+ * cancellation. Fixed in the database — cancel_own_booking (migration 0048)
+ * refunds only when hours_notice > 24 — so it is a constant, never a setting.
+ */
+export const REFUND_NOTICE_HOURS = 24;
+
+/**
+ * Rewrites the retired "{cancellationDays} days" wording to the real rule.
+ *
+ * Terms saved before the Cancellation window setting was removed still
+ * contain the token, e.g. "...at least {cancellationDays} days before the
+ * scheduled event..." — which promised a multi-day rule the database never
+ * applied. Rendering and the terms editor both pass lines through here, so
+ * customers see the 24-hour rule straight away and the next save stores it.
+ */
+export function fixCancellationTermsLine(line: string): string {
+  if (!line.includes('{cancellationDays}')) return line;
   return line
-    .replace(/\{deposit\}/g, String(values.deposit))
-    .replace(/\{cancellationDays\}/g, String(values.cancellationDays));
+    // English: "at least {cancellationDays} days" / "{cancellationDays} days".
+    .replace(/(?:at least|a minimum of|minimum of)\s+\{cancellationDays\}\s+days?/gi, `more than ${REFUND_NOTICE_HOURS} hours`)
+    .replace(/\{cancellationDays\}\s+days?/gi, `more than ${REFUND_NOTICE_HOURS} hours`)
+    // Arabic: "{cancellationDays} أيام على الأقل" / "على الأقل {cancellationDays} أيام" / "{cancellationDays} أيام".
+    .replace(/\{cancellationDays\}\s*(?:أيام|يومًا|يوما|يوم)\s*على الأقل/g, `أكثر من ${REFUND_NOTICE_HOURS} ساعة`)
+    .replace(/على الأقل\s*\{cancellationDays\}\s*(?:أيام|يومًا|يوما|يوم)/g, `أكثر من ${REFUND_NOTICE_HOURS} ساعة`)
+    .replace(/\{cancellationDays\}\s*(?:أيام|يومًا|يوما|يوم)/g, `أكثر من ${REFUND_NOTICE_HOURS} ساعة`)
+    // Anything else: the bare number of hours.
+    .replace(/\{cancellationDays\}/g, String(REFUND_NOTICE_HOURS));
 }
 
+/** Applies fixCancellationTermsLine to every line of a terms document. */
+export function fixCancellationTerms(terms: BirthdayTermsConfig): BirthdayTermsConfig {
+  const lines = (list?: string[]) => list?.map(fixCancellationTermsLine);
+  return {
+    ...terms,
+    leadingItems: lines(terms.leadingItems) ?? [],
+    suppliesIntro: fixCancellationTermsLine(terms.suppliesIntro ?? ''),
+    supplies: lines(terms.supplies) ?? [],
+    trailingItems: lines(terms.trailingItems) ?? [],
+    ...(terms.leadingItemsAr ? { leadingItemsAr: lines(terms.leadingItemsAr) } : {}),
+    ...(terms.suppliesIntroAr !== undefined ? { suppliesIntroAr: fixCancellationTermsLine(terms.suppliesIntroAr) } : {}),
+    ...(terms.suppliesAr ? { suppliesAr: lines(terms.suppliesAr) } : {}),
+    ...(terms.trailingItemsAr ? { trailingItemsAr: lines(terms.trailingItemsAr) } : {})
+  };
+}
+
+/** Substitutes the dynamic values into a terms line. */
+export function renderTermsLine(line: string, values: { deposit: number }): string {
+  return fixCancellationTermsLine(line).replace(/\{deposit\}/g, String(values.deposit));
+}
+
+/**
+ * app_settings 'eventsSettings'. Only the birthday terms are live. Older rows
+ * may still carry minBirthdayNoticeDays, maxGuestsPerEvent, depositPercentage
+ * and cancellationNoticeDays: those controls were removed because nothing
+ * read them (notice days and party caps are fixed rules in queueUtils.ts and
+ * book_birthday_slot; the deposit comes from the package or Online Payments;
+ * the cancellation rule is REFUND_NOTICE_HOURS). They are left in the row
+ * untouched, never read.
+ */
 export interface EventsSettingsConfig {
-  minimumBirthdayBookingDays?: number;
-  minBirthdayNoticeDays?: number;
-  maxBirthdayGuests?: number;
-  maxGuestsPerEvent?: number;
-  depositPercentage?: number;
-  cancellationNoticeDays?: number;
   /** Editable birthday terms shown before final submission. */
   birthdayTerms?: BirthdayTermsConfig;
 }
