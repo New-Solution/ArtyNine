@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0003 — pottery pipeline clean-up
+-- 0006 — pottery pipeline clean-up
 --
 -- Three problems this fixes, all of them data-level:
 --

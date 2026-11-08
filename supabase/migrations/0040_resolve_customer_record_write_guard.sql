@@ -1,4 +1,6 @@
--- STATUS: NOT YET APPLIED — requires manual review
+-- STATUS: SUPERSEDED by 0041 — do not apply on its own.
+-- 0041_phone_claim.sql (applied) carries this file's resolve_customer_record
+-- guard byte-for-byte plus the insert-path fix, so this guard is live through 0041.
 -- =============================================================================
 -- 0040 — STOP ANONYMOUS WRITES TO EXISTING CUSTOMER ROWS IN resolve_customer_record
 --
