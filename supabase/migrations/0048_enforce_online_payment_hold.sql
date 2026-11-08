@@ -2,10 +2,12 @@
 -- Written 8 Nov 2026. Apply manually in the Supabase SQL Editor, then run the
 -- MANUAL TESTS block at the bottom.
 -- =============================================================================
--- 0048 — ONLINE PAYMENT HOLD: A DATABASE BACKSTOP FOR EVERY WEBSITE BOOKING
+-- 0048 — ONLINE PAYMENT HOLD: A DATABASE BACKSTOP FOR EVERY WEBSITE BOOKING;
+--        CUSTOMER CANCELLATION NEVER MARKS AN UNPAID BOOKING REFUNDED
 --
 -- Run after 0047_moyasar_payment_events.sql. Requires the 0046 versions of
--- book_session_seats / book_birthday_slot; the pre-flight block checks.
+-- book_session_seats / book_birthday_slot / cancel_own_booking; the
+-- pre-flight block checks.
 --
 -- WHAT HAPPENED
 -- On the live site, with onlinePayments.enabled = true, website bookings were
@@ -51,7 +53,8 @@
 -- the payload's session_id. A customer sending p_session_id = a cheap session
 -- and session_id = a dearer one got a hold priced on the cheap session, filed
 -- (and counted) on the dear one, past its capacity check. Fixed below: for a
--- non-staff caller the row is always filed on the checked session.
+-- non-staff caller the row is always filed on the checked session. This
+-- applies whether online payments are on or off.
 --
 -- WHAT THIS FILE ADDS ANYWAY
 -- The rule above lives inside two long functions. If a later migration
@@ -75,6 +78,10 @@
 --
 -- WHAT THIS ADDS / CHANGES
 --   book_session_seats              0046 + the "0048" session block
+--   cancel_own_booking              0046 + the "0048" refund rules (see its
+--                                   own comment): never 'Refunded'; an unpaid
+--                                   booking stays unpaid; a refund that is due
+--                                   is 'Needs Refund' and staff are notified
 --   bookings_online_payment_guard() trigger function (not callable by API roles)
 --   trigger bookings_online_payment_guard  BEFORE INSERT ON public.bookings
 --
@@ -88,6 +95,37 @@
 -- DEFINER function does NOT change — so the trigger sees the website caller
 -- even when the insert runs inside book_session_seats. (current_user would
 -- show the function owner there.) Test case 7 proves this.
+--
+-- EVERY PATH THAT INSERTS INTO public.bookings (audited 8 Nov 2026)
+--   Database functions (all migrations): only book_session_seats and
+--   book_birthday_slot. No other function inserts a booking.
+--   Website / app code:
+--     checkout (workshops, events, birthdays) -> addBooking() -> one of the
+--       two RPCs. Non-staff with payments on: forced hold -> passes.
+--     staff console bookings ('Admin') and walk-ins converted to bookings
+--       -> addBooking() -> the RPCs as staff -> exempt.
+--     live-queue walk-ins -> addQueueItem() writes public.queue, not
+--       bookings (the bookings page shows them from the queue).
+--     System Health tests (systemTests.ts) -> RPCs / table writes in a
+--       staff session -> exempt.
+--     generic db.bookings.put/add (supabaseDb.ts) -> no caller outside
+--       systemTests; RLS allows it for staff only anyway.
+--   Edge Functions: none insert bookings (auto-cancel-bookings,
+--     verify-payment, moyasar-webhook, notify-own-booking only read/update),
+--     and they run as service_role -> exempt.
+--   scripts/*.mjs: service role; none insert bookings.
+--   There is no waitlist, reschedule or birthday/event "request" path that
+--   creates a booking.
+--   UPDATEs (cancel, confirm payment, auto-cancel, staff edits) are not
+--   affected: the trigger is INSERT only.
+--
+-- DEPLOY ORDER
+--   1. Deploy the notify-own-booking Edge Function from the same commit
+--      (it stops sending an SMS for a never-paid cancellation or a refund
+--      that is due). Deploying it first is safe on the 0046 database.
+--   2. Apply this file, then run the MANUAL TESTS block.
+--   Applying 0048 BEFORE the new notify-own-booking would make the old one
+--   send "not eligible for a refund" for 'Needs Refund' cancellations.
 -- =============================================================================
 
 -- Pre-flight: the live booking functions are the 0046 versions.
@@ -97,7 +135,10 @@ begin
      or to_regprocedure('public.book_birthday_slot(jsonb,boolean)') is null
      or to_regprocedure('public.online_payments_config()') is null
      or to_regprocedure('public.online_payment_terms(jsonb,boolean)') is null
-     or to_regprocedure('public.is_staff()') is null then
+     or to_regprocedure('public.is_staff()') is null
+     or to_regprocedure('public.cancel_own_booking(text)') is null
+     or to_regprocedure('public.release_booking_seats(text)') is null
+     or to_regprocedure('public.booking_start_at(date,text)') is null then
     raise exception '0048 aborted: an expected function is missing (apply 0046 first)';
   end if;
 
@@ -106,6 +147,11 @@ begin
      or pg_get_functiondef('public.book_birthday_slot(jsonb,boolean)'::regprocedure)
        not like '%online_payment_terms%' then
     raise exception '0048 aborted: the live booking functions are not the 0046 version';
+  end if;
+
+  if pg_get_functiondef('public.cancel_own_booking(text)'::regprocedure)
+       not like '%Non-refundable deposit%' then
+    raise exception '0048 aborted: the live cancel_own_booking is not the 0046 version';
   end if;
 end $$;
 
@@ -254,6 +300,251 @@ end;
 $$;
 
 -- -----------------------------------------------------------------------------
+-- cancel_own_booking — 0046 verbatim except the blocks marked "0048".
+--
+-- 0046 marked EVERY booking that was not an online deposit or an unpaid hold
+-- 'Refunded' when cancelled with more than 24 hours' notice — including
+-- bookings that were never paid (pay-at-studio, Unpaid) — and told the
+-- customer "N SAR has been refunded". Nothing is refunded automatically: the
+-- money is returned by staff (Moyasar dashboard, or in person). So now:
+--
+--   unpaid online hold ('Awaiting Payment')   0046 unchanged: Cancelled,
+--                                             payment_status kept, no refund
+--   never paid (anything that is not          Cancelled, payment_status KEPT
+--     'Paid' / 'Deposit Paid', e.g. Unpaid)   (e.g. stays Unpaid), no refund,
+--                                             whatever the notice
+--   online deposit (payment_mode 'deposit')   0046 unchanged: never refunded,
+--                                             stays 'Deposit Paid'
+--   online full payment, > 24h notice         'Needs Refund' (staff refund the
+--                                             Moyasar payment); staff notified
+--   paid at the studio (staff marked Paid /   'Needs Refund' (staff refund in
+--     Deposit Paid, no online payment), > 24h person); staff notified
+--   any paid booking, <= 24h notice           non-refundable, status kept
+--
+-- 'Refunded' is never written here any more: that is for staff to set once
+-- the money has actually gone back.
+--
+-- Returns refunded = true when a refund is DUE (Needs Refund).
+--
+-- Customer in-app notification (title always 'Booking Cancelled'):
+--   refund due     "...has been cancelled. The studio will refund your payment."
+--   never paid     the 0046 hold wording: "Your unpaid booking ... has been
+--                  cancelled. Nothing was charged."
+--   not refunded   unchanged 0031 wording
+-- The SMS is sent by notify-own-booking, which picks a REGISTERED template
+-- from payment_status (cancellationSmsKind in
+-- supabase/functions/_shared/bookingSmsTemplates.ts): none for a never-paid
+-- booking or a refund that is due.
+-- -----------------------------------------------------------------------------
+create or replace function public.cancel_own_booking(p_booking_id text)
+returns table (success boolean, code text, reason text, refunded boolean)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  b            public.bookings%rowtype;
+  caller       text;
+  starts_at    timestamptz;
+  hours_notice numeric;
+  is_refund    boolean;
+  is_hold      boolean;
+  is_paid      boolean;
+  is_online    boolean;
+  refund_amt   text;
+  note         text;
+  q            public.queue%rowtype;
+begin
+  if p_booking_id is null or btrim(p_booking_id) = '' then
+    return query select false, 'not_found', 'That booking could not be found.', false;
+    return;
+  end if;
+
+  -- auth.uid() comes from the caller's own JWT and cannot be supplied through
+  -- the argument list, so ownership cannot be forged by passing someone
+  -- else's id — the same reasoning as claim_customer_account in 0010.
+  caller := public.current_customer_id();
+  if caller is null then
+    return query select false, 'not_owner', 'Please sign in to manage your bookings.', false;
+    return;
+  end if;
+
+  select * into b from public.bookings where id = p_booking_id;
+
+  -- "Not found" and "not yours" deliberately answer identically: a customer
+  -- must not be able to probe which booking ids exist.
+  if b.id is null or b.customer_id is null or b.customer_id <> caller then
+    return query select false, 'not_owner', 'That booking could not be found on your account.', false;
+    return;
+  end if;
+
+  if b.status = 'Cancelled' then
+    return query select false, 'already_cancelled', 'This booking has already been cancelled.', false;
+    return;
+  end if;
+
+  -- A session already attended, or under way, is not the customer's to undo.
+  if b.status in ('Completed', 'Checked In', 'In Progress') then
+    return query select
+      false,
+      'not_cancellable',
+      'This booking can no longer be cancelled online. Please contact the studio.',
+      false;
+    return;
+  end if;
+
+  starts_at := public.booking_start_at(b.date, b.time);
+  if starts_at is null then
+    return query select
+      false,
+      'unknown_time',
+      'We could not confirm this booking''s start time. Please contact the studio to cancel.',
+      false;
+    return;
+  end if;
+
+  hours_notice := extract(epoch from (starts_at - now())) / 3600.0;
+
+  if hours_notice <= 0 then
+    return query select
+      false,
+      'already_started',
+      'This session has already started, so it can no longer be cancelled online.',
+      false;
+    return;
+  end if;
+
+  -- 0048 — the refund decision depends on whether, and how, it was paid.
+  is_hold   := b.payment_status = 'Awaiting Payment';
+  is_paid   := b.payment_status in ('Paid', 'Deposit Paid');
+  is_online := b.moyasar_payment_id is not null;
+
+  if is_hold then
+    is_refund := false;
+    note := 'Unpaid booking hold cancelled by Customer — nothing was charged';
+  elsif not is_paid then
+    -- 0048: never paid (Unpaid, or any status that does not say money
+    -- arrived). Nothing to refund, whatever the notice.
+    is_refund := false;
+    note := 'Booking cancelled by Customer — nothing was paid, nothing to refund';
+  elsif b.payment_mode = 'deposit' then
+    is_refund := false;
+    note := 'Booking cancelled by Customer — Non-refundable deposit';
+  else
+    -- The rule the customer is shown: more than 24 hours' notice is refundable.
+    -- Strictly greater than, matching cancelBooking()'s `diffHours > 24`.
+    is_refund := hours_notice > 24;
+    if not is_refund then
+      note := 'Booking cancelled by Customer — Non-refundable (within 24h cutoff)';
+    elsif is_online then
+      note := 'Booking cancelled by Customer — Refund due (>24h notice): refund Moyasar payment '
+              || b.moyasar_payment_id || ' in the Moyasar dashboard';
+    else
+      note := 'Booking cancelled by Customer — Refund due (>24h notice): paid at the studio, refund the customer in person';
+    end if;
+  end if;
+
+  -- One statement, so the status, the refund state and the history entry
+  -- cannot land apart. 0048: a refund that is due is 'Needs Refund', never
+  -- 'Refunded'; otherwise the payment status is kept as it was.
+  update public.bookings
+     set status         = 'Cancelled',
+         payment_status = case when is_refund then 'Needs Refund' else payment_status end,
+         timeline       = coalesce(timeline, '[]'::jsonb) || jsonb_build_object(
+                            'time', to_char(now() at time zone 'Asia/Riyadh', 'FMHH12:MI AM'),
+                            'action', note
+                          ),
+         updated_at     = now()
+   where id = b.id;
+
+  -- 0048 — staff must return the money; tell them.
+  if is_refund then
+    refund_amt := case
+      when is_online and b.online_amount is not null
+        then to_char(b.online_amount, 'FM999999990.00') || ' SAR'
+      when b.payment_status = 'Deposit Paid'
+        then 'the deposit taken at the studio (booking total '
+             || to_char(coalesce(b.total_price, 0), 'FM999999990.00') || ' SAR)'
+      else to_char(coalesce(b.total_price, 0), 'FM999999990.00') || ' SAR'
+    end;
+    insert into public.notifications (id, type, title, message, "timestamp", is_read, highlighted)
+    values (
+      'NOTIF-' || (extract(epoch from clock_timestamp()) * 1000)::bigint::text
+               || '-' || floor(random() * 1000)::int::text || '-s',
+      'staff',
+      'Customer cancellation — refund needed',
+      'Booking ' || b.id || ' (' || coalesce(b.customer_name, '') || ', ' || coalesce(b.customer_phone, '')
+        || ') was cancelled by the customer with more than 24 hours'' notice. Refund '
+        || refund_amt
+        || case when is_online
+             then ' — Moyasar payment ' || b.moyasar_payment_id || ', in the Moyasar dashboard.'
+             else ' in person (paid at the studio).'
+           end
+        || ' Then set the booking to Refunded.',
+      now(), false, true
+    );
+  end if;
+
+  -- Seats go back through the same RPC staff cancellation uses, so there is
+  -- one definition of what releasing a seat means.
+  perform public.release_booking_seats(b.id);
+
+  -- Queue parity with cancelBooking(): a linked entry that has not been called
+  -- or served is cancelled too, or the studio is left expecting someone who
+  -- has cancelled. The same states are left alone.
+  select * into q from public.queue
+   where booking_id = b.id
+     and status not in ('Completed', 'In Progress', 'Called')
+   limit 1;
+
+  if q.id is not null then
+    update public.queue
+       set status     = 'Cancelled',
+           history    = coalesce(history, '[]'::jsonb) || jsonb_build_object(
+                          'status', 'Cancelled',
+                          'timestamp', to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+                        ),
+           updated_at = now()
+     where id = q.id;
+  end if;
+
+  -- In-app notification, written here rather than by the client — see the
+  -- header comment for why. Wording mirrors notifyBookingCancellation()
+  -- (AppContext.tsx) exactly, so a customer sees the same message regardless
+  -- of who triggered the cancellation.
+  insert into public.notifications (
+    id, type, customer_id, customer_phone, title, message, "timestamp", is_read, highlighted
+  ) values (
+    'NOTIF-' || (extract(epoch from clock_timestamp()) * 1000)::bigint::text
+             || '-' || floor(random() * 1000)::int::text,
+    'customer',
+    b.customer_id,
+    b.customer_phone,
+    'Booking Cancelled',
+    case
+      -- 0048: a refund is due, not done — staff return the money.
+      when is_refund
+        then 'Your booking for "' || b.workshop_title || '" on '
+               || to_char(b.date, 'FMMonth FMDD, YYYY') || ' has been cancelled. The studio will refund your payment.'
+      -- 0046 / 0048: nothing was paid, so no refund wording at all.
+      when is_hold or not is_paid
+        then 'Your unpaid booking for "' || b.workshop_title || '" on '
+               || to_char(b.date, 'FMMonth FMDD, YYYY') || ' has been cancelled. Nothing was charged.'
+      else 'Your booking for "' || b.workshop_title || '" on '
+             || to_char(b.date, 'FMMonth FMDD, YYYY')
+             || ' has been cancelled. Per our cancellation policy, this booking was not eligible '
+             || 'for a refund. Please contact Arty Café with any questions.'
+    end,
+    now(),
+    false,
+    false
+  );
+
+  return query select true, 'cancelled', null::text, is_refund;
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
 -- The backstop.
 -- SECURITY DEFINER so it can call online_payments_config() (revoked from the
 -- API roles) and is_staff(). It reads nothing from the row except to check it.
@@ -331,7 +622,10 @@ select
   pg_get_functiondef('public.book_session_seats(jsonb,text)'::regprocedure)    like '%current_customer_id()%' as seats_0044_kept,
   pg_get_functiondef('public.book_birthday_slot(jsonb,boolean)'::regprocedure) like '%online_payment_terms%' as birthday_still_0046,
   has_function_privilege('anon', 'public.book_session_seats(jsonb,text)', 'execute') as seats_anon,
-  has_function_privilege('authenticated', 'public.book_birthday_slot(jsonb,boolean)', 'execute') as birthday_authenticated;
+  has_function_privilege('authenticated', 'public.book_birthday_slot(jsonb,boolean)', 'execute') as birthday_authenticated,
+  pg_get_functiondef('public.cancel_own_booking(text)'::regprocedure) like '%nothing was paid, nothing to refund%' as cancel_0048,
+  pg_get_functiondef('public.cancel_own_booking(text)'::regprocedure) not like '%then ''Refunded''%' as cancel_never_refunded,
+  has_function_privilege('authenticated', 'public.cancel_own_booking(text)', 'execute') as cancel_authenticated;
 
 -- =============================================================================
 -- MANUAL TESTS — run AFTER applying. Copy everything from the line "DO $$" down
@@ -629,6 +923,108 @@ BEGIN
   PERFORM set_config('role', v_editor, true);
   ASSERT v_err IS NOT NULL, 'Case 9: a customer direct INSERT must be refused';
   ASSERT NOT EXISTS (SELECT 1 FROM public.bookings WHERE id = 'TEST-0048-9'), 'Case 9: the direct INSERT must not be saved';
+
+  -- 10. cancel_own_booking (0048 rules). Fixtures written as the editor (the
+  --     trigger ignores the editor), owned by customer A. "far" starts in
+  --     2099 (> 24h notice); "near" starts 3 hours from now (<= 24h).
+  DECLARE
+    v_near_ts   timestamp := (now() AT TIME ZONE 'Asia/Riyadh') + interval '3 hours';
+    v_near_date date := v_near_ts::date;
+    v_near_time text := to_char(v_near_ts, 'HH24:MI');
+  BEGIN
+    INSERT INTO public.bookings (id, customer_id, customer_name, customer_phone, workshop_title, date, time, participants,
+                                 total_price, status, payment_status, payment_mode, online_amount, online_amount_halalas,
+                                 moyasar_payment_id, paid_at) VALUES
+      -- never paid
+      ('TEST-0048-C1', 'TEST-0048-A', 'Customer A', '+966500000948', 'Test 0048 unpaid far',  '2099-05-01', '10:00', 1, 150, 'Pending', 'Unpaid', NULL, NULL, NULL, NULL, NULL),
+      ('TEST-0048-C2', 'TEST-0048-A', 'Customer A', '+966500000948', 'Test 0048 unpaid near', v_near_date, v_near_time, 1, 150, 'Pending', 'Unpaid', NULL, NULL, NULL, NULL, NULL),
+      -- paid online
+      ('TEST-0048-C3', 'TEST-0048-A', 'Customer A', '+966500000948', 'Test 0048 deposit far', '2099-05-01', '10:00', 1, 150, 'Pending', 'Deposit Paid', 'deposit', 100, 10000, 'pay-0048-c3', now()),
+      ('TEST-0048-C4', 'TEST-0048-A', 'Customer A', '+966500000948', 'Test 0048 full far',    '2099-05-01', '10:00', 10, 1200, 'Pending', 'Paid', 'full', 1200, 120000, 'pay-0048-c4', now()),
+      ('TEST-0048-C5', 'TEST-0048-A', 'Customer A', '+966500000948', 'Test 0048 full near',   v_near_date, v_near_time, 10, 1200, 'Pending', 'Paid', 'full', 1200, 120000, 'pay-0048-c5', now()),
+      -- paid at the studio (marked by staff, no online payment)
+      ('TEST-0048-C6', 'TEST-0048-A', 'Customer A', '+966500000948', 'Test 0048 studio paid far',    '2099-05-01', '10:00', 1, 150, 'Pending', 'Paid', NULL, NULL, NULL, NULL, NULL),
+      ('TEST-0048-C7', 'TEST-0048-A', 'Customer A', '+966500000948', 'Test 0048 studio deposit far', '2099-05-01', '10:00', 1, 500, 'Pending', 'Deposit Paid', NULL, NULL, NULL, NULL, NULL),
+      ('TEST-0048-C8', 'TEST-0048-A', 'Customer A', '+966500000948', 'Test 0048 studio paid near',   v_near_date, v_near_time, 1, 150, 'Pending', 'Paid', NULL, NULL, NULL, NULL, NULL),
+      -- unpaid online hold
+      ('TEST-0048-C9', 'TEST-0048-A', 'Customer A', '+966500000948', 'Test 0048 hold far',    '2099-05-01', '10:00', 1, 150, 'Pending', 'Awaiting Payment', 'deposit', 100, 10000, NULL, NULL);
+    UPDATE public.bookings SET payment_expires_at = now() + interval '10 minutes' WHERE id = 'TEST-0048-C9';
+
+    PERFORM set_config('role', 'authenticated', true);
+    PERFORM set_config('request.jwt.claims', c_cust, true);
+    FOR r IN SELECT x.id, c.success, c.refunded, c.code
+               FROM (VALUES ('TEST-0048-C1'), ('TEST-0048-C2'), ('TEST-0048-C3'), ('TEST-0048-C4'), ('TEST-0048-C5'),
+                            ('TEST-0048-C6'), ('TEST-0048-C7'), ('TEST-0048-C8'), ('TEST-0048-C9')) AS x(id)
+               CROSS JOIN LATERAL public.cancel_own_booking(x.id) c LOOP
+      ASSERT r.success, format('Case 10 %s: cancel should succeed, got %s', r.id, r.code);
+      ASSERT r.refunded = (r.id IN ('TEST-0048-C4', 'TEST-0048-C6', 'TEST-0048-C7')),
+        format('Case 10 %s: refunded (= refund due) should be %s, got %s', r.id, r.id IN ('TEST-0048-C4', 'TEST-0048-C6', 'TEST-0048-C7'), r.refunded);
+    END LOOP;
+    PERFORM set_config('role', v_editor, true);
+  END;
+
+  SELECT count(*) INTO v_count FROM public.bookings WHERE id LIKE 'TEST-0048-C%' AND status = 'Cancelled';
+  ASSERT v_count = 9, format('Case 10: all 9 bookings should be Cancelled, got %s', v_count);
+  SELECT count(*) INTO v_count FROM public.bookings WHERE id LIKE 'TEST-0048-C%' AND payment_status = 'Refunded';
+  ASSERT v_count = 0, format('Case 10: a customer cancellation must never write Refunded, got %s', v_count);
+
+  -- 10a/b. Never paid, any notice -> stays Unpaid, no refund recorded.
+  SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-C1';
+  ASSERT r.payment_status = 'Unpaid' AND (r.timeline->-1->>'action') LIKE '%nothing was paid%',
+    format('Case 10a unpaid far: expected Unpaid / nothing was paid, got %s / %s', r.payment_status, r.timeline->-1->>'action');
+  SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-C2';
+  ASSERT r.payment_status = 'Unpaid', format('Case 10b unpaid near: expected Unpaid, got %s', r.payment_status);
+  SELECT count(*) INTO v_count FROM public.notifications
+   WHERE type = 'customer' AND customer_id = 'TEST-0048-A' AND message LIKE '%Test 0048 unpaid%'
+     AND message LIKE '%Your unpaid booking%Nothing was charged.' AND message NOT ILIKE '%refund%';
+  ASSERT v_count = 2, format('Case 10a/b: expected 2 "unpaid ... Nothing was charged" notices with no refund wording, got %s', v_count);
+
+  -- 10c. Online deposit -> never refunded (0046 rule).
+  SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-C3';
+  ASSERT r.payment_status = 'Deposit Paid' AND (r.timeline->-1->>'action') LIKE '%Non-refundable deposit%',
+    format('Case 10c online deposit: expected Deposit Paid, got %s', r.payment_status);
+
+  -- 10d. Online full payment, > 24h -> Needs Refund, staff told the Moyasar payment.
+  SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-C4';
+  ASSERT r.payment_status = 'Needs Refund' AND (r.timeline->-1->>'action') LIKE '%pay-0048-c4%Moyasar dashboard%',
+    format('Case 10d online full far: expected Needs Refund + Moyasar note, got %s / %s', r.payment_status, r.timeline->-1->>'action');
+  SELECT count(*) INTO v_count FROM public.notifications
+   WHERE type = 'staff' AND message LIKE '%TEST-0048-C4%' AND message LIKE '%1200.00 SAR%pay-0048-c4%';
+  ASSERT v_count = 1, format('Case 10d: expected one staff refund notice naming 1200.00 SAR and the payment, got %s', v_count);
+  SELECT count(*) INTO v_count FROM public.notifications
+   WHERE type = 'customer' AND message LIKE '%Test 0048 full far%will refund your payment.' AND message NOT LIKE '%has been refunded%';
+  ASSERT v_count = 1, format('Case 10d: customer notice must say the refund is coming, not done; got %s', v_count);
+
+  -- 10e. Online full payment, <= 24h -> non-refundable, stays Paid.
+  SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-C5';
+  ASSERT r.payment_status = 'Paid' AND (r.timeline->-1->>'action') LIKE '%within 24h%',
+    format('Case 10e online full near: expected Paid / within 24h, got %s', r.payment_status);
+
+  -- 10f/g. Paid at the studio, > 24h -> Needs Refund (in person), staff told.
+  SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-C6';
+  ASSERT r.payment_status = 'Needs Refund' AND (r.timeline->-1->>'action') LIKE '%in person%',
+    format('Case 10f studio Paid far: expected Needs Refund / in person, got %s / %s', r.payment_status, r.timeline->-1->>'action');
+  SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-C7';
+  ASSERT r.payment_status = 'Needs Refund', format('Case 10g studio Deposit Paid far: expected Needs Refund, got %s', r.payment_status);
+  SELECT count(*) INTO v_count FROM public.notifications
+   WHERE type = 'staff' AND message LIKE '%in person (paid at the studio)%'
+     AND (message LIKE '%TEST-0048-C6%150.00 SAR%' OR message LIKE '%TEST-0048-C7%deposit taken at the studio%');
+  ASSERT v_count = 2, format('Case 10f/g: expected two in-person staff refund notices, got %s', v_count);
+
+  -- 10h. Paid at the studio, <= 24h -> non-refundable, stays Paid.
+  SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-C8';
+  ASSERT r.payment_status = 'Paid', format('Case 10h studio Paid near: expected Paid, got %s', r.payment_status);
+
+  -- 10i. Unpaid online hold -> 0046 unchanged.
+  SELECT * INTO r FROM public.bookings WHERE id = 'TEST-0048-C9';
+  ASSERT r.payment_status = 'Awaiting Payment' AND (r.timeline->-1->>'action') LIKE '%hold cancelled%',
+    format('Case 10i hold: expected Awaiting Payment / hold cancelled, got %s', r.payment_status);
+
+  -- 10j. No staff refund notice for anything that was not refundable.
+  SELECT count(*) INTO v_count FROM public.notifications
+   WHERE type = 'staff' AND title = 'Customer cancellation — refund needed'
+     AND message ~ 'TEST-0048-C[123589]';
+  ASSERT v_count = 0, format('Case 10j: no refund notice for unpaid / deposit / <=24h / hold bookings, got %s', v_count);
 
   -- Always roll back, pass or fail.
   RAISE EXCEPTION 'ALL 0048 TESTS PASSED — rolled back';

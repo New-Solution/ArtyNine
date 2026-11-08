@@ -78,7 +78,7 @@ import { validateSaudiPhone, normaliseSaudiPhone, normalisePhone } from '../util
 import { formatDate, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
 import { pieceTextForKey, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 import { customerPieceTitle, staffPieceTitle } from '../utils/pieceNotifications';
-import { bookingCancellationSms } from '../../supabase/functions/_shared/bookingSmsTemplates';
+import { bookingCancellationSms, cancellationSmsKind } from '../../supabase/functions/_shared/bookingSmsTemplates';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
 import { toE164Saudi, isPhoneSetupPending } from '../utils/phoneAuth';
 import { isCaptchaError, CAPTCHA_FAILED_MESSAGE, type CaptchaProvider } from '../utils/captcha';
@@ -2232,16 +2232,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    * characteristic of cancelBooking() itself, unrelated to
    * notifications and out of this chunk's scope to address.
    */
-  const notifyBookingCancellation = async (booking: Booking, refunded: boolean) => {
+  const notifyBookingCancellation = async (booking: Booking, finalPaymentStatus: Booking['paymentStatus']) => {
+    const refunded = finalPaymentStatus === 'Refunded';
+    // Which registered SMS template is true for this cancellation, or none
+    // (shared with notify-own-booking): never paid -> no SMS, because both
+    // registered texts talk about a refund.
+    const smsKind = cancellationSmsKind(finalPaymentStatus);
+    const neverPaid = !refunded && !['Paid', 'Deposit Paid', 'Needs Refund'].includes(finalPaymentStatus);
     const formattedDate = formatDate(booking.date, { year: 'numeric', month: 'long', day: 'numeric', timeZone: RIYADH_TIME_ZONE });
     // What was actually paid: an online payment (0046) records its own amount,
     // which for a deposit is less than the booking total.
     const refundAmount = booking.paymentMode && booking.onlineAmount !== undefined && booking.onlineAmount !== null
       ? Number(booking.onlineAmount)
       : booking.totalPrice;
+    // In-app wording is the same set cancel_own_booking writes (0031 / 0046 /
+    // 0048), so notificationText.ts can show it in Arabic.
     const friendlyMsg = refunded
       ? `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled, and ${refundAmount} SAR has been refunded. We hope to see you again soon!`
-      : `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled. Per our cancellation policy, this booking was not eligible for a refund. Please contact Arty Café with any questions.`;
+      : neverPaid
+        ? `Your unpaid booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled. Nothing was charged.`
+        : finalPaymentStatus === 'Needs Refund'
+          ? `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled. The studio will refund your payment.`
+          : `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled. Per our cancellation policy, this booking was not eligible for a refund. Please contact Arty Café with any questions.`;
 
     // Best-effort, matching the SMS block below: notifications RLS only
     // grants INSERT to staff (notifications_staff_all) — there is no
@@ -2274,6 +2286,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // fire-and-forget, phone passed through unnormalized (send-sms's
     // shared helper normalizes it), failures logged only, never thrown,
     // never blocking cancelBooking()'s own already-committed writes.
+    // No registered template is true (never paid, or a refund still due).
+    if (!smsKind) return;
     if (!booking.customerPhone) {
       console.error(`notifyBookingCancellation: SMS for booking ${booking.id} not sent — no phone number on file.`);
       return;
@@ -2288,7 +2302,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Always English then Arabic, whatever the customer's language
         // preference — the same shared template the Edge Functions use. The
         // in-app notification above keeps friendlyMsg.
-        const smsText = bookingCancellationSms(refunded ? 'refunded' : 'notRefunded', {
+        const smsText = bookingCancellationSms(smsKind, {
           workshopTitle: booking.workshopTitle,
           date: booking.date,
           amount: refundAmount
@@ -2357,7 +2371,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await releaseSeats(booking.id);
       });
 
-      await notifyBookingCancellation(booking, finalPaymentStatus === 'Refunded');
+      await notifyBookingCancellation(booking, finalPaymentStatus);
     }
   };
 

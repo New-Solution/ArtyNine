@@ -106,41 +106,53 @@ function localizePiece(n: Input): Result | null {
 }
 
 // ----------------------------------------------------------- cancellations
-type Kind = 'refund' | 'noRefund' | 'noShow';
-const KIND_BY_TITLE: Record<string, Kind> = {
-  'Booking Cancelled — Refunded': 'refund',            // AppContext + cancel_own_booking
-  'Booking Cancelled': 'noRefund',                     // AppContext + cancel_own_booking
-  'Booking Cancelled — Missed Session': 'noShow'       // auto-cancel-bookings
+// unpaid:    nothing was paid (0046 hold, 0048 Unpaid) — cancel_own_booking + AppContext
+// refundDue: a refund is due, staff will return it (0048) — cancel_own_booking + AppContext
+type Kind = 'refund' | 'noRefund' | 'noShow' | 'unpaid' | 'refundDue';
+const KINDS_BY_TITLE: Record<string, Kind[]> = {
+  'Booking Cancelled — Refunded': ['refund'],                          // AppContext + cancel_own_booking (before 0048)
+  'Booking Cancelled': ['noRefund', 'unpaid', 'refundDue'],            // AppContext + cancel_own_booking
+  'Booking Cancelled — Missed Session': ['noShow']                     // auto-cancel-bookings
 };
 const TITLE_AR: Record<Kind, string> = {
   refund: 'تم إلغاء الحجز — تم الاسترداد',
   noRefund: 'تم إلغاء الحجز',
-  noShow: 'تم إلغاء الحجز — جلسة فائتة'
+  noShow: 'تم إلغاء الحجز — جلسة فائتة',
+  unpaid: 'تم إلغاء الحجز',
+  refundDue: 'تم إلغاء الحجز'
 };
 const CANCEL_RE: Record<Kind, RegExp> = {
   refund: /^Your booking for "(.+)" on (.+) has been cancelled, and (\d+(?:\.\d+)?) SAR has been refunded\. We hope to see you again soon!$/,
   noRefund: /^Your booking for "(.+)" on (.+) has been cancelled\. Per our cancellation policy, this booking was not eligible for a refund\. Please contact Arty Café with any questions\.$/,
-  noShow: /^Arty Café: your booking for "(.+?)"(?: on (.+?))? has been cancelled\. We called for you and you had not arrived, so the place has been released\. Per our cancellation policy this booking is not refundable\. Please contact the studio if you think this is a mistake\.$/
+  noShow: /^Arty Café: your booking for "(.+?)"(?: on (.+?))? has been cancelled\. We called for you and you had not arrived, so the place has been released\. Per our cancellation policy this booking is not refundable\. Please contact the studio if you think this is a mistake\.$/,
+  unpaid: /^Your unpaid booking for "(.+)" on (.+) has been cancelled\. Nothing was charged\.$/,
+  refundDue: /^Your booking for "(.+)" on (.+) has been cancelled\. The studio will refund your payment\.$/
 };
 const enCancelMsg = (k: Kind, t: string, d?: string, amount?: string) =>
-  k === 'refund' ? `Your booking for "${t}" on ${d} has been cancelled, and ${amount} SAR has been refunded. We hope to see you again soon!`
+  k === 'unpaid' ? `Your unpaid booking for "${t}" on ${d} has been cancelled. Nothing was charged.`
+  : k === 'refundDue' ? `Your booking for "${t}" on ${d} has been cancelled. The studio will refund your payment.`
+  : k === 'refund' ? `Your booking for "${t}" on ${d} has been cancelled, and ${amount} SAR has been refunded. We hope to see you again soon!`
   : k === 'noRefund' ? `Your booking for "${t}" on ${d} has been cancelled. Per our cancellation policy, this booking was not eligible for a refund. Please contact Arty Café with any questions.`
   : `Arty Café: your booking for "${t}"${d ? ` on ${d}` : ''} has been cancelled. We called for you and you had not arrived, so the place has been released. Per our cancellation policy this booking is not refundable. Please contact the studio if you think this is a mistake.`;
+// ⚠ unpaid / refundDue Arabic: placeholder only, needs a native speaker.
 const arCancelMsg = (k: Kind, t: string, d?: string, amount?: string) =>
-  k === 'refund' ? `تم إلغاء حجزك في "${t}" بتاريخ ${d}، وتم استرداد ${amount} ريال. نتطلع لرؤيتك قريبًا!`
+  k === 'unpaid' ? `تم إلغاء حجزك غير المدفوع في "${t}" بتاريخ ${d}. لم يُخصم أي مبلغ.`
+  : k === 'refundDue' ? `تم إلغاء حجزك في "${t}" بتاريخ ${d}. سيعيد الاستوديو المبلغ المدفوع إليك.`
+  : k === 'refund' ? `تم إلغاء حجزك في "${t}" بتاريخ ${d}، وتم استرداد ${amount} ريال. نتطلع لرؤيتك قريبًا!`
   : k === 'noRefund' ? `تم إلغاء حجزك في "${t}" بتاريخ ${d}. وفقًا لسياسة الإلغاء لدينا، لم يكن هذا الحجز مؤهلًا لاسترداد المبلغ. يرجى التواصل مع Arty Café لأي استفسار.`
   : `Arty Café: تم إلغاء حجزك في "${t}"${d ? ` بتاريخ ${d}` : ''}. نادينا عليك ولم تكن قد وصلت، فتم إخلاء المكان. وفقًا لسياسة الإلغاء لدينا، هذا الحجز غير قابل للاسترداد. يرجى التواصل مع الاستوديو إذا كنت تعتقد أن هناك خطأ.`;
 
 function localizeCancellation(n: Input): Result | null {
-  const kind = KIND_BY_TITLE[n.title];
-  if (!kind) return null;
-  const m = CANCEL_RE[kind].exec(n.message);
-  if (!m) return null;
-  const [, title, dateEn, amount] = m;
-  const dateA = dateEn ? dateAr(dateEn) : undefined;
-  if (dateEn && !dateA) return null;
-  if (enCancelMsg(kind, title, dateEn, amount) !== n.message) return null;
-  return { title: TITLE_AR[kind], message: arCancelMsg(kind, title, dateA ?? undefined, amount) };
+  for (const kind of KINDS_BY_TITLE[n.title] ?? []) {
+    const m = CANCEL_RE[kind].exec(n.message);
+    if (!m) continue;
+    const [, title, dateEn, amount] = m;
+    const dateA = dateEn ? dateAr(dateEn) : undefined;
+    if (dateEn && !dateA) return null;
+    if (enCancelMsg(kind, title, dateEn, amount) !== n.message) return null;
+    return { title: TITLE_AR[kind], message: arCancelMsg(kind, title, dateA ?? undefined, amount) };
+  }
+  return null;
 }
 
 export function localizeNotification(n: Input, lang: Lang): Result {

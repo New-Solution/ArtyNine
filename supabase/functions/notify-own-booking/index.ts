@@ -45,7 +45,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
 import { sendSms } from '../_shared/sms.ts';
 import { bookingCancellationSms } from '../_shared/bookingSmsTemplates.ts';
-import { ownsBooking, wasRefunded, shouldSendCancellationSms, type BookingRow } from './logic.ts';
+import { ownsBooking, cancellationSms, type BookingRow } from './logic.ts';
 import type { NotifyOwnBookingRequest, NotifyOwnBookingResponse } from './contract.ts';
 
 const CORS_HEADERS = {
@@ -141,8 +141,11 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, error: 'That booking has not been cancelled.' }, 409);
   }
 
-  // An unpaid online hold: nothing was paid, so no refund SMS of either kind.
-  if (!shouldSendCancellationSms(booking as BookingRow)) {
+  // Only a registered template that is TRUE for this booking is sent. Never
+  // paid (Unpaid, an unpaid online hold, Expired) or a refund still due
+  // ('Needs Refund'): no SMS — see cancellationSmsKind().
+  const kind = cancellationSms(booking as BookingRow);
+  if (!kind) {
     return json({ success: true }, 200);
   }
 
@@ -152,7 +155,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // Always English then Arabic, whatever the customer's language preference.
-  const message = bookingCancellationSms(wasRefunded(booking as BookingRow) ? 'refunded' : 'notRefunded', {
+  const message = bookingCancellationSms(kind, {
     workshopTitle: booking.workshop_title,
     date: booking.date,
     amount: booking.total_price

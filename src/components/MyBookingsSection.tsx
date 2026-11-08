@@ -17,7 +17,7 @@ import { AppImage } from './ui/AppImage';
 import { durationLabel } from '../utils/workshopMetaLabel';
 import { bookingTitleLabel } from '../utils/bookingTitleLabel';
 import { timeLabel } from '../utils/availabilityLabel';
-import { customerAmountView, paymentBreakdown, sarAmount } from '../utils/onlinePayments';
+import { customerAmountView, isPaidStatus, paymentBreakdown, sarAmount } from '../utils/onlinePayments';
 
 /**
  * Hours of notice that make a cancellation refundable.
@@ -139,11 +139,12 @@ export const MyBookingsSection: React.FC = () => {
 
   /**
    * Whether cancelling right now would be refunded, by the same rule as
-   * cancel_own_booking (0046): an unpaid hold has nothing to refund, an
-   * online deposit is never refunded, everything else keeps the 24h rule.
+   * cancel_own_booking (0048): nothing paid (an unpaid hold, an Unpaid
+   * booking) has nothing to refund, an online deposit is never refunded,
+   * anything else that was paid keeps the 24h rule (the studio refunds it).
    */
   const isRefundable = (booking: Booking): boolean => {
-    if (booking.paymentStatus === 'Awaiting Payment') return false;
+    if (!isPaidStatus(booking.paymentStatus)) return false;
     if (booking.paymentMode === 'deposit') return false;
     return hoursUntilStart(booking, getRiyadhNow()) > REFUND_NOTICE_HOURS;
   };
@@ -519,14 +520,17 @@ export const MyBookingsSection: React.FC = () => {
                                     `The ${paidAmount(b)} SAR deposit is non-refundable.`,
                                     `العربون البالغ ${paidAmount(b)} ريال غير قابل للاسترداد.`
                                   )
-                                : customerAmountView(b).kind === 'due'
+                                : !isPaidStatus(b.paymentStatus)
                                   // Nothing was paid, so nothing is refunded.
                                   ? t('Nothing has been paid for it.', 'لم يُدفع أي مبلغ مقابله.')
                                 : willRefund
-                                  ? t(
-                                      `Your payment of ${paidAmount(b)} SAR will be refunded.`,
-                                      `سيتم استرداد مبلغ الدفع البالغ ${paidAmount(b)} ريال.`
-                                    )
+                                  ? (b.paymentStatus === 'Deposit Paid' && !b.moyasarPaymentId
+                                      // Deposit taken at the studio: its amount is not recorded.
+                                      ? t('The studio will refund your deposit.', 'سيعيد الاستوديو العربون المدفوع.')
+                                      : t(
+                                          `The studio will refund your payment of ${paidAmount(b)} SAR.`,
+                                          `سيعيد الاستوديو مبلغ الدفع البالغ ${paidAmount(b)} ريال.`
+                                        ))
                                   : t(
                                       'This booking is within 24 hours of its start, so it is not eligible for a refund.',
                                       'هذا الحجز خلال 24 ساعة من بدايته، لذا فهو غير مؤهل لاسترداد المبلغ.'

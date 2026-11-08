@@ -73,6 +73,36 @@ export function bookingCancellationText(kind: BookingCancellationKind, input: Bo
   }
 }
 
+/**
+ * Which REGISTERED cancellation template fits a booking that has just been
+ * cancelled, judged from its payment_status AFTER the cancellation — or null
+ * when none of them is true, in which case no SMS is sent.
+ *
+ *   Refunded                 'refunded'     the money has gone back
+ *   Paid / Deposit Paid      'notRefunded'  money was paid and is kept
+ *                                           (deposit, or within 24h)
+ *   everything else          null:
+ *     Unpaid, Awaiting Payment, Expired  nothing was paid — both registered
+ *                              texts talk about a refund, so neither is true
+ *     Needs Refund             a refund is due but not done — "refunded" would
+ *                              be premature, "not eligible" would be false
+ *
+ * Do not add wording here: every text must match a template registered with
+ * the SMS provider. A plain "your booking was cancelled" template (and a
+ * "refund on its way" one) would have to be registered first.
+ */
+export function cancellationSmsKind(paymentStatus?: string | null): Exclude<BookingCancellationKind, 'noShow'> | null {
+  switch (paymentStatus) {
+    case 'Refunded':
+      return 'refunded';
+    case 'Paid':
+    case 'Deposit Paid':
+      return 'notRefunded';
+    default:
+      return null;
+  }
+}
+
 /** The SMS body: English, a single "\n", then Arabic — matching the registered templates. */
 export function bookingCancellationSms(kind: BookingCancellationKind, input: BookingSmsInput): string {
   const text = bookingCancellationText(kind, input);

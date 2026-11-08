@@ -15,6 +15,8 @@
  * cancellation.
  */
 
+import { cancellationSmsKind, type BookingCancellationKind } from '../_shared/bookingSmsTemplates.ts';
+
 export interface BookingRow {
   id: string;
   customer_id: string | null;
@@ -35,20 +37,27 @@ export function ownsBooking(booking: Pick<BookingRow, 'customer_id'>, callerCust
 }
 
 /**
- * Mirrors cancelBooking()/cancel_own_booking's own refunded rule: the
- * booking's payment_status is the source of truth, not a client claim.
+ * The booking's payment_status is the source of truth, not a client claim.
+ * cancel_own_booking (0048) never writes 'Refunded' any more (a refund that
+ * is due is 'Needs Refund'), so this is true only for a booking staff had
+ * already refunded.
  */
 export function wasRefunded(booking: Pick<BookingRow, 'payment_status'>): boolean {
   return booking.payment_status === 'Refunded';
 }
 
 /**
- * Whether the cancellation SMS is sent at all. Not for an unpaid online hold
- * (0046, 'Awaiting Payment'): nothing was paid, and both registered templates
- * talk about a refund ("refunded" / "not eligible for a refund"). The in-app
- * notification written by cancel_own_booking already says "Nothing was
- * charged".
+ * Which registered template to send, or null for no SMS at all. Shared rule
+ * (cancellationSmsKind): nothing for a booking that was never paid (Unpaid,
+ * 'Awaiting Payment', Expired) — both registered texts talk about a refund —
+ * and nothing for 'Needs Refund', where the refund is due but not yet done.
+ * The in-app notification written by cancel_own_booking says what happened.
  */
+export function cancellationSms(booking: Pick<BookingRow, 'payment_status'>): Exclude<BookingCancellationKind, 'noShow'> | null {
+  return cancellationSmsKind(booking.payment_status);
+}
+
+/** Whether the cancellation SMS is sent at all. */
 export function shouldSendCancellationSms(booking: Pick<BookingRow, 'payment_status'>): boolean {
-  return booking.payment_status !== 'Awaiting Payment';
+  return cancellationSms(booking) !== null;
 }

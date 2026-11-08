@@ -8,7 +8,7 @@
  *   npx tsx supabase/functions/_shared/bookingSmsTemplates.test.ts
  */
 
-import { bookingCancellationSms, smsBookingDate, smsAmount, FALLBACK_WORKSHOP_TITLE } from './bookingSmsTemplates.ts';
+import { bookingCancellationSms, smsBookingDate, smsAmount, cancellationSmsKind, FALLBACK_WORKSHOP_TITLE } from './bookingSmsTemplates.ts';
 
 let passed = 0;
 let failed = 0;
@@ -60,6 +60,21 @@ assertEqual(
   true,
   'missing title falls back to Arty Workshop'
 );
+
+console.log('cancellationSmsKind() — which registered template, or none');
+assertEqual(cancellationSmsKind('Unpaid'), null, 'Unpaid: nothing was paid -> no SMS (both texts mention a refund)');
+assertEqual(cancellationSmsKind('Awaiting Payment'), null, 'unpaid online hold -> no SMS');
+assertEqual(cancellationSmsKind('Expired'), null, 'expired hold -> no SMS');
+assertEqual(cancellationSmsKind(undefined), null, 'missing status -> no SMS');
+assertEqual(cancellationSmsKind('Needs Refund'), null, 'refund due, not done -> no SMS (neither text is true yet)');
+assertEqual(cancellationSmsKind('Refunded'), 'refunded', 'Refunded -> refunded template');
+assertEqual(cancellationSmsKind('Paid'), 'notRefunded', 'Paid, kept -> not refunded template');
+assertEqual(cancellationSmsKind('Deposit Paid'), 'notRefunded', 'deposit kept -> not refunded template');
+for (const status of ['Unpaid', 'Awaiting Payment', 'Expired', 'Needs Refund', '', null]) {
+  const kind = cancellationSmsKind(status);
+  const text = kind ? bookingCancellationSms(kind, input) : '';
+  assertEqual(/refund/i.test(text), false, `nothing about a refund is sent for ${JSON.stringify(status)}`);
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {

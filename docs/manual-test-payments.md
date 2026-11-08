@@ -135,8 +135,10 @@ Set Settings → Online Payments → hold to **5** minutes for these.
 | ID | Steps | Expected |
 |---|---|---|
 | PAY-40 | Customer cancels a deposit-paid workshop > 24 h ahead. | Dialog: "The 100 SAR deposit is non-refundable." Row `Cancelled / Deposit Paid`. SMS: the existing *not eligible for a refund* template. |
-| PAY-41 | Customer cancels a full-paid birthday > 24 h ahead. | Dialog promises the refund. Row `Refunded`, timeline names the Moyasar payment to refund. Staff refund it in the Moyasar dashboard. |
+| PAY-41 | Customer cancels a full-paid birthday > 24 h ahead. | Dialog: "The studio will refund your payment of … SAR." Row `Cancelled / Needs Refund` (0048; never `Refunded`), timeline names the Moyasar payment, staff get a "Customer cancellation — refund needed" notice. No SMS (no registered "refund on its way" template). Staff refund in Moyasar, then set `Refunded`. |
 | PAY-42 | Customer cancels an unpaid hold. | "Nothing has been charged for it." No SMS. |
+| PAY-42b | Customer cancels an Unpaid pay-at-studio booking (> 24 h and < 24 h ahead). | "Nothing has been paid for it." Row `Cancelled / Unpaid` (never `Refunded`). In-app: "Your unpaid booking … Nothing was charged." No SMS. |
+| PAY-42c | Customer cancels a booking staff marked `Paid` at the studio, > 24 h ahead. | Row `Cancelled / Needs Refund`, timeline "refund the customer in person", staff notice. No SMS. Within 24 h: stays `Paid`, SMS *not eligible for a refund*. |
 | PAY-43 | Staff cancel an online-paid booking (Bookings and Events/Birthday dialogs). | Amber note: amount, deposit or not, "Marking it refunded does not return any money", the Moyasar payment id. |
 
 ### F. Switch off
