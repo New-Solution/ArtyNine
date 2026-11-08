@@ -322,3 +322,48 @@ export function customerAmountView(b: PaidFields & { status?: string | null }): 
   if (b.status === 'Cancelled') return { kind: 'none' };
   return { kind: 'due', amount: total };
 }
+
+// -----------------------------------------------------------------------------
+// The one-line payment / cancellation note shown next to a booking button.
+// -----------------------------------------------------------------------------
+
+export interface PaymentNoteText { en: string; ar: string }
+
+/**
+ * What a customer is told before booking, from the same setting the database
+ * enforces (online_payments_config, 0046) and the same refund rule
+ * (cancel_own_booking, 0048):
+ *   payments off (or no payment step in this build) -> pay at the studio,
+ *                                                       free cancellation
+ *   deposit mode -> non-refundable deposit of min(deposit, price) paid online
+ *   full mode    -> refunded when cancelled more than 24 hours ahead
+ * `total` is the booking's price as currently selected; 0 or unknown quotes
+ * the configured deposit.
+ */
+export function bookingPaymentNote(opts: {
+  available: boolean;
+  config: OnlinePaymentsConfig;
+  kind: 'workshop' | 'birthday';
+  total?: number;
+}): PaymentNoteText {
+  const { available, config, kind } = opts;
+  if (!available || !config.enabled) {
+    return {
+      en: 'Pay at the studio — free cancellation, nothing charged.',
+      ar: 'الدفع في الاستوديو — إلغاء مجاني، دون خصم أي مبلغ.'
+    };
+  }
+  const k = config[kind];
+  if (k.mode === 'deposit') {
+    const total = Number(opts.total) || 0;
+    const amount = total > 0 ? estimateOnlineAmount(total, k).dueNow : k.depositAmount;
+    return {
+      en: `A non-refundable deposit of ${amount} SAR is paid online when you book.`,
+      ar: `يُدفع عربون غير قابل للاسترداد بقيمة ${amount} ريال إلكترونيًا عند الحجز.`
+    };
+  }
+  return {
+    en: 'Cancel more than 24 hours before for a full refund.',
+    ar: 'ألغِ قبل أكثر من 24 ساعة لاسترداد المبلغ كاملًا.'
+  };
+}

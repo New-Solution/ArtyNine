@@ -1102,7 +1102,10 @@ export const BirthdayBookingSection: React.FC = () => {
           <p className="text-[11px] leading-relaxed text-brand-muted">
             {payMode === 'full'
               ? t('Paid in full online. Any cake upgrade is added at the studio. Cancel more than 24 hours ahead for a refund.', 'يُدفع المبلغ كاملًا إلكترونيًا. أي ترقية للكعكة تُضاف في الاستوديو. يُسترد المبلغ عند الإلغاء قبل أكثر من 24 ساعة.')
-              : t('The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')}
+              : onlineLive
+                // Online deposit: never refunded on a customer cancellation (0048).
+                ? t('The deposit is non-refundable. The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'العربون غير قابل للاسترداد. يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')
+                : t('The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')}
           </p>
         </div>
       </div>
