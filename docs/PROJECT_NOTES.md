@@ -195,11 +195,11 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0032 | Queue "without instructor" never links a session | Applied (inferred) |
 | 0033 | Customer ids use a uuid suffix | Applied (inferred) |
 | 0034 | `customers.preferred_lang` | Applied (inferred) |
-| 0035 | Arabic content columns (workshops, packages) | ⚠ header says NOT YET APPLIED — check (§11) |
-| 0036 | `categories.name_ar` | ⚠ header says NOT YET APPLIED — check (§11) |
-| 0037 | Arabic birthday-package fields | ⚠ header says NOT YET APPLIED — check (§11) |
-| 0038 | Arabic workshop materials list | ⚠ header says NOT YET APPLIED — check (§11) |
-| 0039 | Arabic birthday-package lists | ⚠ header says NOT YET APPLIED — check (§11) |
+| 0035 | Arabic content columns (workshops, packages) | Applied (confirmed 8 Nov 2026) |
+| 0036 | `categories.name_ar` | Applied (confirmed 8 Nov 2026) |
+| 0037 | Arabic birthday-package fields | Applied (confirmed 8 Nov 2026) |
+| 0038 | Arabic workshop materials list | Applied (confirmed 8 Nov 2026) |
+| 0039 | Arabic birthday-package lists | Applied (confirmed 8 Nov 2026) |
 | 0040 | Stop anonymous writes to existing customer rows | Superseded by 0041 (its guard is live through 0041) |
 | 0041 | Claim a customer record by verified phone | Applied |
 | 0042 | No empty customer inserts | Applied |
@@ -431,9 +431,6 @@ Other docs: `docs/manual-test-payments.md` (payments runbook + tests),
 - **Data Reset is not enforced server-side.** The deletes run under each
   table's RLS, which lets staff write; a `SECURITY DEFINER` reset function
   checking `is_super_admin()` (or a guard against bulk deletes) would close it.
-- **Migrations 0035–0039:** headers say NOT YET APPLIED. Check with
-  `select table_name, column_name from information_schema.columns where column_name in ('title_ar','name_ar','pricing_label_ar','materials_ar') and table_schema = 'public';`
-  and correct the headers to match.
 - **0001–0034** have no STATUS line (older than the convention).
 - **54 unused local variables** reported by `tsc --noUnusedLocals` (unused
   imports were removed); each needs a look, see `docs/parked-work.md`.

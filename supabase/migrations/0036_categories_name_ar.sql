@@ -1,4 +1,6 @@
--- STATUS: NOT YET APPLIED — awaiting manual review and apply
+-- STATUS: APPLIED
+-- Confirmed 8 Nov 2026: every column this file adds exists in production
+-- (information_schema check), so it was applied earlier without the header being updated.
 -- Purpose: add an optional Arabic name for workshop categories (display-only)
 --
 -- =============================================================================
