@@ -11,7 +11,7 @@ import confetti from 'canvas-confetti';
 import { STUDIO_PHONE } from '../utils/studioConfig';
 import { bookingTitleLabel } from '../utils/bookingTitleLabel';
 import { timeLabel } from '../utils/availabilityLabel';
-import { paymentBreakdown, sarAmount } from '../utils/onlinePayments';
+import { isPaidStatus, paymentBreakdown, sarAmount } from '../utils/onlinePayments';
 
 /**
  * Riyadh is UTC+3 all year — Saudi Arabia has observed no daylight saving since
@@ -320,10 +320,16 @@ export const BookingConfirmationSection: React.FC = () => {
               <span className="font-semibold text-brand-muted">{t('Total paid', 'إجمالي المدفوع')}</span>
               <span className="font-semibold text-brand-terracotta text-sm ltr-numerals">{sarAmount(pay.paid)} {t('SAR', 'ريال')}</span>
             </div>
-          ) : (
+          ) : isPaidStatus((booking as { paymentStatus?: string }).paymentStatus) ? (
             <div className="flex justify-between">
               <span className="font-semibold text-brand-muted">{t('Total Paid (VAT incl.)', 'الإجمالي المدفوع (شامل الضريبة)')}</span>
               <span className="font-semibold text-brand-terracotta text-sm">{booking.totalPrice} {t('SAR', 'ريال')}</span>
+            </div>
+          ) : (
+            // Nothing was paid online: the whole amount is paid at the studio.
+            <div className="flex justify-between">
+              <span className="font-semibold text-brand-muted">{t('Pay at the studio', 'الدفع في الاستوديو')}</span>
+              <span className="font-semibold text-brand-terracotta text-sm ltr-numerals">{sarAmount(Number(booking.totalPrice) || 0)} {t('SAR', 'ريال')}</span>
             </div>
           )}
 

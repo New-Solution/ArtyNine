@@ -6,8 +6,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
-import { CreditCard, Smartphone, ShieldCheck, Check, Lock, ChevronDown } from 'lucide-react';
-import { PhoneInput } from './PhoneInput';
+import { ShieldCheck, Lock, ChevronDown, Store } from 'lucide-react';
 import { PrePaymentPopup } from './PrePaymentPopup';
 import { migratePrePaymentPopup } from '../types';
 import { validateBookingForm, validateBirthdayBookingForm } from '../utils/validation';
@@ -74,12 +73,6 @@ export const CheckoutPaymentSection: React.FC = () => {
     refCodeRef.current = generateBookingRefCode();
   }
 
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'applepay' | 'stcpay'>('card');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
-  const [cardName, setCardName] = useState(pendingBooking?.customerName || '');
-  const [stcPhone, setStcPhone] = useState(pendingBooking?.customerPhone || '');
   const [isProcessing, setIsProcessing] = useState(false);
 
   const workshop = workshops.find(w => w.id === pendingBooking?.workshopId) || workshops[0];
@@ -87,7 +80,8 @@ export const CheckoutPaymentSection: React.FC = () => {
 
   // ---- Online payment (Moyasar, migration 0046) ----------------------------
   // On only when this build has the payment step and a key, AND the studio has
-  // switched it on in Settings. Off: the flow below is exactly the old one.
+  // switched it on in Settings. Off: nothing is taken online — the booking is
+  // saved Unpaid and paid at the studio (0050 enforces Unpaid in the database).
   const onlineConfig = normalizeOnlinePayments(appSettings.find(s => s.id === ONLINE_PAYMENTS_SETTING_ID)?.value);
   const onlineLive = ONLINE_PAYMENTS_AVAILABLE && onlineConfig.enabled;
   const isBirthdayBooking = !!pendingBooking && (
@@ -187,12 +181,12 @@ export const CheckoutPaymentSection: React.FC = () => {
     const email = pendingBooking.customerEmail || currentUser?.email || 'guest@artycafe.sa';
     const phone = pendingBooking.customerPhone || currentUser?.phone || '';
 
-    // Without online payment the 800ms stands in for payment processing. The
-    // booking write happens AFTER it and is awaited: the confirmation screen
-    // must never appear for a booking the database has not accepted.
-    // With online payment this write creates the HOLD; the card is charged
-    // afterwards, in Moyasar's form, for the amount the database sets.
-    setTimeout(async () => {
+    // The booking write is awaited: the confirmation screen must never appear
+    // for a booking the database has not accepted. With online payment this
+    // write creates the HOLD and the card is charged afterwards, in Moyasar's
+    // form, for the amount the database sets. Without it, nothing is charged:
+    // the booking is saved Unpaid and paid at the studio.
+    void (async () => {
       let newBooking;
       try {
         newBooking = await addBooking({
@@ -209,9 +203,10 @@ export const CheckoutPaymentSection: React.FC = () => {
         totalPrice: pendingBooking.totalPrice,
         source: 'Website',
         status: 'Pending',
-        // Online: the database writes 'Awaiting Payment' whatever is sent here;
-        // 'Unpaid' just keeps the local timeline honest ("awaiting payment").
-        paymentStatus: onlineLive ? 'Unpaid' : 'Paid',
+        // Never 'Paid' from the browser. Online: the database writes
+        // 'Awaiting Payment'. Off: pay at the studio, so Unpaid (0050 forces
+        // the same server-side).
+        paymentStatus: 'Unpaid',
           // The full birthday submission travels onto the one shared booking record.
           birthdayDetails: pendingBooking.birthdayDetails
         }, refCodeRef.current!);
@@ -330,7 +325,7 @@ export const CheckoutPaymentSection: React.FC = () => {
       setPendingBooking(null);
       setIsProcessing(false);
       setCustomerTab('confirmation');
-    }, onlineLive ? 0 : 800);
+    })();
   };
 
   const summaryBody = (
@@ -363,7 +358,7 @@ export const CheckoutPaymentSection: React.FC = () => {
             </div>
 
             <div className="border-t border-brand-clay pt-3 flex justify-between items-center text-brand-charcoal">
-              <span className="font-semibold text-sm">{t('Total Amount', 'الإجمالي')}:</span>
+              <span className="font-semibold text-sm">{onlineLive ? t('Total Amount', 'الإجمالي') : t('Pay at the studio', 'الدفع في الاستوديو')}:</span>
               <span className={onlineLive ? 'font-semibold text-sm' : 'font-serif text-2xl font-semibold text-brand-terracotta'}>
                 {onlineLive ? (hold?.quote.totalPrice ?? fullPrice) : pendingBooking.totalPrice} {t('SAR', 'ريال')}
               </span>
@@ -408,10 +403,12 @@ export const CheckoutPaymentSection: React.FC = () => {
           {t('Workshop Booking', 'حجز الورشة')}
         </span>
         <h1 className="mt-3 font-display text-3xl font-semibold text-brand-charcoal sm:text-[42px]">
-          {t('Payment Method', 'طريقة الدفع')}
+          {onlineLive ? t('Payment Method', 'طريقة الدفع') : t('Confirm Your Booking', 'تأكيد الحجز')}
         </h1>
         <p className="mt-3 text-sm text-brand-ink">
-          {t('Select your preferred payment option.', 'اختر طريقة الدفع المفضلة لديك.')}
+          {onlineLive
+            ? t('Pay securely online to secure your place.', 'ادفع إلكترونيًا بأمان لتأكيد مكانك.')
+            : t('No payment is taken online. You pay at the studio.', 'لا يتم الدفع إلكترونيًا. تدفع في الاستوديو.')}
         </p>
       </div>
 
@@ -428,77 +425,8 @@ export const CheckoutPaymentSection: React.FC = () => {
         <div className="lg:col-span-7 bg-brand-cream rounded-[28px] p-6 sm:p-8 border border-brand-clay shadow-card">
           
           <h2 className="font-display text-lg font-semibold text-brand-charcoal mb-4">
-            {onlineLive ? t('Secure Payment', 'الدفع الآمن') : t('Choose Payment Method', 'اختر طريقة الدفع')}
+            {onlineLive ? t('Secure Payment', 'الدفع الآمن') : t('Pay at the studio', 'الدفع في الاستوديو')}
           </h2>
-
-          {/* Payment Method Selector Cards — the pre-Moyasar mock-up, shown
-              only while online payment is off. Moyasar's own form offers the
-              real methods. */}
-          {!onlineLive && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-            
-            {/* Mada / Credit Card */}
-            <button
-              type="button"
-              onClick={() => setPaymentMethod('card')}
-              className={`p-4 rounded-2xl border flex flex-col items-start gap-2 cursor-pointer transition-all ${
-                paymentMethod === 'card'
-                  ? 'border-2 border-brand-terracotta bg-brand-terracotta/5 text-brand-terracotta'
-                  : 'border-brand-clay bg-brand-sand/10 hover:border-brand-terracotta/50 text-brand-charcoal'
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <CreditCard className="h-5 w-5" />
-                {paymentMethod === 'card' && <Check className="h-4 w-4 text-brand-terracotta" />}
-              </div>
-              <div className="text-start">
-                <p className="font-semibold text-xs">{t('Mada / Credit Card', 'مدى / بطاقة ائتمان')}</p>
-                <p className="text-[10px] opacity-70">Visa, Mastercard, Mada</p> {/* ⚠ payment-network brand names — flagged, not translated */}
-              </div>
-            </button>
-
-            {/* Apple Pay */}
-            <button
-              type="button"
-              onClick={() => setPaymentMethod('applepay')}
-              className={`p-4 rounded-2xl border flex flex-col items-start gap-2 cursor-pointer transition-all ${
-                paymentMethod === 'applepay'
-                  ? 'border-2 border-brand-terracotta bg-brand-terracotta/5 text-brand-terracotta'
-                  : 'border-brand-clay bg-brand-sand/10 hover:border-brand-terracotta/50 text-brand-charcoal'
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className="font-semibold text-base">Pay</span> {/* ⚠ styled to evoke the Apple Pay mark — flagged, not translated */}
-                {paymentMethod === 'applepay' && <Check className="h-4 w-4 text-brand-terracotta" />}
-              </div>
-              <div className="text-start">
-                <p className="font-semibold text-xs">Apple Pay</p> {/* ⚠ brand name — flagged, not translated */}
-                <p className="text-[10px] opacity-70">{t('Instant 1-Click Pay', 'دفع فوري بنقرة واحدة')}</p>
-              </div>
-            </button>
-
-            {/* STC Pay */}
-            <button
-              type="button"
-              onClick={() => setPaymentMethod('stcpay')}
-              className={`p-4 rounded-2xl border flex flex-col items-start gap-2 cursor-pointer transition-all ${
-                paymentMethod === 'stcpay'
-                  ? 'border-2 border-brand-terracotta bg-brand-terracotta/5 text-brand-terracotta'
-                  : 'border-brand-clay bg-brand-sand/10 hover:border-brand-terracotta/50 text-brand-charcoal'
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <Smartphone className="h-5 w-5" />
-                {paymentMethod === 'stcpay' && <Check className="h-4 w-4 text-brand-terracotta" />}
-              </div>
-              <div className="text-start">
-                <p className="font-semibold text-xs">STC Pay</p> {/* ⚠ brand name — flagged, not translated */}
-                <p className="text-[10px] opacity-70">{t('Digital Wallet', 'محفظة رقمية')}</p>
-              </div>
-            </button>
-
-          </div>
-          )}
 
           {onlineLive && hold ? (
             <MoyasarPaymentPanel
@@ -524,85 +452,15 @@ export const CheckoutPaymentSection: React.FC = () => {
               </p>
             )}
 
-            {/* Card Form */}
-            {!onlineLive && paymentMethod === 'card' && (
-              <div className="space-y-3 p-4 bg-brand-sand/20 rounded-[22px] border border-brand-clay animate-in fade-in duration-150">
-                <div>
-                  <label className="block text-xs font-semibold text-brand-ink mb-1">{t('Name on Card', 'الاسم على البطاقة')}</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder={t('e.g. Noura Al-Amri', 'مثال: نورة العمري')}
-                    value={cardName}
-                    onChange={e => setCardName(e.target.value)}
-                    className="w-full bg-brand-cream border border-brand-clay rounded-xl py-2.5 px-3 text-sm font-semibold text-brand-charcoal"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-brand-ink mb-1">{t('Card Number', 'رقم البطاقة')}</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="4000 1234 5678 9010"
-                    value={cardNumber}
-                    onChange={e => setCardNumber(e.target.value)}
-                    className="w-full bg-brand-cream border border-brand-clay rounded-xl py-2.5 px-3 text-sm font-semibold text-brand-charcoal"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-brand-ink mb-1">{t('Expiry (MM/YY)', 'تاريخ الانتهاء (شهر/سنة)')}</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="08/28"
-                      value={cardExpiry}
-                      onChange={e => setCardExpiry(e.target.value)}
-                      className="w-full bg-brand-cream border border-brand-clay rounded-xl py-2.5 px-3 text-sm font-semibold text-brand-charcoal"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-brand-ink mb-1">CVV</label>
-                    <input
-                      type="password"
-                      maxLength={4}
-                      required
-                      placeholder="123"
-                      value={cardCvv}
-                      onChange={e => setCardCvv(e.target.value)}
-                      className="w-full bg-brand-cream border border-brand-clay rounded-xl py-2.5 px-3 text-sm font-semibold text-brand-charcoal"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Apple Pay Prompt */}
-            {!onlineLive && paymentMethod === 'applepay' && (
-              <div className="p-6 bg-brand-sand/30 rounded-[22px] border border-brand-clay text-center space-y-2 animate-in fade-in duration-150">
-                <span className="font-semibold text-2xl">Pay</span> {/* ⚠ styled to evoke the Apple Pay mark — flagged, not translated */}
-                <p className="text-xs text-brand-ink">
+            {!onlineLive && (
+              <div className="flex items-start gap-3 p-4 bg-brand-sand/20 rounded-[22px] border border-brand-clay text-xs text-brand-ink leading-relaxed">
+                <Store className="h-5 w-5 shrink-0 text-brand-sage" />
+                <p>
                   {t(
-                    'Click the button below to authorize payment securely via Apple Pay on your device.',
-                    'اضغط على الزر أدناه لتفويض الدفع بأمان عبر Apple Pay على جهازك.'
+                    `Your place is booked as soon as you confirm. Nothing is charged now — please pay ${pendingBooking.totalPrice} SAR at the studio when you arrive.`,
+                    `يتم حجز مكانك فور التأكيد. لن يُخصم أي مبلغ الآن — يرجى دفع ${pendingBooking.totalPrice} ريال في الاستوديو عند وصولك.`
                   )}
                 </p>
-              </div>
-            )}
-
-            {/* STC Pay Prompt */}
-            {!onlineLive && paymentMethod === 'stcpay' && (
-              <div className="p-4 bg-brand-sand/20 rounded-[22px] border border-brand-clay space-y-3 animate-in fade-in duration-150">
-                <PhoneInput
-                  label={`STC Pay ${t('Registered Phone Number', 'رقم الجوال المسجّل')}`}
-                  required
-                  value={stcPhone}
-                  onChange={setStcPhone}
-                />
-                <p className="text-[11px] text-brand-muted">{t(
-                  'A payment authorization notification will be pushed to your STC Pay app.',
-                  'سيتم إرسال إشعار تفويض الدفع إلى تطبيق STC Pay الخاص بك.'
-                )}</p>
               </div>
             )}
 
@@ -650,8 +508,8 @@ export const CheckoutPaymentSection: React.FC = () => {
                       ? t('Holding your place…', 'جارٍ حجز مكانك…')
                       : `${t('Continue to Secure Payment', 'المتابعة إلى الدفع الآمن')} (${estimate.dueNow} ${t('SAR', 'ريال')})`)
                   : isProcessing
-                    ? t('Processing Payment...', 'جارٍ معالجة الدفع...')
-                    : `${t('Complete Booking', 'إتمام الحجز')} (${pendingBooking.totalPrice} ${t('SAR', 'ريال')})`}
+                    ? t('Confirming your booking…', 'جارٍ تأكيد حجزك…')
+                    : t('Confirm Booking — Pay at the studio', 'تأكيد الحجز — الدفع في الاستوديو')}
               </span>
             </button>
 
@@ -660,7 +518,7 @@ export const CheckoutPaymentSection: React.FC = () => {
               <span>
                 {onlineLive
                   ? t('Payments are processed securely by Moyasar.', 'تتم معالجة المدفوعات بأمان عبر Moyasar.')
-                  : t('SSL 256-Bit Encrypted Payment • Immediate Admin Sync', 'دفع مشفّر بتقنية SSL 256-بت • مزامنة فورية مع الإدارة')}
+                  : t('Nothing is charged online. You pay at the studio.', 'لا يُخصم أي مبلغ إلكترونيًا. تدفع في الاستوديو.')}
               </span>
             </div>
 
