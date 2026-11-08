@@ -12,7 +12,7 @@ import { MapPin, Clock, Phone, Mail, Instagram, Facebook, MessageCircle, Buildin
 import { useLanguage } from '../context/LanguageContext';
 import {
   STUDIO_PHONE, STUDIO_PHONE_TEL, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL,
-  STUDIO_ADDRESS, STUDIO_MAPS_URL, STUDIO_HOURS, STUDIO_INSTAGRAM_URL, STUDIO_INSTAGRAM_HANDLE,
+  STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_MAPS_URL, STUDIO_HOURS, STUDIO_INSTAGRAM_URL, STUDIO_INSTAGRAM_HANDLE,
   STUDIO_TIKTOK_URL, STUDIO_FACEBOOK_URL
 } from '../utils/studioConfig';
 import { InfoPageLayout, InfoSection, ConfirmWithClient, InfoPageLink } from './ui/InfoPage';
@@ -44,7 +44,7 @@ export const ContactSection: React.FC = () => {
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Row icon={MapPin} label={t('Address', 'العنوان')}>
-          <p>{STUDIO_ADDRESS}</p>
+          <p>{t(STUDIO_ADDRESS, STUDIO_ADDRESS_AR)}</p>
           <a href={STUDIO_MAPS_URL} {...external} className="mt-1 inline-block text-xs font-semibold text-brand-terracotta underline underline-offset-4">
             {t('Open in Google Maps', 'افتح في خرائط Google')}
           </a>

@@ -7,6 +7,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
 import { InfoPageNewTabLink } from './ui/InfoPage';
+import { STUDIO_ADDRESS_SHORT, STUDIO_ADDRESS_SHORT_AR } from '../utils/studioConfig';
 import { Sparkles, Calendar, MapPin } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { STUDIO_PHONE } from '../utils/studioConfig';
@@ -144,6 +145,27 @@ export const BookingConfirmationSection: React.FC = () => {
   // total, as before.
   const pay = paymentBreakdown(booking as { totalPrice: number; paymentStatus?: string; paymentMode?: 'deposit' | 'full'; onlineAmount?: number });
   const isOnlineDeposit = pay.online && pay.mode === 'deposit';
+
+  /**
+   * The cancellation line, by the same rules as cancel_own_booking (0048) and
+   * the Cancellation & Refund Policy page:
+   *   online deposit                 never refunded
+   *   paid in full (online, or       refunded with MORE than 24h notice,
+   *     already paid at the studio)  nothing within 24h
+   *   nothing paid (pay at studio)   free cancellation until the start
+   * Shown under the booking and written into the calendar file.
+   */
+  const cancellationNote: { en: string; ar: string } = isOnlineDeposit
+    ? { en: 'Your deposit is non-refundable.', ar: 'العربون غير قابل للاسترداد.' }
+    : pay.online || isPaidStatus((booking as { paymentStatus?: string }).paymentStatus)
+      ? {
+          en: 'Cancel more than 24 hours before for a full refund; no refund within 24 hours.',
+          ar: 'ألغِ قبل أكثر من 24 ساعة لاسترداد المبلغ كاملًا؛ لا يوجد استرداد خلال 24 ساعة.'
+        }
+      : {
+          en: 'Free cancellation any time before your session — nothing has been charged.',
+          ar: 'إلغاء مجاني في أي وقت قبل جلستك — لم يُخصم أي مبلغ.'
+        };
   const titleLabel = bookingTitleLabel(booking, workshops, birthdayPackages, lang);
 
   /**
@@ -173,12 +195,22 @@ export const BookingConfirmationSection: React.FC = () => {
 
     const title = booking.workshopTitle || 'Arty Café Workshop';
     const room = matchingWorkshop?.room || '';
-    const location = [room, 'Arty Café', 'Ahmad Al Attas St, Jeddah'].filter(Boolean).join(', ');
-    const guests = `${booking.participants} ${booking.participants === 1 ? 'guest' : 'guests'}`;
-    const description = `${title} at Arty Café. Booking reference ${booking.id}, ${guests}. `
-      + (isOnlineDeposit
-        ? `Deposit paid: ${sarAmount(pay.paid)} SAR (non-refundable). Balance due at the studio: ${sarAmount(pay.balance)} SAR.`
-        : 'You can cancel free of charge up to 24 hours before the session.');
+    // Written in the language the customer is using, like the page itself.
+    const isAr = lang === 'ar';
+    const location = [room, isAr ? 'آرتي كافيه' : 'Arty Café', isAr ? STUDIO_ADDRESS_SHORT_AR : STUDIO_ADDRESS_SHORT]
+      .filter(Boolean).join(isAr ? '، ' : ', ');
+    const description = isAr
+      ? `${title} في آرتي كافيه. رقم الحجز ${booking.id}، عدد الضيوف ${booking.participants}. `
+        + (isOnlineDeposit
+          ? `العربون المدفوع: ${sarAmount(pay.paid)} ريال. المتبقي للدفع في الاستوديو: ${sarAmount(pay.balance)} ريال. `
+          : '')
+        + cancellationNote.ar
+      : `${title} at Arty Café. Booking reference ${booking.id}, `
+        + `${booking.participants} ${booking.participants === 1 ? 'guest' : 'guests'}. `
+        + (isOnlineDeposit
+          ? `Deposit paid: ${sarAmount(pay.paid)} SAR. Balance due at the studio: ${sarAmount(pay.balance)} SAR. `
+          : '')
+        + cancellationNote.en;
 
     // A UID must be globally unique and stable, so the same booking re-added
     // updates the existing entry rather than creating a duplicate.
@@ -206,7 +238,7 @@ export const BookingConfirmationSection: React.FC = () => {
       filename: `arty-cafe-${String(booking.id).toLowerCase()}.ics`,
       content: lines.map(foldLine).join('\r\n') + '\r\n'
     };
-  }, [booking, matchingWorkshop, isOnlineDeposit, pay.paid, pay.balance]);
+  }, [booking, matchingWorkshop, isOnlineDeposit, pay.paid, pay.balance, lang, cancellationNote.en]);
 
   const downloadCalendarEvent = () => {
     if (!calendarEvent) return;
@@ -339,7 +371,7 @@ export const BookingConfirmationSection: React.FC = () => {
             <div className="text-right">
               <span className="font-semibold text-brand-charcoal block">{matchingWorkshop?.room || t('Studio A', 'الاستوديو أ')}</span>
               <span className="text-[10px] text-brand-muted flex items-center justify-end gap-1 mt-0.5">
-                <MapPin className="h-3 w-3" /> Ahmad Al Attas St, Jeddah
+                <MapPin className="h-3 w-3" /> {t(STUDIO_ADDRESS_SHORT, STUDIO_ADDRESS_SHORT_AR)}
               </span>
             </div>
           </div>
@@ -368,9 +400,7 @@ export const BookingConfirmationSection: React.FC = () => {
 
         {/* Cancellation policy note */}
         <p className="mt-5 text-[10px] text-center text-brand-muted italic leading-relaxed">
-          {isOnlineDeposit
-            ? t('*Your deposit is non-refundable.', '*العربون غير قابل للاسترداد.')
-            : t('*You can cancel free of charge up to 24 hours before your session directly from your bookings portal.', '*يمكنك الإلغاء مجانًا حتى 24 ساعة قبل جلستك مباشرة من بوابة حجوزاتك.')}
+          *{t(cancellationNote.en, cancellationNote.ar)}
         </p>
         <p className="mt-2 text-center text-xs">
           <InfoPageNewTabLink page="cancellation-policy">

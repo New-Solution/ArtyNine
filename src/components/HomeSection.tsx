@@ -23,7 +23,7 @@ import {
 } from './ui/CtaSectionWithGallery';
 import { formatDate } from '../utils/calendarConfig';
 import { selectFeaturedWorkshops, recentBookingsWindow } from '../utils/featuredWorkshops';
-import { STUDIO_PHONE, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL, STUDIO_ADDRESS, STUDIO_HOURS, STUDIO_MAPS_URL } from '../utils/studioConfig';
+import { STUDIO_PHONE, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL, STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_HOURS, STUDIO_MAPS_URL } from '../utils/studioConfig';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
 import { useSessionSeats, useRecentBookings } from '../lib/sessionSeats';
@@ -305,7 +305,7 @@ export const HomeSection: React.FC = () => {
                   {/* A year, so no thousands separator — never "2,021". */}
                   <CountingNumber target={2021} from={1990} groupThousands={false} />
                 </dt>
-                <dd className="mt-1 text-[11px] uppercase tracking-[0.1em] text-brand-muted">On Ahmad Al Attas St.</dd>
+                <dd className="mt-1 text-[11px] uppercase tracking-[0.1em] text-brand-muted">{t('On Ahmad Al Attas St.', 'في شارع أحمد العطاس')}</dd>
               </div>
             </dl>
           </PhotoGallery>
@@ -989,7 +989,7 @@ export const HomeSection: React.FC = () => {
                   <div className="border-t border-brand-clay py-4">
                     <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-muted">{t('Address', 'العنوان')}</dt>
                     <dd className="mt-1.5 text-brand-charcoal">
-                      {STUDIO_ADDRESS}
+                      {t(STUDIO_ADDRESS, STUDIO_ADDRESS_AR)}
                     </dd>
                   </div>
                 </Reveal>
