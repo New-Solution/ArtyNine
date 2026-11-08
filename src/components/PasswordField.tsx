@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { CREDENTIAL_INPUT_PROPS } from '../utils/credentialInput';
 
 interface PasswordFieldProps {
   value: string;
@@ -46,6 +47,7 @@ export const PasswordField: React.FC<PasswordFieldProps> = ({
   return (
     <div className="relative">
       <input
+        {...CREDENTIAL_INPUT_PROPS}
         id={id}
         type={visible ? 'text' : 'password'}
         required={required}

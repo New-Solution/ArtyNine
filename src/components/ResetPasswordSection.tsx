@@ -10,6 +10,7 @@ import { KeyRound, CheckCircle2, AlertCircle , Check } from 'lucide-react';
 import { PasswordField } from './PasswordField';
 import { passwordChecklist, validatePasswordRule, validatePasswordConfirmation } from '../utils/validation';
 import { useTurnstile } from './Turnstile';
+import { CREDENTIAL_INPUT_PROPS } from '../utils/credentialInput';
 
 /**
  * The screen the emailed reset link lands on.
@@ -227,6 +228,7 @@ export const ResetPasswordSection: React.FC = () => {
               <form onSubmit={handleResend} className="space-y-2 pt-3 border-t border-brand-clay/60">
                 <label className="text-xs font-bold text-brand-charcoal/80">Send a new link</label>
                 <input
+                  {...CREDENTIAL_INPUT_PROPS}
                   type="email"
                   required
                   placeholder="you@example.com"

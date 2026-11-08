@@ -319,8 +319,10 @@ Deno.serve(async (req: Request) => {
       // secret makes the staff invite target independent of whatever the
       // shared Site URL happens to be set to.
       const staffSiteUrl = Deno.env.get('STAFF_SITE_URL');
+      // Lowercased and trimmed, like every sign-in, so the login account's
+      // address never depends on how the staff record was typed.
       const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(
-        targetStaff.email,
+        canonicalEmail(targetStaff.email),
         staffSiteUrl ? { redirectTo: staffSiteUrl } : undefined
       );
       if (inviteError || !invited?.user) {

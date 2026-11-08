@@ -24,6 +24,7 @@ import { PhoneOtpFlow, PhoneSetupForm } from './PhoneOtpFlow';
 import { toE164Saudi, needsCustomerName } from '../utils/phoneAuth';
 import { supabase } from '../lib/supabase';
 import { useTurnstile } from './Turnstile';
+import { CREDENTIAL_INPUT_PROPS } from '../utils/credentialInput';
 
 /** Staggered fade-up for the title block over the photograph. */
 const textVariants = {
@@ -845,6 +846,7 @@ export const AuthSection: React.FC = () => {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-brand-charcoal/80">{t('Email address or Phone number', 'البريد الإلكتروني أو رقم الجوال')}</label>
                     <input
+                      {...CREDENTIAL_INPUT_PROPS}
                       type="text"
                       required
                       placeholder={`${t('e.g.', 'مثال:')} noura@amri.sa ${t('or', 'أو')} +966501234567`}
@@ -926,6 +928,7 @@ export const AuthSection: React.FC = () => {
                       <div className="space-y-1">
                         <label className="text-xs font-bold text-brand-charcoal/80">{t('Your email address', 'بريدك الإلكتروني')} *</label>
                         <input
+                          {...CREDENTIAL_INPUT_PROPS}
                           type="email"
                           required
                           value={claimEmail}
@@ -1070,6 +1073,7 @@ export const AuthSection: React.FC = () => {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-brand-charcoal/80">{t('Email address', 'البريد الإلكتروني')} *</label>
                     <input
+                      {...CREDENTIAL_INPUT_PROPS}
                       type="email"
                       required
                       placeholder="noura@amri.sa"
@@ -1204,6 +1208,7 @@ export const AuthSection: React.FC = () => {
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-brand-charcoal/80">{t('Registered Email Address', 'البريد الإلكتروني المسجّل')}</label>
                       <input
+                        {...CREDENTIAL_INPUT_PROPS}
                         type="email"
                         required
                         placeholder={`${t('e.g.', 'مثال:')} noura@amri.sa`}

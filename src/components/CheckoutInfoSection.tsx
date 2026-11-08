@@ -27,6 +27,7 @@ import { needsCustomerName } from '../utils/phoneAuth';
 import { useTurnstile } from './Turnstile';
 import { ONLINE_PAYMENTS_AVAILABLE } from '../utils/featureFlags';
 import { ONLINE_PAYMENTS_SETTING_ID, normalizeOnlinePayments, estimateOnlineAmount, birthdayFullPrice } from '../utils/onlinePayments';
+import { CREDENTIAL_INPUT_PROPS } from '../utils/credentialInput';
 
 export const CheckoutInfoSection: React.FC = () => {
   const {
@@ -439,6 +440,7 @@ export const CheckoutInfoSection: React.FC = () => {
                   phone; validateEmailRule does the checking.
                 */}
                 <input
+                  {...CREDENTIAL_INPUT_PROPS}
                   type="text"
                   inputMode="email"
                   autoComplete="email"
@@ -620,6 +622,7 @@ export const CheckoutInfoSection: React.FC = () => {
               <div>
                 <label className="block text-xs font-semibold text-brand-ink mb-1">{t('Email or phone', 'البريد الإلكتروني أو الجوال')}</label>
                 <input
+                  {...CREDENTIAL_INPUT_PROPS}
                   type="text"
                   required
                   placeholder={`${t('e.g.', 'مثال:')} noura@example.com ${t('or', 'أو')} 0501234567`}

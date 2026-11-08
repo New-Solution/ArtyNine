@@ -14,6 +14,7 @@ import { PasswordField } from './PasswordField';
 import { useApp } from '../context/AppContext';
 import { Lock, LogIn, ShieldAlert, AlertCircle, Mail } from 'lucide-react';
 import { useTurnstile } from './Turnstile';
+import { CREDENTIAL_INPUT_PROPS } from '../utils/credentialInput';
 
 export const AdminLoginSection: React.FC = () => {
   const { loginStaff, requestPasswordReset, viewCustomerSite, staff } = useApp();
@@ -102,6 +103,7 @@ export const AdminLoginSection: React.FC = () => {
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-brand-charcoal/35" />
               <input
+                {...CREDENTIAL_INPUT_PROPS}
                 type="text"
                 autoFocus
                 value={identifier}
@@ -177,6 +179,7 @@ export const AdminLoginSection: React.FC = () => {
               Enter your work email and we will send a link to set a new password.
             </p>
             <input
+              {...CREDENTIAL_INPUT_PROPS}
               type="email"
               placeholder="you@artycafe.sa"
               value={forgotEmail}
