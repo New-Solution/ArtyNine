@@ -6,10 +6,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp, getRiyadhDateString } from '../context/AppContext';
-import { 
-  Flame, LayoutGrid, List, Search, Filter, AlertCircle, X, Check, 
-  MapPin, User, Calendar, RefreshCw, ClipboardList, Clock, Sparkles,
-  Camera, Hash, Upload, Trash2
+import {
+  Flame, LayoutGrid, List, Search, AlertCircle, X, Check, Calendar, RefreshCw,
+  ClipboardList, Clock, Sparkles, Camera, Hash, Trash2
 } from 'lucide-react';
 import { PotteryPiece, isStageEnabled, DEFAULT_LOGGING_FIELDS, DEFAULT_PIPELINE_STAGES, type StageSystemKey } from '../types';
 import { stageOf, stageByKey, isEndState } from '../utils/pipelineStages';
@@ -87,9 +86,8 @@ const comparePiecesByCode = (a: PotteryPiece, b: PotteryPiece): number => {
 };
 import { PhoneInput } from './PhoneInput';
 import { DateInput } from './DateInput';
-import { formatDateTime } from '../utils/calendarConfig';
 import { hasWebsiteAccount } from '../utils/accountUtils';
-import { matchesQuery, useDebouncedValue } from '../utils/search';
+import { useDebouncedValue } from '../utils/search';
 import { usePagination, TablePager } from './ui/TablePager';
 import { ConsoleModal } from './ui/ConsoleModal';
 import { useLanguage } from '../context/LanguageContext';

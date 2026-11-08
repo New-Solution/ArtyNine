@@ -4,16 +4,13 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useApp, getRiyadhDateString } from '../context/AppContext';
-import { 
-  Users, Clock, Play, CheckCircle, PhoneCall, MoreVertical, 
-  Plus, CalendarCheck, X, Edit2, Trash2, AlertTriangle, Check, Sparkles,
-  ChevronDown, ChevronUp
-, GraduationCap
-, Hourglass, LayoutGrid, ArrowLeftRight } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import {
+  Users, Clock, Play, CheckCircle, PhoneCall, Plus, X, Edit2, Trash2, AlertTriangle,
+  Sparkles, ChevronDown, GraduationCap, Hourglass, LayoutGrid, ArrowLeftRight
+} from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { QueueItem } from '../types';
-import { validateSaudiPhone, normaliseSaudiPhone } from '../utils/phoneUtils';
 import { PhoneInput } from './PhoneInput';
 import {
   resolveQueueInstructor, resolveQueueSession, getTodaysAvailableSessions,
@@ -24,10 +21,7 @@ import { timeToMinutes, getEndTimeMinutes } from '../utils/timeUtils';
 import { validateCustomerForm, validateBookingForm, canonicalPhone, phoneMatchKey } from '../utils/validation';
 import { checkStaffMemberAvailability } from '../utils/staffAvailabilityUtils';
 import { AssignmentSources } from '../utils/staffAssignments';
-import {
-  searchCustomers, summarizeCustomerActivity, normalizeCustomerPhone, toDisplayPhone,
-  customerPhoneKey, CustomerSearchResult
-} from '../utils/customerIdentity';
+import { searchCustomers, summarizeCustomerActivity, customerPhoneKey, CustomerSearchResult } from '../utils/customerIdentity';
 import { hasWebsiteAccount } from '../utils/accountUtils';
 import { CustomerAccount } from '../types';
 import {

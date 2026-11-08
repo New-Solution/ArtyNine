@@ -27,7 +27,7 @@ import { STUDIO_PHONE } from '../utils/studioConfig';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
 import { useSessionSeats, useRecentBookings } from '../lib/sessionSeats';
-import { Calendar, Sparkles, ChevronRight, Paintbrush, MousePointerClick, CalendarRange, Gift, Coffee, ChevronDown, Phone, Mail, UserCheck, Star, ArrowLeft, Clock }  from 'lucide-react';
+import { Sparkles, ChevronRight, Paintbrush, MousePointerClick, CalendarRange, Gift, Phone, Mail, UserCheck, Star, ArrowLeft, Clock } from 'lucide-react';
 
 /**
  * The arc gallery's photographs, in the order the studio supplied them.

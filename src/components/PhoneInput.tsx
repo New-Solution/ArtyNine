@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Search, Check } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
-import { COUNTRIES, CountryCodeOption, parsePhoneComponents, normalisePhone, validatePhone, parseArabicDigits } from '../utils/phoneUtils';
+import { COUNTRIES, CountryCodeOption, parsePhoneComponents, normalisePhone, parseArabicDigits } from '../utils/phoneUtils';
 
 interface PhoneInputProps {
   value: string; // e.g. "+966501234567" or "501234567"

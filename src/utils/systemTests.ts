@@ -20,7 +20,7 @@
  */
 
 import { sdb } from '../lib/supabaseDb';
-import { supabase, getDataClient, readPublicEnv } from '../lib/supabase';
+import { getDataClient, readPublicEnv } from '../lib/supabase';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { checkMigrations } from '../lib/migrationCheck';
 import {

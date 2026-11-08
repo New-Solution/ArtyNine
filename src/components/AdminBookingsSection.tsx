@@ -5,11 +5,11 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp, getRiyadhNow, parseBookingDateTimeToRiyadhDate, getRiyadhDateString } from '../context/AppContext';
-import { 
-  Search, Filter, RefreshCw, X, Download, User, Calendar, 
-  MapPin, Clock, Edit2, ShieldAlert, Receipt, CheckCircle, ChevronRight, Bell, AlertTriangle
-, Phone, Mail } from 'lucide-react';
-import { Booking, Workshop } from '../types';
+import {
+  Search, RefreshCw, X, Download, Clock, ShieldAlert, CheckCircle, Bell, AlertTriangle,
+  Phone, Mail
+} from 'lucide-react';
+import { Booking } from '../types';
 import { resolveBookingInstructor } from '../utils/queueUtils';
 import { DateInput } from './DateInput';
 import { matchesQuery } from '../utils/search';

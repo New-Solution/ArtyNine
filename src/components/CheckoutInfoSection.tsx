@@ -7,8 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { PasswordField } from './PasswordField';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
-import { User, Mail, Phone, ArrowRight, ShieldCheck, LogIn, CheckCircle2, Lock , Check, ChevronDown } from 'lucide-react';
-import { validateSaudiPhone, normaliseSaudiPhone } from '../utils/phoneUtils';
+import { User, Mail, ArrowRight, ShieldCheck, LogIn, CheckCircle2, Lock, Check, ChevronDown } from 'lucide-react';
 import { PhoneInput } from './PhoneInput';
 import {
   validateCustomerForm, canonicalPhone, canonicalEmail, passwordChecklist

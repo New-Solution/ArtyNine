@@ -8,12 +8,11 @@ import { useApp } from '../context/AppContext';
 import { CustomerAccount, Booking, QueueItem, PotteryPiece, DEFAULT_PIPELINE_STAGES } from '../types';
 import { stageOf } from '../utils/pipelineStages';
 import { PieceImage } from '../lib/pieceImages';
-import { 
-  Users, UserPlus, Search, Filter, Phone, Mail, Calendar, Clock, 
-  Edit, CheckCircle2, AlertCircle, ShoppingBag, CreditCard, Flame, ChevronRight, 
-  Tag, Shield, History, Sparkles, X, Plus, AlertTriangle, UserCheck, Cake, ListOrdered, Palette
-, Info } from 'lucide-react';
-import { COUNTRIES, parsePhoneComponents, validatePhone, normalisePhone, normaliseSaudiPhone } from '../utils/phoneUtils';
+import {
+  Users, UserPlus, Search, Phone, Mail, Calendar, Edit, CheckCircle2, CreditCard, Flame,
+  History, X, AlertTriangle, UserCheck, Info
+} from 'lucide-react';
+import { parsePhoneComponents, normalisePhone } from '../utils/phoneUtils';
 import { PhoneInput } from './PhoneInput';
 import { validateCustomerForm, canonicalPhone, canonicalEmail } from '../utils/validation';
 import {

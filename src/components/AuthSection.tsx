@@ -10,13 +10,12 @@ import { useLanguage } from '../context/LanguageContext';
 import { ScrollReveal } from './ui/ScrollReveal';
 import Reveal from './ui/Reveal';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Palette, Mail, Lock, User, Check, AlertCircle, ArrowLeft, LogIn, KeyRound, ShieldCheck, CheckCircle2, RefreshCw , Pin } from 'lucide-react';
+import { Check, AlertCircle, ArrowLeft, LogIn, KeyRound, CheckCircle2, Pin } from 'lucide-react';
 import { PhoneInput } from './PhoneInput';
 import { AuthBackdrop } from './AuthBackdrop';
-import { validatePhone, normalisePhone } from '../utils/phoneUtils';
 import {
   validateCustomerForm, canonicalEmail, canonicalPhone, passwordChecklist,
-  validatePasswordRule, validatePasswordConfirmation
+  validatePasswordConfirmation
 } from '../utils/validation';
 import { STUDIO_PHONE } from '../utils/studioConfig';
 import { bookingTitleLabel } from '../utils/bookingTitleLabel';

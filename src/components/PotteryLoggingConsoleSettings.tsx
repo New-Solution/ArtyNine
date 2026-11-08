@@ -7,10 +7,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
 import { LoggingConsoleField, DEFAULT_LOGGING_FIELDS } from '../types';
-import { 
-  Plus, Trash2, Edit2, Check, X, ArrowUp, ArrowDown, Save, 
-  RotateCcw, Eye, EyeOff, Sliders, Layers, List, Settings2, Info, Sparkles
-} from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, ArrowUp, ArrowDown, RotateCcw, Eye, EyeOff } from 'lucide-react';
 
 export const PotteryLoggingConsoleSettings: React.FC = () => {
   const { loggingFields, updateLoggingFields } = useApp();

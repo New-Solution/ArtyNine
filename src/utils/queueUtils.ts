@@ -6,9 +6,7 @@
  * staff and the queue itself. No queue-local copies of workshop or staff data.
  */
 
-import {
-  QueueItem, Booking, StaffMember, Workshop, WorkshopSessionRecord, CapacitySettingsConfig
-} from '../types';
+import { QueueItem, Booking, StaffMember, Workshop, WorkshopSessionRecord } from '../types';
 import { normalizeDateString, timeToMinutes, getEndTimeMinutes, minutesToTimeString } from './timeUtils';
 
 export interface QueueRecordSources {

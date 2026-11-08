@@ -3,8 +3,8 @@
  * Respects Asia/Riyadh timezone and avoids duplicate sessions.
  */
 
-import { Workshop, RecurringScheduleRule, WorkshopSessionRecord, SessionException } from '../types';
-import { getRiyadhNow, getRiyadhDateString, parseBookingDateTimeToRiyadhDate } from './dateUtils';
+import { Workshop, WorkshopSessionRecord } from '../types';
+import { getRiyadhNow, parseBookingDateTimeToRiyadhDate } from './dateUtils';
 import { WEEKDAY_NAMES } from './calendarConfig';
 
 // Shared English Gregorian weekday names.

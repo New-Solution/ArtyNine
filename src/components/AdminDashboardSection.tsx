@@ -5,10 +5,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { 
-  CalendarDays, Globe, User, ListOrdered, Palette, Box, AlertTriangle, Coins, 
-  TrendingUp, TrendingDown, Clock, Cake, Bell, CheckCircle2, Phone, Mail, ChevronRight, Sparkles, Filter
-} from 'lucide-react';
+import { CalendarDays, ListOrdered, Box, Coins, Cake, Bell, CheckCircle2, ChevronRight } from 'lucide-react';
 import { Booking, PotteryPiece } from '../types';
 import { PieceImage } from '../lib/pieceImages';
 import { getActivitiesForDate, categorizeBooking } from '../utils/activityUtils';

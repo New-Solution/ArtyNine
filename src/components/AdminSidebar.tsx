@@ -5,10 +5,11 @@
 
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { 
-  LayoutDashboard, Users, CalendarDays, Palette, ListOrdered, 
-  Flame, HelpCircle, ChevronLeft, ChevronRight, ChevronDown, Menu, LogOut, ShieldAlert, Settings, Sparkles, UserCheck
-, Megaphone } from 'lucide-react';
+import {
+  LayoutDashboard, Users, CalendarDays, Palette, ListOrdered, Flame, ChevronLeft,
+  ChevronRight, ChevronDown, LogOut, ShieldAlert, Settings, Sparkles, UserCheck,
+  Megaphone
+} from 'lucide-react';
 import { SETTINGS_SECTIONS, canSeeSettingsSection, getPageLabel, getSettingsSectionLabel } from '../utils/adminAccess';
 import { formatTime, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
 import { LanguageToggle } from './LanguageToggle';

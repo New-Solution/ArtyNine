@@ -21,10 +21,10 @@ import { findRuleConflict, getRuleSlots, formatSlotDate, RuleConflict } from '..
 import { validateWorkshopForm } from '../utils/validation';
 import { getSessionSeatUsage } from '../utils/queueUtils';
 import { uploadImages, removeImages } from '../lib/mediaUpload';
-import { 
-  Upload, Trash2, Plus, AlertCircle, Sparkles, Image as ImageIcon, 
-  Settings, FolderKanban, Check, Save, Eye, Bold, Italic, Link, AlignLeft, X,
-  Search, ArrowUpDown, ChevronUp, ChevronDown, Layers, Calendar, User, Clock, RefreshCw
+import {
+  Upload, Trash2, Plus, AlertCircle, Sparkles, Settings, FolderKanban, Check, Save, Bold,
+  Italic, Link, AlignLeft, X, Search, ArrowUpDown, ChevronUp, ChevronDown, Calendar,
+  Clock, RefreshCw
 } from 'lucide-react';
 import { DateInput } from './DateInput';
 import { ContentLanguageTabs, ContentLang } from './ui/ContentLanguageTabs';

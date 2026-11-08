@@ -15,9 +15,7 @@ import { resolveStaffName } from '../utils/staffAssignments';
 import { useSessionSeats } from '../lib/sessionSeats';
 import { validateBookingForm } from '../utils/validation';
 import { MONTH_NAMES, WEEKDAY_NAMES_SHORT } from '../utils/calendarConfig';
-import { 
-  Calendar as CalendarIcon, User, Flame, Clock, Award, Map, CheckCircle2, Minus, Plus, Edit, Users, ChevronLeft, ChevronRight 
-} from 'lucide-react';
+import { Edit, ChevronLeft, ChevronRight } from 'lucide-react';
 import { BackButton } from './ui/BackButton';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';

@@ -5,21 +5,17 @@
 
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { 
-  Plus, Trash2, Edit2, Check, X, ArrowUp, ArrowDown, Save, 
-  UserPlus, Shield, Info, AlertTriangle, Palette, Clock, Lock, 
-  MapPin, Sliders, Settings, Users, BookOpen, Calendar, HelpCircle, 
-  ChevronDown, ChevronUp, GripVertical, RotateCcw
-, Pencil } from 'lucide-react';
 import {
-  PipelineStage, StaffMember, WorkshopOption, StaffRole,
-  WORKSHOP_OPTION_LISTS, isWorkshopOptionEnabled,
-  WorkshopFieldConfig, WorkshopFieldType, WorkshopCardSection,
-  WORKSHOP_FIELD_TYPES, fieldTypeUsesOptions, fieldsForCard,
-  PrePaymentPopupConfig, migratePrePaymentPopup, popupParagraphs
+  Plus, Trash2, Edit2, Check, X, ArrowUp, ArrowDown, Save, UserPlus, Shield, Info,
+  AlertTriangle, Clock, Sliders, Users, GripVertical, Pencil
+} from 'lucide-react';
+import {
+  StaffMember, StaffRole, WorkshopFieldConfig, WorkshopFieldType, WorkshopCardSection,
+  WORKSHOP_FIELD_TYPES, fieldTypeUsesOptions, fieldsForCard, PrePaymentPopupConfig,
+  migratePrePaymentPopup, popupParagraphs
 } from '../types';
 import {
-  ADMIN_PAGES, defaultPermissionsForRole, sanitizePermissions, isSuperAdmin, canAccessPage,
+  ADMIN_PAGES, defaultPermissionsForRole, sanitizePermissions, isSuperAdmin,
   isSuperAdminOnlyPage, getPageLabel
 } from '../utils/adminAccess';
 import { normalizeCustomerPhone } from '../utils/customerIdentity';

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { StudioTableConfig, CapacitySettingsConfig } from '../types';
-import { Save, AlertTriangle, Plus, Trash2, Check, Shield, LayoutGrid } from 'lucide-react';
+import { Save, AlertTriangle, Plus, Trash2, Check, LayoutGrid } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 

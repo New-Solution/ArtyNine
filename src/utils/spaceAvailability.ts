@@ -12,8 +12,8 @@
  */
 
 import {
-  WorkshopOption, StudioTableConfig, CapacitySettingsConfig, StudioResource,
-  WorkshopSessionRecord, Workshop, AppEvent, QueueItem
+  CapacitySettingsConfig, StudioResource, WorkshopSessionRecord, Workshop, AppEvent,
+  QueueItem
 } from '../types';
 import { normalizeDateString, timeToMinutes, getEndTimeMinutes, minutesToTimeString, rangesOverlap } from './timeUtils';
 

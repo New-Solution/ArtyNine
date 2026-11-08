@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { checkStaffMemberAvailability } from '../utils/staffAvailabilityUtils';
-import { Booking, BirthdayPackage, DEFAULT_CAKE_SIZES } from '../types';
+import { BirthdayPackage, DEFAULT_CAKE_SIZES } from '../types';
 import { formatDateTime } from '../utils/calendarConfig';
-import { 
-  Sparkles, Calendar, Clock, User, Save, Search, Filter, CheckCircle2, 
-  Package, Users, Phone, Mail, DollarSign, AlertCircle, X, ShieldAlert,
-  Plus, Trash2, Download, Upload, Image as ImageIcon
+import {
+  Sparkles, Search, Filter, CheckCircle2, Package, Users, Phone, X, ShieldAlert, Plus,
+  Trash2, Download
 } from 'lucide-react';
-import { LineListTextarea } from './ui/LineListTextarea';
 import { matchesQuery } from '../utils/search';
 import { AdminBirthdayPackageEditor } from './AdminBirthdayPackageEditor';
 import { useLanguage } from '../context/LanguageContext';

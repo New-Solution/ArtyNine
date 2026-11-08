@@ -4,18 +4,16 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { 
+import {
   Workshop, Booking, QueueItem, PotteryPiece, TestResult, NotificationItem,
-  PipelineStage, StaffMember, WorkshopOption, EventOption, AppSetting, AppEvent, Category,
-  WorkshopSessionRecord, StaffScheduleDayEntry, BirthdayPackage, BirthdayFormField,
-  DEFAULT_BIRTHDAY_PACKAGES, DEFAULT_BIRTHDAY_FORM_FIELDS, normalizeBirthdayPackage,
-  StudioResource, DEFAULT_STUDIO_RESOURCES, CustomerAccount, StaffRole,
-  DEFAULT_PIPELINE_STAGES, isStageEnabled, stageCustomerLabel, migrateLegacyPieceStatus,
-  DEFAULT_WORKSHOP_OPTIONS, isWorkshopOptionEnabled,
-  WorkshopFieldConfig, DEFAULT_WORKSHOP_FIELDS,
-  DraftBooking, DEFAULT_LOGGING_FIELDS, LoggingConsoleField
+  PipelineStage, StaffMember, WorkshopOption, EventOption, AppSetting, AppEvent,
+  Category, WorkshopSessionRecord, BirthdayPackage, BirthdayFormField,
+  DEFAULT_BIRTHDAY_FORM_FIELDS, normalizeBirthdayPackage, StudioResource,
+  CustomerAccount, DEFAULT_PIPELINE_STAGES, migrateLegacyPieceStatus,
+  WorkshopFieldConfig, DEFAULT_WORKSHOP_FIELDS, DraftBooking, DEFAULT_LOGGING_FIELDS,
+  LoggingConsoleField
 } from '../types';
-import { useLiveTable, fetchTable, fetchRow } from '../lib/supabaseData';
+import { useLiveTable, fetchTable } from '../lib/supabaseData';
 import { getDataClient, isStaffSessionActive, onDataClientChange } from '../lib/supabase';
 import { readPaymentReturn } from '../lib/onlinePayment';
 import { notifySeatsChanged } from '../lib/sessionSeats';
@@ -49,24 +47,19 @@ import { toRow, rowsToModels } from '../lib/mappers';
 // addBooking, which uses the atomic book_session_seats RPC.
 import { sdb as db } from '../lib/supabaseDb';
 import { normalizeDateString, timeToMinutes } from '../utils/timeUtils';
-import { hasWebsiteAccount, buildAccountLink } from '../utils/accountUtils';
-import {
-  supabase, supabaseStaff, isSupabaseConfigured, SUPABASE_NOT_CONFIGURED, setStaffSessionActive
-} from '../lib/supabase';
+import { hasWebsiteAccount } from '../utils/accountUtils';
+import { supabase, supabaseStaff, SUPABASE_NOT_CONFIGURED, setStaffSessionActive } from '../lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { removePiecePhotoIfUnused } from '../lib/pieceImages';
 import {
   normalizeCustomerPhone, toDisplayPhone, findCustomerMatch, buildCustomerIdentity,
-  mergeCustomerDetails, findDuplicateGroups, customerPhoneKey
+  findDuplicateGroups, customerPhoneKey
 } from '../utils/customerIdentity';
 import {
   validateRequired, validatePhoneRule, validateEmailRule, validatePasswordRule,
   canonicalPhone, canonicalEmail, phoneMatchKey, customerStorageFields, staffStorageFields
 } from '../utils/validation';
-import {
-  canAccessPage, hasConsoleAccount, sanitizePermissions,
-  SettingsSectionId, resolveSettingsSection
-} from '../utils/adminAccess';
+import { canAccessPage, hasConsoleAccount, SettingsSectionId, resolveSettingsSection } from '../utils/adminAccess';
 import { 
   getRiyadhNow, 
   parseBookingDateTimeToRiyadhDate, 
@@ -74,7 +67,6 @@ import {
   getRiyadhFormattedDate, 
   getRelativeRiyadhDateStr 
 } from '../utils/dateUtils';
-import { validateSaudiPhone, normaliseSaudiPhone, normalisePhone } from '../utils/phoneUtils';
 import { formatDate, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
 import { pieceTextForKey, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 import { customerPieceTitle, staffPieceTitle } from '../utils/pieceNotifications';

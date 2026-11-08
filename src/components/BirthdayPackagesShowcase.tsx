@@ -7,8 +7,8 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import {
-  Cake, CalendarRange, CheckCircle2, Clock, Compass,
-  Paintbrush, Sparkles, Users, ArrowLeft, ScrollText
+  Cake, CalendarRange, CheckCircle2, Compass, Paintbrush, Sparkles, ArrowLeft,
+  ScrollText
 } from 'lucide-react';
 import { BirthdayPackage } from '../types';
 import { AppImage } from './ui/AppImage';
