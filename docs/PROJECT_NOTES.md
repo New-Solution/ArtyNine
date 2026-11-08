@@ -4,7 +4,7 @@ For the long-term maintainers. This is the map: what runs where, what each
 piece is for, and where to look when something goes wrong. Detailed procedures
 live in the files linked from here; this file does not repeat them.
 
-Last reviewed: 8 Nov 2026 (after migration 0050; 0051 written, not yet applied).
+Last reviewed: 8 Nov 2026 (after migration 0051).
 
 **Never write a secret value in this file, in a commit, or in a chat.** Names
 only. Values live in the Supabase dashboard / CLI secrets and in the Cloudflare
@@ -214,7 +214,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0048 | Backstop trigger for payment holds; cancellation never marks unpaid as Refunded | Applied |
 | 0049 | Bookings need a signed-in caller (no guest `customer_id`) | Applied |
 | 0050 | Payments OFF: website bookings always `Unpaid` (+ backstop trigger) | Applied |
-| 0051 | Data Reset only via `reset_all_data()` (Super Admin + phrase); guard refuses non–Super Admin table wipes | **Not applied yet** |
+| 0051 | Data Reset only via `reset_all_data()` (Super Admin + phrase); guard refuses non–Super Admin table wipes | Applied |
 
 Re-running an old test block after a later migration can fail by design (e.g.
 0046/0048 guest cases are refused after 0049). That is not a regression.
@@ -434,9 +434,6 @@ Other docs: `docs/manual-test-payments.md` (payments runbook + tests),
 
 ## 11. Open housekeeping (8 Nov 2026)
 
-- **Apply 0051** (Data Reset enforced server-side). Until then the new
-  console build's Data Reset button fails with "function reset_all_data does
-  not exist" (nothing is deleted).
 - **0051's limit:** a staff account can still delete rows one at a time
   (staff need DELETE for normal work); only "empty the table in one go" is
   refused.

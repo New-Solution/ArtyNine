@@ -473,7 +473,7 @@ re-tinting the existing text.
 
 The `500` deposit fallback is repeated in four places rather than read from one source.
 
-### Data Reset — enforced server-side by 0051 (once applied)
+### Data Reset — enforced server-side by 0051 (applied 8 Nov 2026)
 
 Settings → Data Reset is Super Admin only in the UI and, from migration 0051, in the database:
 the reset is one call to `reset_all_data()`, which refuses unless the caller is a Super Admin and

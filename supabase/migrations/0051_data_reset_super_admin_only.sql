@@ -1,6 +1,6 @@
--- STATUS: NOT APPLIED
--- Written 8 Nov 2026. Apply manually in the Supabase SQL Editor, then run the
--- MANUAL TESTS block at the bottom.
+-- STATUS: APPLIED
+-- Applied manually in the Supabase SQL Editor on 8 Nov 2026; every verification
+-- column true and all manual tests passed.
 -- =============================================================================
 -- 0051 — DATA RESET IS SUPER ADMIN ONLY, ENFORCED IN THE DATABASE
 --
