@@ -4,7 +4,7 @@ For the long-term maintainers. This is the map: what runs where, what each
 piece is for, and where to look when something goes wrong. Detailed procedures
 live in the files linked from here; this file does not repeat them.
 
-Last reviewed: 8 Nov 2026 (after migration 0052).
+Last reviewed: 9 Nov 2026 (after migration 0053).
 
 **Never write a secret value in this file, in a commit, or in a chat.** Names
 only. Values live in the Supabase dashboard / CLI secrets and in the Cloudflare
@@ -216,6 +216,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0050 | Payments OFF: website bookings always `Unpaid` (+ backstop trigger) | Applied |
 | 0051 | Data Reset only via `reset_all_data()` (Super Admin + phrase); guard refuses non–Super Admin table wipes | Applied |
 | 0052 | Retire `customer_signin_email()` and `signin_attempts` (phone sign-in is Supabase Auth only) | Applied |
+| 0053 | `app_settings` writes: `onlinePayments` Super Admin only; other keys need the Settings page permission (`can_write_app_setting`) | Applied |
 
 Re-running an old test block after a later migration can fail by design (e.g.
 0046/0048 guest cases are refused after 0049). That is not a regression.
