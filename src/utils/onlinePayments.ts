@@ -262,3 +262,63 @@ export function sarAmount(n: number): string {
   const r = round2(Number(n) || 0);
   return Number.isInteger(r) ? String(r) : r.toFixed(2).replace(/0$/, '');
 }
+
+// -----------------------------------------------------------------------------
+// The amount line on the customer's My Bookings card
+// -----------------------------------------------------------------------------
+
+/**
+ * What the amount line on a customer's booking card may say. "Paid" only ever
+ * appears for money that was actually received: an online payment confirmed
+ * by the database, or a booking staff marked Paid / Deposit Paid. An unpaid
+ * pay-at-studio booking shows what is due at the studio, never "Paid".
+ *
+ *   none          nothing to show: never paid and nothing owed (an expired
+ *                 hold, a hold cancelled before paying, a cancelled unpaid
+ *                 booking), or refunded without an online payment. The
+ *                 cancelled line says what happened.
+ *   online-paid   paid online (Moyasar): the amount paid, and any balance
+ *                 still due at the studio for a deposit.
+ *   awaiting      a live online hold: the amount the customer is paying now.
+ *   paid          staff marked it Paid / Deposit Paid: the booking total.
+ *   due           not paid: the booking total, due at the studio.
+ */
+export type CustomerAmountView =
+  | { kind: 'none' }
+  | { kind: 'online-paid'; mode: OnlinePaymentMode; paid: number; balance: number }
+  | { kind: 'awaiting'; amount: number }
+  | { kind: 'paid'; amount: number; depositOnly: boolean }
+  | { kind: 'due'; amount: number };
+
+export function customerAmountView(b: PaidFields & { status?: string | null }): CustomerAmountView {
+  const total = Number(b.totalPrice) || 0;
+  const status = String(b.paymentStatus ?? '');
+  if (status === 'Expired') return { kind: 'none' };
+
+  const pay = paymentBreakdown(b);
+  if (pay.online && pay.mode) return { kind: 'online-paid', mode: pay.mode, paid: pay.paid, balance: pay.balance };
+
+  if (status === 'Awaiting Payment') {
+    if (b.status === 'Cancelled') return { kind: 'none' };
+    const amount = b.onlineAmount === null || b.onlineAmount === undefined || b.onlineAmount === ''
+      ? total
+      : Number(b.onlineAmount) || total;
+    return { kind: 'awaiting', amount: round2(amount) };
+  }
+
+  // Staff-recorded money (no Moyasar payment): Paid / Deposit Paid.
+  if (isPaidStatus(status)) {
+    return { kind: 'paid', amount: total, depositOnly: status === 'Deposit Paid' };
+  }
+
+  // Refunded / Needs Refund without an online payment: no amount. The
+  // cancelled line says "Refunded". (cancel_own_booking also writes Refunded
+  // for an UNPAID booking cancelled with >24h notice, so "Paid" here could be
+  // a lie.)
+  if (status === 'Refunded' || status === 'Needs Refund') return { kind: 'none' };
+
+  // Unpaid (or any status that does not say money arrived). A cancelled one
+  // owes nothing, so it shows no amount at all.
+  if (b.status === 'Cancelled') return { kind: 'none' };
+  return { kind: 'due', amount: total };
+}

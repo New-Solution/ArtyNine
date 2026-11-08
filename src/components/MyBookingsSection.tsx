@@ -17,7 +17,7 @@ import { AppImage } from './ui/AppImage';
 import { durationLabel } from '../utils/workshopMetaLabel';
 import { bookingTitleLabel } from '../utils/bookingTitleLabel';
 import { timeLabel } from '../utils/availabilityLabel';
-import { paymentBreakdown, sarAmount } from '../utils/onlinePayments';
+import { customerAmountView, paymentBreakdown, sarAmount } from '../utils/onlinePayments';
 
 /**
  * Hours of notice that make a cancellation refundable.
@@ -152,12 +152,6 @@ export const MyBookingsSection: React.FC = () => {
    *  really paid online (shared rule, paymentBreakdown), else the booking
    *  total as before. */
   const paidAmount = (booking: Booking): number => paymentBreakdown(booking).paid;
-
-  /** An online booking that never got paid: the hold expired, or the
-   *  customer cancelled it before paying. It shows no amount at all. */
-  const neverPaidOnline = (booking: Booking): boolean =>
-    booking.paymentStatus === 'Expired' ||
-    (booking.paymentStatus === 'Awaiting Payment' && booking.status === 'Cancelled');
 
   const getStatusBadgeColor = (status: Booking['status']) => {
     switch (status) {
@@ -422,43 +416,59 @@ export const MyBookingsSection: React.FC = () => {
                 {/* Right block: total price & actions */}
                 <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-brand-clay gap-2">
                   {(() => {
-                    // Never paid (expired / cancelled before paying): no amount
-                    // and no balance — the status line below says what happened.
-                    if (neverPaidOnline(b)) return null;
-                    const pay = paymentBreakdown(b);
-                    if (pay.online) {
-                      return (
-                        <div className="text-start sm:text-end">
-                          <span className="text-[10px] font-semibold text-brand-sage block uppercase tracking-wider">
-                            {pay.mode === 'deposit' ? t('Deposit paid', 'العربون المدفوع') : t('Paid amount', 'المبلغ المدفوع')}
-                          </span>
-                          <span className="text-base font-semibold text-brand-charcoal whitespace-nowrap">{sarAmount(pay.paid)} {t('SAR', 'ريال')}</span>
-                          {pay.balance > 0 && (
-                            <span className="block text-[10px] text-brand-muted whitespace-nowrap">
-                              {t(`Balance ${sarAmount(pay.balance)} SAR at the studio`, `المتبقي ${sarAmount(pay.balance)} ريال في الاستوديو`)}
+                    // Shared rule (customerAmountView): "Paid" only for money
+                    // actually received; an unpaid booking shows what is due at
+                    // the studio; never-paid / cancelled-unpaid shows nothing.
+                    const view = customerAmountView(b);
+                    switch (view.kind) {
+                      case 'none':
+                        return null;
+                      case 'online-paid':
+                        return (
+                          <div className="text-start sm:text-end">
+                            <span className="text-[10px] font-semibold text-brand-sage block uppercase tracking-wider">
+                              {view.mode === 'deposit' ? t('Deposit paid', 'العربون المدفوع') : t('Paid amount', 'المبلغ المدفوع')}
                             </span>
-                          )}
-                        </div>
-                      );
+                            <span className="text-base font-semibold text-brand-charcoal whitespace-nowrap">{sarAmount(view.paid)} {t('SAR', 'ريال')}</span>
+                            {view.balance > 0 && (
+                              <span className="block text-[10px] text-brand-muted whitespace-nowrap">
+                                {t(`Balance ${sarAmount(view.balance)} SAR at the studio`, `المتبقي ${sarAmount(view.balance)} ريال في الاستوديو`)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      case 'awaiting':
+                        // A live hold: what is due, nothing claimed as paid.
+                        return (
+                          <div className="text-start sm:text-end">
+                            <span className="text-[10px] font-semibold text-amber-700 block uppercase tracking-wider">{t('Awaiting payment', 'بانتظار الدفع')}</span>
+                            <span className="text-base font-semibold text-brand-charcoal whitespace-nowrap">{sarAmount(view.amount)} {t('SAR', 'ريال')}</span>
+                          </div>
+                        );
+                      case 'paid':
+                        // Marked paid by staff (no online payment).
+                        return (
+                          <div className="text-start sm:text-end">
+                            <span className="text-[10px] font-semibold text-brand-sage block uppercase tracking-wider">
+                              {view.depositOnly ? t('Booking total', 'إجمالي الحجز') : t('Paid amount', 'المبلغ المدفوع')}
+                            </span>
+                            <span className="text-base font-semibold text-brand-charcoal whitespace-nowrap">{sarAmount(view.amount)} {t('SAR', 'ريال')}</span>
+                            {view.depositOnly && (
+                              <span className="block text-[10px] text-brand-muted whitespace-nowrap">
+                                {t('Deposit paid · balance at the studio', 'تم دفع العربون · المتبقي في الاستوديو')}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      case 'due':
+                        // Pay-at-studio booking, nothing paid yet.
+                        return (
+                          <div className="text-start sm:text-end">
+                            <span className="text-[10px] font-semibold text-brand-sage block uppercase tracking-wider">{t('Amount due at the studio', 'المبلغ المستحق في الاستوديو')}</span>
+                            <span className="text-base font-semibold text-brand-charcoal whitespace-nowrap">{sarAmount(view.amount)} {t('SAR', 'ريال')}</span>
+                          </div>
+                        );
                     }
-                    if (b.paymentStatus === 'Awaiting Payment') {
-                      // A live hold: what is due, nothing claimed as paid.
-                      return (
-                        <div className="text-start sm:text-end">
-                          <span className="text-[10px] font-semibold text-amber-700 block uppercase tracking-wider">{t('Awaiting payment', 'بانتظار الدفع')}</span>
-                          <span className="text-base font-semibold text-brand-charcoal whitespace-nowrap">
-                            {sarAmount(Number(b.onlineAmount ?? b.totalPrice))} {t('SAR', 'ريال')}
-                          </span>
-                        </div>
-                      );
-                    }
-                    // Not an online payment: unchanged.
-                    return (
-                      <div className="text-start sm:text-end">
-                        <span className="text-[10px] font-semibold text-brand-sage block uppercase tracking-wider">{t('Paid amount', 'المبلغ المدفوع')}</span>
-                        <span className="text-base font-semibold text-brand-charcoal">{b.totalPrice} {t('SAR', 'ريال')}</span>
-                      </div>
-                    );
                   })()}
 
                   {/* Cancel Booking Action Trigger with Hover Tooltip simulation */}
@@ -509,6 +519,9 @@ export const MyBookingsSection: React.FC = () => {
                                     `The ${paidAmount(b)} SAR deposit is non-refundable.`,
                                     `العربون البالغ ${paidAmount(b)} ريال غير قابل للاسترداد.`
                                   )
+                                : customerAmountView(b).kind === 'due'
+                                  // Nothing was paid, so nothing is refunded.
+                                  ? t('Nothing has been paid for it.', 'لم يُدفع أي مبلغ مقابله.')
                                 : willRefund
                                   ? t(
                                       `Your payment of ${paidAmount(b)} SAR will be refunded.`,

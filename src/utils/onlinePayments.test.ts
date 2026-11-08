@@ -21,6 +21,7 @@ import {
   collectedAmount,
   studioBalanceDue,
   sarAmount,
+  customerAmountView,
   PAYMENT_STATUSES
 } from './onlinePayments';
 import { enumLabel } from './enumLabels';
@@ -137,6 +138,56 @@ assertEqual(studioBalanceDue({ totalPrice: 300, paymentStatus: 'Paid' }), 0, 'le
 assertEqual(sarAmount(150), '150', 'integer amount');
 assertEqual(sarAmount(99.5), '99.5', 'one decimal');
 assertEqual(sarAmount(0.1 + 0.2), '0.3', 'float noise');
+
+console.log('customerAmountView() — the My Bookings amount line');
+// The reported bug: an unpaid pay-at-studio booking read "PAID AMOUNT 150 SAR".
+assertEqual(customerAmountView({ totalPrice: 150, paymentStatus: 'Unpaid', status: 'Pending' }), { kind: 'due', amount: 150 }, 'unpaid pay-at-studio booking -> amount due at the studio, not Paid');
+assertEqual(customerAmountView({ totalPrice: 150, paymentStatus: 'Unpaid', status: 'Checked In' }).kind, 'due', 'unpaid, checked in -> still due');
+assertEqual(customerAmountView({ totalPrice: 150, paymentStatus: undefined, status: 'Pending' }).kind, 'due', 'missing status -> due, never Paid');
+assertEqual(customerAmountView({ totalPrice: 150, paymentStatus: 'Unpaid', status: 'Cancelled' }), { kind: 'none' }, 'cancelled unpaid -> nothing owed, no amount');
+assertEqual(customerAmountView({ totalPrice: 150, paymentStatus: 'Paid', status: 'Pending' }), { kind: 'paid', amount: 150, depositOnly: false }, 'marked Paid by staff -> Paid 150');
+assertEqual(customerAmountView({ totalPrice: 500, paymentStatus: 'Deposit Paid', status: 'Pending' }), { kind: 'paid', amount: 500, depositOnly: true }, 'staff Deposit Paid -> total + deposit note, not "Paid 500"');
+assertEqual(
+  customerAmountView({ totalPrice: 150, paymentStatus: 'Deposit Paid', paymentMode: 'deposit', onlineAmount: 100, moyasarPaymentId: 'p1', status: 'Pending' }),
+  { kind: 'online-paid', mode: 'deposit', paid: 100, balance: 50 },
+  'online deposit -> deposit paid 100, balance 50'
+);
+assertEqual(
+  customerAmountView({ totalPrice: 1200, paymentStatus: 'Paid', paymentMode: 'full', onlineAmount: 1200, moyasarPaymentId: 'p2', status: 'Pending' }),
+  { kind: 'online-paid', mode: 'full', paid: 1200, balance: 0 },
+  'online full payment -> paid 1200'
+);
+assertEqual(
+  customerAmountView({ totalPrice: 300, paymentStatus: 'Awaiting Payment', paymentMode: 'deposit', onlineAmount: 100, status: 'Pending' }),
+  { kind: 'awaiting', amount: 100 },
+  'live hold -> awaiting 100, not Paid'
+);
+assertEqual(
+  customerAmountView({ totalPrice: 300, paymentStatus: 'Awaiting Payment', paymentMode: 'deposit', onlineAmount: 100, status: 'Cancelled' }),
+  { kind: 'none' },
+  'hold cancelled before paying -> no amount'
+);
+assertEqual(
+  customerAmountView({ totalPrice: 300, paymentStatus: 'Expired', paymentMode: 'deposit', onlineAmount: 100, status: 'Cancelled' }),
+  { kind: 'none' },
+  'expired hold -> no amount'
+);
+assertEqual(
+  customerAmountView({ totalPrice: 300, paymentStatus: 'Awaiting Payment', paymentMode: 'deposit', onlineAmount: 100, moyasarPaymentId: 'p-x', status: 'Pending' }).kind,
+  'awaiting',
+  'a payment id alone does not make a hold paid'
+);
+assertEqual(customerAmountView({ totalPrice: 150, paymentStatus: 'Refunded', status: 'Cancelled' }), { kind: 'none' }, 'offline Refunded -> no "Paid" amount (may never have been paid)');
+assertEqual(
+  customerAmountView({ totalPrice: 150, paymentStatus: 'Refunded', paymentMode: 'deposit', onlineAmount: 100, moyasarPaymentId: 'p3', status: 'Cancelled' }),
+  { kind: 'online-paid', mode: 'deposit', paid: 100, balance: 0 },
+  'online deposit refunded -> shows the 100 actually paid'
+);
+for (const status of PAYMENT_STATUSES) {
+  if (isPaidStatus(status)) continue;
+  const v = customerAmountView({ totalPrice: 150, paymentStatus: status, status: 'Pending' });
+  assertEqual(v.kind === 'paid' || v.kind === 'online-paid', false, `${status} with no payment recorded is never shown as paid`);
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
