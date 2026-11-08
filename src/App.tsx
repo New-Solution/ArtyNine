@@ -69,6 +69,19 @@ export default function App() {
     if (landing && landing !== adminTab) setAdminTab(landing);
   }, [currentStaff, adminTab]);
 
+  // Land at the top when switching between the customer site and the staff
+  // console. Page changes WITHIN an area already scroll to the top in
+  // PageTransition; the first render is skipped there and here, so a deep link
+  // or a restored scroll position is left alone.
+  const firstAreaRender = React.useRef(true);
+  React.useEffect(() => {
+    if (firstAreaRender.current) {
+      firstAreaRender.current = false;
+      return;
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [area]);
+
   return (
     <div className="min-h-screen bg-brand-cream font-sans text-brand-charcoal flex flex-col justify-between selection:bg-brand-terracotta/20">
 
