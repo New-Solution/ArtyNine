@@ -26,7 +26,7 @@ import { hasWebsiteAccount } from '../utils/accountUtils';
 import { CustomerAccount } from '../types';
 import {
   getConfiguredTables, computeTableStates, summarizeTableCapacity, validateTableSelection,
-  tableNamesFor, TableSeatState
+  tableNamesFor, TableSeatState, tableSeatTotal
 } from '../utils/tableSeatingUtils';
 import { TableSelector, TableMultiPicker } from './ui/TableSelector';
 import { useLanguage } from '../context/LanguageContext';
@@ -967,7 +967,13 @@ export const LiveQueueSection: React.FC = () => {
   );
 
   const capacityConfig = appSettings?.find(s => s.id === 'capacitySettings')?.value;
-  const totalSeats = Number(capacityConfig?.totalSeats) || 32;
+  // One seat total everywhere: the sum of the configured tables' seats
+  // (tableSeatTotal). The old separately stored totalSeats is no longer read.
+  // Floor of 1 only so the percentage below never divides by zero.
+  const totalSeats = useMemo(
+    () => Math.max(1, tableSeatTotal(getConfiguredTables(appSettings || []))),
+    [appSettings]
+  );
 
   // Compute live occupied seats (In Progress status)
   const inProgressQueue = useMemo(() => {

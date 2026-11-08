@@ -1409,11 +1409,16 @@ export interface StudioTableConfig {
   status: 'Active' | 'Inactive' | 'Maintenance';
 }
 
+/**
+ * app_settings 'capacitySettings'.
+ *
+ * The seat total is NOT stored: it is always the sum of the tables' seats
+ * (tableSeatTotal in src/utils/tableSeatingUtils.ts). Older rows may still
+ * carry totalSeats, totalTables and maxGroupSize — never read; the next save
+ * from Settings -> Capacity drops them.
+ */
 export interface CapacitySettingsConfig {
-  totalTables: number;
-  totalSeats: number;
   defaultSeatsPerTable: number;
-  maxGroupSize: number;
   oneGroupPerTable: boolean;
   tables: StudioTableConfig[];
 }

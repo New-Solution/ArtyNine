@@ -160,10 +160,21 @@ export function tableNamesFor(tableIds: string[] | undefined, tables: StudioTabl
     .join(' + ');
 }
 
+/**
+ * The studio's seat total: the sum of every configured table's seats.
+ *
+ * The ONE definition, used by Settings -> Capacity, the Live Queue header and
+ * the Table Inventory. There used to be a separately typed "Total Studio
+ * Seats" number as well, and the two could disagree on the same page.
+ */
+export function tableSeatTotal(tables: Array<{ seats?: number | string | null }>): number {
+  return tables.reduce((sum, t) => sum + (Number(t.seats) || 0), 0);
+}
+
 /** Aggregate counters for the Live Queue header metrics and Table Inventory. */
 export function summarizeTableCapacity(tableStates: TableSeatState[]) {
   const totalTables = tableStates.length;
-  const totalSeats = tableStates.reduce((s, t) => s + t.seats, 0);
+  const totalSeats = tableSeatTotal(tableStates);
   const occupiedSeats = tableStates.reduce((s, t) => s + t.occupiedSeats, 0);
   const reservedSeats = tableStates.reduce((s, t) => s + t.reservedSeats, 0);
   const freeSeats = tableStates.reduce((s, t) => s + t.freeSeats, 0);
