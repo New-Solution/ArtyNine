@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Plus, Trash2, Edit2, Check, X, ArrowUp, ArrowDown, Save, UserPlus, Shield, Info,
@@ -32,6 +32,16 @@ import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { displayPosition } from '../utils/staffPosition';
 import { CategoryArabicNames } from './CategoryArabicNames';
+import { SaveErrorBanner, useSaveError } from './ui/SaveErrorBanner';
+
+/** What each section saves, for the failed-save message (EN + AR). */
+const SAVE_WHAT = {
+  stages: { en: 'the pipeline stages', ar: 'مراحل المسار' },
+  fields: { en: 'the workshop fields', ar: 'حقول الورشة' },
+  popup: { en: 'the booking pop-up', ar: 'النافذة المنبثقة للحجز' },
+  staff: { en: 'the staff registry', ar: 'سجل الموظفين' },
+  permissions: { en: 'console access and permissions', ar: 'الوصول إلى لوحة التحكم والصلاحيات' }
+};
 
 /** Arabic labels for the workshop field types. The English labels live in WORKSHOP_FIELD_TYPES (types.ts). */
 const FIELD_TYPE_AR: Record<string, string> = {
@@ -57,6 +67,11 @@ export const AdminSettingsSection: React.FC = () => {
   // and direct navigation lands on the right section.
   const activeTab = settingsSection;
 
+  // A failed save in any section on this page is shown in one banner at the
+  // top of the open section. Switching section clears it.
+  const save = useSaveError();
+  useEffect(() => { save.clear(); }, [activeTab]);
+
   // Nested sub-tab inside Workshop Detail Lists: which Workshop card is being configured.
   const [workshopListCard, setWorkshopListCard] = useState<WorkshopCardSection>('curriculum');
 
@@ -68,8 +83,11 @@ export const AdminSettingsSection: React.FC = () => {
     [workshopFields, workshopListCard]
   );
 
+  const saveWorkshopFields = (fields: WorkshopFieldConfig[]) =>
+    save.run(() => updateWorkshopFields(fields), SAVE_WHAT.fields);
+
   const handleUpdateWorkshopField = (fieldId: string, updates: Partial<WorkshopFieldConfig>) => {
-    updateWorkshopFields(
+    saveWorkshopFields(
       workshopFields.map(f => (f.fieldId === fieldId ? { ...f, ...updates } : f))
     );
   };
@@ -95,7 +113,7 @@ export const AdminSettingsSection: React.FC = () => {
     reordered.splice(target, 0, moved);
 
     const orderById = new Map(reordered.map((f, i) => [f.fieldId, i]));
-    updateWorkshopFields(
+    saveWorkshopFields(
       workshopFields.map(f =>
         orderById.has(f.fieldId) ? { ...f, displayOrder: orderById.get(f.fieldId)! } : f
       )
@@ -118,7 +136,7 @@ export const AdminSettingsSection: React.FC = () => {
       customerVisible: false,
       createdAt: new Date().toISOString()
     };
-    updateWorkshopFields([...workshopFields, newField]);
+    saveWorkshopFields([...workshopFields, newField]);
     setEditingFieldId(newField.fieldId);
   };
 
@@ -138,7 +156,7 @@ export const AdminSettingsSection: React.FC = () => {
 
     if (!window.confirm(t(`Delete the "${field.label}" field?${warning}\n\nDisabling it instead keeps it on the form configuration.`, `حذف الحقل "${field.label}"؟${warning}\n\nيؤدي تعطيله بدلًا من ذلك إلى إبقائه في إعدادات النموذج.`))) return;
 
-    updateWorkshopFields(workshopFields.filter(f => f.fieldId !== fieldId));
+    saveWorkshopFields(workshopFields.filter(f => f.fieldId !== fieldId));
     setEditingFieldId(null);
   };
 
@@ -150,9 +168,8 @@ export const AdminSettingsSection: React.FC = () => {
   const [permDraft, setPermDraft] = useState<{
     role: StaffRole;
     hasConsoleAccess: boolean;
-    password: string;
     permissions: string[];
-  }>({ role: 'Staff', hasConsoleAccess: false, password: '', permissions: [] });
+  }>({ role: 'Staff', hasConsoleAccess: false, permissions: [] });
   const [permSaved, setPermSaved] = useState(false);
 
   const permissionsStaff = permissionsStaffId
@@ -167,7 +184,6 @@ export const AdminSettingsSection: React.FC = () => {
     setPermDraft({
       role: member.role || 'Staff',
       hasConsoleAccess: member.hasConsoleAccess === true,
-      password: member.password || '',
       permissions: sanitizePermissions(member.permissions)
     });
     setPermSaved(false);
@@ -185,19 +201,22 @@ export const AdminSettingsSection: React.FC = () => {
   const handleSavePermissions = async () => {
     if (!permissionsStaff) return;
 
-    await updateStaffMember(permissionsStaff.id, {
+    const ok = await save.run(() => updateStaffMember(permissionsStaff.id, {
       role: permDraft.role,
       hasConsoleAccess: permDraft.hasConsoleAccess,
       // Super Admin needs no page list; the role grants everything.
       permissions: permDraft.role === 'Super Admin' ? [] : sanitizePermissions(permDraft.permissions),
-      password: permDraft.hasConsoleAccess ? (permDraft.password || undefined) : undefined,
+      // No password here: staff has no password column (the old box was
+      // silently dropped by the mapper). A login is created only by the
+      // invite from Staff Management (provision-staff).
       // staff.user_id is established ONLY by the provision-staff Edge
       // Function now (audit finding C-3) — never written from here. This
       // used to write userId: permissionsStaff.id (the staff record's own
       // id, not a real Auth uuid) whenever access was toggled on, silently
       // overwriting a correctly-provisioned real user_id with a placeholder.
       normalizedPhone: normalizeCustomerPhone(permissionsStaff.phone)
-    });
+    }), SAVE_WHAT.permissions);
+    if (!ok) return;
 
     setPermSaved(true);
     setTimeout(() => setPermSaved(false), 2500);
@@ -226,11 +245,12 @@ export const AdminSettingsSection: React.FC = () => {
   const handleAddStage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStageName.trim()) return;
-    await addPipelineStage({
+    const ok = await save.run(() => addPipelineStage({
       name: newStageName.trim(),
       color: newStageColor,
       visibleToCustomer: true
-    });
+    }), SAVE_WHAT.stages);
+    if (!ok) return;
     setNewStageName('');
     triggerToast(t('Pipeline stage added successfully!', 'تمت إضافة مرحلة المسار بنجاح!'));
   };
@@ -239,15 +259,20 @@ export const AdminSettingsSection: React.FC = () => {
     if (!editingStageName.trim()) return;
     // The name is never sent: existing stages can't be renamed (see the
     // read-only name field below), only recoloured.
-    await updatePipelineStage(id, {
-      color: editingStageColor
-    });
+    const ok = await saveStage(id, { color: editingStageColor });
+    if (!ok) return;
     setEditingStageId(null);
     triggerToast(t('Stage updated successfully!', 'تم تحديث المرحلة بنجاح!'));
   };
 
+  /** Every stage write goes through here, so a failure is always shown. */
+  const saveStage = (id: string, updates: Parameters<typeof updatePipelineStage>[1]) =>
+    save.run(() => updatePipelineStage(id, updates), SAVE_WHAT.stages);
+
   const handleDeleteStageClick = async (id: string) => {
-    const res = await deletePipelineStage(id);
+    let res: Awaited<ReturnType<typeof deletePipelineStage>> | undefined;
+    const ok = await save.run(async () => { res = await deletePipelineStage(id); }, SAVE_WHAT.stages);
+    if (!ok || !res) return;
     if (!res.success) {
       setAlertModal({
         title: t('Action Blocked', 'الإجراء محظور'),
@@ -266,7 +291,7 @@ export const AdminSettingsSection: React.FC = () => {
     const temp = reordered[index];
     reordered[index] = reordered[targetIndex];
     reordered[targetIndex] = temp;
-    await reorderPipelineStages(reordered);
+    await save.run(() => reorderPipelineStages(reordered), SAVE_WHAT.stages);
   };
 
   // HTML5 Drag handlers for native drag-and-drop
@@ -280,7 +305,7 @@ export const AdminSettingsSection: React.FC = () => {
     const reordered = [...pipelineStages];
     const [removed] = reordered.splice(sourceIndex, 1);
     reordered.splice(targetIndex, 0, removed);
-    await reorderPipelineStages(reordered);
+    await save.run(() => reorderPipelineStages(reordered), SAVE_WHAT.stages);
   };
 
   // Workshop option lists are now configured per field inside the field editor
@@ -320,7 +345,8 @@ export const AdminSettingsSection: React.FC = () => {
       // typed inside a line, spaces included, is stored exactly as written.
       instructions: popupDraft.instructions.filter(line => line.trim().length > 0)
     };
-    await updateSetting('prePaymentInstructions', newVal);
+    const ok = await save.run(() => updateSetting('prePaymentInstructions', newVal), SAVE_WHAT.popup);
+    if (!ok) return;
     setPopupDraft(null);
     setPopupSaved(true);
     triggerToast(t('Booking pop-up saved!', 'تم حفظ النافذة المنبثقة للحجز!'));
@@ -359,7 +385,8 @@ export const AdminSettingsSection: React.FC = () => {
     if (Object.keys(fieldErrors).length > 0) return;
 
     // Stored in the canonical format so duplicate checks and login matching work.
-    await addStaffMember({ ...staffForm, ...staffStorageFields(staffForm) });
+    const ok = await save.run(() => addStaffMember({ ...staffForm, ...staffStorageFields(staffForm) }), SAVE_WHAT.staff);
+    if (!ok) return;
     setStaffForm({
       name: '',
       position: '',
@@ -391,7 +418,8 @@ export const AdminSettingsSection: React.FC = () => {
     setStaffErrors(fieldErrors);
     if (Object.keys(fieldErrors).length > 0) return;
 
-    await updateStaffMember(id, { ...staffForm, ...staffStorageFields(staffForm) });
+    const ok = await save.run(() => updateStaffMember(id, { ...staffForm, ...staffStorageFields(staffForm) }), SAVE_WHAT.staff);
+    if (!ok) return;
     setEditingStaffId(null);
     setStaffForm({
       name: '',
@@ -406,7 +434,9 @@ export const AdminSettingsSection: React.FC = () => {
   };
 
   const handleDeleteStaffClick = async (id: string) => {
-    const res = await deleteStaffMember(id);
+    let res: Awaited<ReturnType<typeof deleteStaffMember>> | undefined;
+    const ok = await save.run(async () => { res = await deleteStaffMember(id); }, SAVE_WHAT.staff);
+    if (!ok || !res) return;
     if (!res.success) {
       setAlertModal({
         title: t('Staff Active Assignments', 'تكليفات نشطة للموظف'),
@@ -453,6 +483,7 @@ export const AdminSettingsSection: React.FC = () => {
           ? ''
           : 'bg-white border border-brand-clay/50 rounded-3xl p-6 md:p-8 shadow-xs'
       }>
+        <SaveErrorBanner error={save.error} onDismiss={save.clear} className="mb-4" />
         
         {/* =======================================================
             TAB: DATABASE & DATA RESET
@@ -599,21 +630,21 @@ export const AdminSettingsSection: React.FC = () => {
                                 label: t('Enabled', 'مفعّلة'),
                                 hint: t('Selectable for new updates', 'قابلة للاختيار في التحديثات الجديدة'),
                                 on: stage.enabled !== false,
-                                toggle: () => updatePipelineStage(stage.id, { enabled: stage.enabled === false })
+                                toggle: () => saveStage(stage.id, { enabled: stage.enabled === false })
                               },
                               {
                                 id: 'timeline',
                                 label: t('On customer timeline', 'على الجدول الزمني للعميل'),
                                 hint: t('Shown on My Pieces', 'تظهر في «أعمالي»'),
                                 on: stage.visibleToCustomer,
-                                toggle: () => updatePipelineStage(stage.id, { visibleToCustomer: !stage.visibleToCustomer })
+                                toggle: () => saveStage(stage.id, { visibleToCustomer: !stage.visibleToCustomer })
                               },
                               {
                                 id: 'notify',
                                 label: t('Notifies customer', 'إشعار العميل'),
                                 hint: t('Message sent on entering', 'تُرسل رسالة عند الدخول'),
                                 on: stage.notifyCustomer !== false,
-                                toggle: () => updatePipelineStage(stage.id, { notifyCustomer: stage.notifyCustomer === false })
+                                toggle: () => saveStage(stage.id, { notifyCustomer: stage.notifyCustomer === false })
                               }
                             ]).map(row => (
                               <button
@@ -649,7 +680,7 @@ export const AdminSettingsSection: React.FC = () => {
                               <input
                                 type="text"
                                 value={stage.customerLabel || ''}
-                                onChange={e => updatePipelineStage(stage.id, { customerLabel: e.target.value })}
+                                onChange={e => saveStage(stage.id, { customerLabel: e.target.value })}
                                 placeholder={stage.name}
                                 className="w-full rounded-lg border border-brand-clay bg-brand-cream/40 px-2 py-1 text-[10px] font-semibold text-brand-charcoal"
                               />
@@ -1220,7 +1251,19 @@ export const AdminSettingsSection: React.FC = () => {
               </p>
             </div>
 
+            {/* Adding and deleting staff is Super Admin only in the database
+                (staff_insert_super_admin / staff_delete_super_admin, 0001), so
+                the Register form and Delete buttons are shown only to a Super
+                Admin. Anyone on this page may still edit a profile. */}
+            {!canManagePermissions && !editingStaffId && (
+              <p className="flex items-start gap-2 rounded-xl border border-brand-clay bg-brand-sand/30 p-3 text-xs font-semibold text-brand-charcoal/75">
+                <Info className="h-4 w-4 shrink-0 text-brand-terracotta" />
+                <span>{t('Only a Super Admin can add or delete staff. You can still edit a profile.', 'يمكن للمدير العام وحده إضافة الموظفين أو حذفهم. لا يزال بإمكانك تعديل الملف.')}</span>
+              </p>
+            )}
+
             {/* Quick Add / Edit Form Block */}
+            {(canManagePermissions || editingStaffId) && (
             <form onSubmit={(e) => {
               e.preventDefault();
               if (editingStaffId) {
@@ -1298,28 +1341,8 @@ export const AdminSettingsSection: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Roles checkboxes */}
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-brand-charcoal">
-                    <input
-                      type="checkbox"
-                      checked={staffForm.canAssignWorkshops}
-                      onChange={e => setStaffForm(prev => ({ ...prev, canAssignWorkshops: e.target.checked }))}
-                      className="h-4 w-4 border-brand-clay text-brand-terracotta rounded"
-                    />
-                    <span>{t('Can tutor classes', 'يمكنه تدريس الدروس')}</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-brand-charcoal">
-                    <input
-                      type="checkbox"
-                      checked={staffForm.canAssignPieces}
-                      onChange={e => setStaffForm(prev => ({ ...prev, canAssignPieces: e.target.checked }))}
-                      className="h-4 w-4 border-brand-clay text-brand-terracotta rounded"
-                    />
-                    <span>{t('Can process pottery', 'يمكنه معالجة الفخار')}</span>
-                  </label>
-                </div>
+                {/* The "Can tutor classes" / "Can process pottery" toggles were
+                    removed: they were saved but nothing ever checked them. */}
 
                 <div className="flex gap-2">
                   {editingStaffId && (
@@ -1352,6 +1375,7 @@ export const AdminSettingsSection: React.FC = () => {
                 </div>
               </div>
             </form>
+            )}
 
             {/* List registry grid table */}
             <div className="border border-brand-clay/50 rounded-2xl overflow-hidden bg-white">
@@ -1442,14 +1466,16 @@ export const AdminSettingsSection: React.FC = () => {
                           >
                             <Edit2 className="h-3.5 w-3.5" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteStaffClick(member.id)}
-                            className="p-1.5 rounded-lg border border-brand-clay/40 hover:bg-red-50 text-red-600 hover:border-red-300 cursor-pointer"
-                            title={t('Delete Profile', 'حذف الملف')}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {canManagePermissions && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStaffClick(member.id)}
+                              className="p-1.5 rounded-lg border border-brand-clay/40 hover:bg-red-50 text-red-600 hover:border-red-300 cursor-pointer"
+                              title={t('Delete Profile', 'حذف الملف')}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1574,21 +1600,13 @@ export const AdminSettingsSection: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="font-bold text-brand-charcoal/80 block">{t('Password', 'كلمة المرور')}</label>
-                    <input
-                      type="text"
-                      value={permDraft.password}
-                      onChange={e => setPermDraft(prev => ({ ...prev, password: e.target.value }))}
-                      placeholder={t('Set a sign-in password', 'عيّن كلمة مرور لتسجيل الدخول')}
-                      className="w-full bg-white border border-brand-clay rounded-xl p-2.5 font-semibold text-brand-charcoal"
-                    />
-                    <p className="text-[10px] text-brand-charcoal/50">
-                      {lang === 'ar'
-                      ? <>يمكنه تسجيل الدخول بكلمة المرور هذه مع بريده الإلكتروني ({permissionsStaff.email || 'لا يوجد بريد إلكتروني مسجَّل'}) أو هاتفه ({permissionsStaff.phone}).</>
-                      : <>They can sign in with this password and either their email ({permissionsStaff.email || 'no email on file'}) or phone ({permissionsStaff.phone}).</>}
-                    </p>
-                  </div>
+                  {/* No password box: there is no password column, so whatever was
+                      typed here was silently discarded. Logins are created only
+                      by the invite (provision-staff) on Staff Management. */}
+                  <p className="flex items-start gap-2 rounded-xl border border-brand-clay bg-brand-sand/30 p-2.5 text-[11px] font-semibold text-brand-charcoal/75">
+                    <Info className="h-4 w-4 shrink-0 text-brand-terracotta" />
+                    <span>{t('To give someone a login, send an invite from Staff Management.', 'لمنح شخص ما حساب دخول، أرسل دعوة من صفحة إدارة الموظفين.')}</span>
+                  </p>
 
                   {/* Page permissions */}
                   {permDraft.role !== 'Super Admin' && (

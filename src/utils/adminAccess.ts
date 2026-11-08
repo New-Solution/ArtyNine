@@ -159,11 +159,13 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
 ];
 
 /**
- * Settings sections only a Super Admin may see. Data Reset deletes live data
- * for everyone, so it is hidden from every other role (the page also refuses
- * to render it for them).
+ * Settings sections only a Super Admin may see, hidden from every other role
+ * (the page also refuses to render them):
+ *   - Data Reset deletes live data for everyone.
+ *   - Online Payments switches payment on and sets what the database charges.
+ *     Migration 0053 lets only a Super Admin write the onlinePayments setting.
  */
-export const SUPER_ADMIN_ONLY_SETTINGS_SECTIONS: SettingsSectionId[] = ['settings-data-reset'];
+export const SUPER_ADMIN_ONLY_SETTINGS_SECTIONS: SettingsSectionId[] = ['settings-data-reset', 'settings-payments'];
 
 /** Whether this staff member may see a Settings section. */
 export function canSeeSettingsSection(id: SettingsSectionId, staff?: StaffMember | null): boolean {

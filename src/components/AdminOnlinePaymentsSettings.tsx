@@ -11,9 +11,13 @@
  *   - the master switch (refused while this build has no payment step),
  *   - how long an unpaid booking holds its place,
  *   - per booking type: deposit (non-refundable) or full price, and the deposit.
+ *
+ * Super Admin only: the Settings sidebar hides this section from everyone
+ * else, this card refuses to render for them, and migration 0053 lets only a
+ * Super Admin write the onlinePayments row.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { CreditCard, Save, Check, AlertTriangle, Clock, Gift, Palette } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -26,23 +30,25 @@ import {
   HOLD_MINUTES_MAX
 } from '../utils/onlinePayments';
 import { ONLINE_PAYMENTS_AVAILABLE, ONLINE_CHECKOUT_SHIPPED, MOYASAR_PUBLISHABLE_KEY } from '../utils/featureFlags';
+import { isSuperAdmin } from '../utils/adminAccess';
+import { saveErrorText } from '../utils/saveErrors';
+import { useServerDraft, ServerChangedNotice } from './ui/useServerDraft';
+import { SaveErrorBanner } from './ui/SaveErrorBanner';
 
 type Kind = 'workshop' | 'birthday';
 
 export const AdminOnlinePaymentsSettings: React.FC = () => {
-  const { appSettings, updateSetting } = useApp();
+  const { appSettings, updateSetting, currentStaff } = useApp();
   const { t } = useLanguage();
 
   const stored = appSettings.find(s => s.id === ONLINE_PAYMENTS_SETTING_ID)?.value;
-  const [draft, setDraft] = useState<OnlinePaymentsConfig>(() => normalizeOnlinePayments(stored));
+  // Follows a save made elsewhere (another admin, another tab) — but never
+  // over edits that have not been saved yet; see useServerDraft.
+  const server = useServerDraft<OnlinePaymentsConfig>(normalizeOnlinePayments(stored));
+  const { draft, setDraft } = server;
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ en: string; ar: string } | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // Follow a save made elsewhere (another admin, another tab).
-  useEffect(() => {
-    setDraft(normalizeOnlinePayments(stored));
-  }, [JSON.stringify(stored)]);
 
   const keyMode = MOYASAR_PUBLISHABLE_KEY.startsWith('pk_live_')
     ? 'live'
@@ -55,24 +61,24 @@ export const AdminOnlinePaymentsSettings: React.FC = () => {
   const setKind = (kind: Kind, patch: Partial<OnlinePaymentKindConfig>) =>
     setDraft(d => ({ ...d, [kind]: { ...d[kind], ...patch } }));
 
-  const validate = (c: OnlinePaymentsConfig): string | null => {
+  const validate = (c: OnlinePaymentsConfig): { en: string; ar: string } | null => {
     if (!Number.isFinite(c.holdMinutes) || c.holdMinutes < HOLD_MINUTES_MIN || c.holdMinutes > HOLD_MINUTES_MAX) {
-      return t(
-        `The hold must be between ${HOLD_MINUTES_MIN} and ${HOLD_MINUTES_MAX} minutes.`,
-        `يجب أن تكون مدة الحجز المؤقت بين ${HOLD_MINUTES_MIN} و${HOLD_MINUTES_MAX} دقيقة.`
-      );
+      return {
+        en: `The hold must be between ${HOLD_MINUTES_MIN} and ${HOLD_MINUTES_MAX} minutes.`,
+        ar: `يجب أن تكون مدة الحجز المؤقت بين ${HOLD_MINUTES_MIN} و${HOLD_MINUTES_MAX} دقيقة.`
+      };
     }
     for (const kind of ['workshop', 'birthday'] as Kind[]) {
       const k = c[kind];
       if (k.mode === 'deposit' && (!Number.isFinite(k.depositAmount) || k.depositAmount < 1)) {
-        return t('A deposit must be at least 1 SAR.', 'يجب ألا يقل العربون عن 1 ريال.');
+        return { en: 'A deposit must be at least 1 SAR.', ar: 'يجب ألا يقل العربون عن 1 ريال.' };
       }
     }
     if (c.enabled && !wasEnabled && !canEnable) {
-      return t(
-        'Online payments cannot be turned on in this version of the site yet.',
-        'لا يمكن تفعيل الدفع الإلكتروني في هذا الإصدار من الموقع بعد.'
-      );
+      return {
+        en: 'Online payments cannot be turned on in this version of the site yet.',
+        ar: 'لا يمكن تفعيل الدفع الإلكتروني في هذا الإصدار من الموقع بعد.'
+      };
     }
     return null;
   };
@@ -88,14 +94,16 @@ export const AdminOnlinePaymentsSettings: React.FC = () => {
     try {
       // Saved in the normalised shape, so what is stored is exactly what the
       // database will read.
-      await updateSetting(ONLINE_PAYMENTS_SETTING_ID, normalizeOnlinePayments({
+      const toSave = normalizeOnlinePayments({
         ...draft,
         holdMinutes: Math.floor(draft.holdMinutes)
-      }));
+      });
+      await updateSetting(ONLINE_PAYMENTS_SETTING_ID, toSave);
+      server.markSaved(toSave);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch (err: any) {
-      setError(err?.message || t('Could not save the setting.', 'تعذّر حفظ الإعداد.'));
+    } catch (err) {
+      setError(saveErrorText(err, { en: 'online payments', ar: 'إعدادات الدفع الإلكتروني' }));
     } finally {
       setSaving(false);
     }
@@ -164,8 +172,17 @@ export const AdminOnlinePaymentsSettings: React.FC = () => {
     );
   };
 
+  if (!isSuperAdmin(currentStaff)) {
+    return (
+      <p className="text-sm text-brand-charcoal/70">
+        {t('Only a Super Admin can change online payments.', 'إعدادات الدفع الإلكتروني متاحة للمدير العام فقط.')}
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
+      <ServerChangedNotice show={server.serverChanged} onLoad={server.discard} />
       <div>
         <h2 className="font-display text-xl font-bold text-brand-charcoal flex items-center gap-2">
           <CreditCard className="h-5 w-5 text-brand-terracotta" />
@@ -261,7 +278,7 @@ export const AdminOnlinePaymentsSettings: React.FC = () => {
         </div>
       </div>
 
-      {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
+      <SaveErrorBanner error={error} onDismiss={() => setError(null)} />
 
       <div className="flex justify-end">
         <button
