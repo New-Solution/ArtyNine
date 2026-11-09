@@ -11,9 +11,12 @@
  * Facts taken from the code rather than assumed:
  *   - customers: name, phone, optional email; bookings; birthday details
  *     (birthday person's name and age, optional cake reference photo —
- *     BirthdayBookingDetails); piece photos taken by the studio;
+ *     BirthdayBookingDetails); piece photos taken by the studio, kept in the
+ *     PRIVATE customer-uploads bucket that only staff can read (0021,
+ *     lib/pieceImages.ts) — customers do not see them;
  *   - sign-in by phone code (Supabase Auth); data and photos hosted on
- *     Supabase (database + Storage);
+ *     Supabase (database + Storage), project region Frankfurt (eu-central-1),
+ *     confirmed by the studio;
  *   - card details are typed into Moyasar's form; we keep Moyasar's payment
  *     record, whose card number Moyasar already masks (0046 / 0047), never the
  *     full number or CVC;
@@ -61,8 +64,8 @@ export const PrivacyPolicySection: React.FC = () => {
             'لحجوزات أعياد الميلاد: اسم صاحب المناسبة وعمره، واختيارات الحفل والطلبات الخاصة، وصورة مرجعية للكعكة إن قمت برفعها.'
           ),
           t(
-            'Photos of your pottery pieces, taken by our staff so you can follow your piece as it is made.',
-            'صور قطعك الفخارية، يلتقطها موظفونا لتتمكن من متابعة قطعتك أثناء صنعها.'
+            'Photos of your pottery pieces, taken by our staff to track each piece as it is made.',
+            'صور قطعك الفخارية، يلتقطها موظفونا لمتابعة كل قطعة أثناء صنعها.'
           ),
           t(
             'For online payments: the payment record from Moyasar (amount, status, date and the card type with a masked card number). See section 4.',
@@ -106,10 +109,9 @@ export const PrivacyPolicySection: React.FC = () => {
         <InfoList items={[
           <>
             {t(
-              'Supabase — hosts our database, sign-in and photo storage.',
-              'Supabase — يستضيف قاعدة بياناتنا وتسجيل الدخول وتخزين الصور.'
-            )}{' '}
-            <ConfirmWithClient>{t('Server region / where the data is stored', 'منطقة الخوادم / مكان تخزين البيانات')}</ConfirmWithClient>
+              'Supabase — hosts our database, sign-in and photo storage. Your data is stored on Supabase servers in Frankfurt, Germany (EU).',
+              'Supabase — يستضيف قاعدة بياناتنا وتسجيل الدخول وتخزين الصور. تُخزَّن بياناتك على خوادم Supabase في فرانكفورت، ألمانيا (الاتحاد الأوروبي).'
+            )}
           </>,
           t(
             'Moyasar — a licensed Saudi payment provider that processes online card, mada and Apple Pay payments.',
@@ -143,12 +145,10 @@ export const PrivacyPolicySection: React.FC = () => {
 
       <InfoSection title={t('5. Photos', '٥. الصور')}>
         <InfoList items={[
-          <ConfirmWithClient>
-            {t(
-              'Photos of your pieces are visible only to you (in My Pieces) and to our staff.',
-              'صور قطعك مرئية لك فقط (في صفحة قطعي) ولموظفينا.'
-            )}
-          </ConfirmWithClient>,
+          t(
+            'Photos of your pieces are stored privately and are visible only to our staff.',
+            'تُخزَّن صور قطعك بشكل خاص، وهي مرئية لموظفينا فقط.'
+          ),
           <ConfirmWithClient>
             {t(
               'We will not post photos of your pieces, or of you or your child, on social media without your permission. You can tell a member of staff at any time if you would rather not appear.',
