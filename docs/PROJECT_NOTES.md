@@ -223,6 +223,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0052 | Retire `customer_signin_email()` and `signin_attempts` (phone sign-in is Supabase Auth only) | Applied |
 | 0053 | `app_settings` writes: `onlinePayments` Super Admin only; other keys need the Settings page permission (`can_write_app_setting`) | Applied |
 | 0054 | In-app refunds: `Refund Processing` status, refund columns, `claim/release/complete_booking_refund` (service role only), evidence source `refund-payment` | Applied |
+| 0055 | Security Advisor fixes: `resolve_customer_record` signed-in only, `normalize_customer_phone` fixed search_path, `public-media` no public listing (staff-only SELECT), `customers_self_*` use `(select auth.uid())` | Applied |
 
 Re-running an old test block after a later migration can fail by design (e.g.
 0046/0048 guest cases are refused after 0049). That is not a regression.
