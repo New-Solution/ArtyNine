@@ -802,14 +802,18 @@ export const AdminEventsSection: React.FC = () => {
                 <>
                   هل أنت متأكد من إلغاء الحجز <strong className="font-mono text-brand-charcoal">{cancellingBookingId}</strong>؟ سيؤدي هذا إلى تحرير المقاعد المحجوزة ووضع علامة «ملغى» على الحجز
                   {refundOption === 'Refunded'
-                    ? '، وسيتم وضع علامة «مُسترد» على الدفعة.'
+                    ? (liveBookings.find(b => b.id === cancellingBookingId)?.moyasarPaymentId
+                        ? '، وسيُسجَّل الدفع «يحتاج استردادًا». استخدم زر الاسترداد لإعادة المبلغ عبر Moyasar.'
+                        : '، وسيتم وضع علامة «مُسترد» على الدفعة.')
                     : '، ولن يُسترد المبلغ وسيبقى الدفع كما هو مسجَّل.'}
                 </>
               ) : (
                 <>
                   Are you sure you want to cancel booking <strong className="font-mono text-brand-charcoal">{cancellingBookingId}</strong>? This will release reserved seats and mark the reservation as cancelled
                   {refundOption === 'Refunded'
-                    ? ', and the payment will be marked as refunded.'
+                    ? (liveBookings.find(b => b.id === cancellingBookingId)?.moyasarPaymentId
+                        ? ', and the payment will be marked Needs Refund. Use the Refund button to return the money through Moyasar.'
+                        : ', and the payment will be marked as refunded.')
                     : ' — the payment will not be refunded and stays as recorded.'}
                 </>
               )}
@@ -830,8 +834,17 @@ export const AdminEventsSection: React.FC = () => {
                       : 'bg-white border-brand-clay/60 hover:bg-brand-sand/50'
                   }`}
                 >
-                  <span>{t('Mark as Refunded', 'تحديد كمُسترد')}</span>
-                  <span className="text-[9px] font-normal opacity-85">{t('Reverts payment as Refunded', 'يُسجَّل الدفع كمُسترد')}</span>
+                  {liveBookings.find(b => b.id === cancellingBookingId)?.moyasarPaymentId ? (
+                    <>
+                      <span>{t('Refund Due', 'استرداد مستحق')}</span>
+                      <span className="text-[9px] font-normal opacity-85">{t('Marks it Needs Refund — then use the Refund button', 'يُسجَّل «يحتاج استردادًا» — ثم استخدم زر الاسترداد')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{t('Mark as Refunded', 'تحديد كمُسترد')}</span>
+                      <span className="text-[9px] font-normal opacity-85">{t('Reverts payment as Refunded', 'يُسجَّل الدفع كمُسترد')}</span>
+                    </>
+                  )}
                 </button>
 
                 <button

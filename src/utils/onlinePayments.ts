@@ -239,6 +239,35 @@ export function isOnlinePaidRecord(b: { moyasarPaymentId?: string | null; paymen
   return !!b.moyasarPaymentId && ONLINE_PAID_STATUSES.includes(String(b.paymentStatus ?? ''));
 }
 
+/** The staff-facing instruction for an online refund that is due. */
+export const ONLINE_REFUND_DUE_NOTE = 'Use the Refund button to return the money through Moyasar';
+
+/**
+ * What a STAFF cancellation writes for the payment, from the outcome chosen in
+ * the Cancel dialog ('Refunded', or undefined for "Not refunded").
+ *
+ *   Paid online (moyasarPaymentId) + 'Refunded' -> 'Needs Refund'. Cancelling
+ *     moves no money, so "Refunded" would be false; the Refund button
+ *     (refund-payment, 0054) returns it through Moyasar and only then sends
+ *     the refunded SMS. A Needs Refund cancellation sends no SMS
+ *     (cancellationSmsKind()).
+ *   Anything else -> as chosen (studio payments: staff refund in person, so
+ *     'Refunded' is written as today), or the status kept when nothing was
+ *     chosen.
+ *
+ * `note` is appended to the timeline entry "Booking cancelled by {user}".
+ */
+export function staffCancelPayment(
+  booking: { moyasarPaymentId?: string | null; paymentStatus: string },
+  chosen?: string | null
+): { paymentStatus: string; note: string } {
+  if (chosen === 'Refunded' && booking.moyasarPaymentId) {
+    return { paymentStatus: 'Needs Refund', note: ` — Refund due: ${ONLINE_REFUND_DUE_NOTE}` };
+  }
+  const paymentStatus = chosen || booking.paymentStatus;
+  return { paymentStatus, note: paymentStatus === 'Refunded' ? ' — Refunded' : ' — Not refunded' };
+}
+
 /**
  * Money actually collected for a booking, for revenue figures: the online
  * amount for an online-paid booking (Deposit Paid / Paid with a Moyasar

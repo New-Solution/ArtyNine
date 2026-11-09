@@ -81,6 +81,7 @@ const PHONE_SIGNIN_FAILED = {
 import { toE164Saudi, isPhoneSetupPending } from '../utils/phoneAuth';
 import { isCaptchaError, CAPTCHA_FAILED_MESSAGE, type CaptchaProvider } from '../utils/captcha';
 import { getConfiguredTables, computeTableStates, validateTableSelection } from '../utils/tableSeatingUtils';
+import { staffCancelPayment } from '../utils/onlinePayments';
 
 export {
   getRiyadhNow,
@@ -2458,11 +2459,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cancelBooking = async (id: string, user: string = 'Staff', paymentStatusUpdate?: 'Refunded' | 'Paid' | 'Unpaid' | 'Deposit Paid') => {
     const booking = await db.bookings.get(id);
     if (booking && booking.status !== 'Cancelled') {
-      // Staff choose the refund outcome explicitly; whatever they pick is
-      // written verbatim, with no 24-hour-policy override in either direction.
-      const finalPaymentStatus: Booking['paymentStatus'] = paymentStatusUpdate || booking.paymentStatus;
-      const actionMsg = `Booking cancelled by ${user}` +
-        (finalPaymentStatus === 'Refunded' ? ' — Refunded' : ' — Not refunded');
+      // Staff choose the refund outcome explicitly, with no 24-hour-policy
+      // override in either direction — except that "Refunded" for an online
+      // payment becomes 'Needs Refund': cancelling moves no money, and the
+      // Refund button returns it through Moyasar (staffCancelPayment()). A
+      // Needs Refund cancellation sends no refunded SMS.
+      const outcome = staffCancelPayment(booking, paymentStatusUpdate);
+      const finalPaymentStatus = outcome.paymentStatus as Booking['paymentStatus'];
+      const actionMsg = `Booking cancelled by ${user}${outcome.note}`;
 
       const nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
       const nowIso = new Date().toISOString();

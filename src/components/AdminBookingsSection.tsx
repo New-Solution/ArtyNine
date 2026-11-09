@@ -1088,8 +1088,17 @@ export const AdminBookingsSection: React.FC = () => {
                         : 'bg-white border-brand-clay/60 hover:bg-brand-sand/50'
                     }`}
                   >
-                    <span>{t('Mark as Refunded', 'تسجيل كمسترد')}</span>
-                    <span className="text-[9px] font-normal opacity-85">{t('Reverts payment as Refunded', 'يعيد حالة الدفع إلى مسترد')}</span>
+                    {bookings.find(b => b.id === cancellingBookingId)?.moyasarPaymentId ? (
+                      <>
+                        <span>{t('Refund Due', 'استرداد مستحق')}</span>
+                        <span className="text-[9px] font-normal opacity-85">{t('Marks it Needs Refund — then use the Refund button', 'يُسجَّل «يحتاج استردادًا» — ثم استخدم زر الاسترداد')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{t('Mark as Refunded', 'تسجيل كمسترد')}</span>
+                        <span className="text-[9px] font-normal opacity-85">{t('Reverts payment as Refunded', 'يعيد حالة الدفع إلى مسترد')}</span>
+                      </>
+                    )}
                   </button>
 
                   <button

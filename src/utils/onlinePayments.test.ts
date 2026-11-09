@@ -22,9 +22,12 @@ import {
   studioBalanceDue,
   sarAmount,
   customerAmountView,
+  staffCancelPayment,
+  ONLINE_REFUND_DUE_NOTE,
   PAYMENT_STATUSES
 } from './onlinePayments';
 import { enumLabel } from './enumLabels';
+import { cancellationSmsKind } from '../../supabase/functions/_shared/bookingSmsTemplates';
 
 let passed = 0;
 let failed = 0;
@@ -188,6 +191,39 @@ for (const status of PAYMENT_STATUSES) {
   if (isPaidStatus(status)) continue;
   const v = customerAmountView({ totalPrice: 150, paymentStatus: status, status: 'Pending' });
   assertEqual(v.kind === 'paid' || v.kind === 'online-paid', false, `${status} with no payment recorded is never shown as paid`);
+}
+
+// 0054 — Refund Processing behaves like Needs Refund: never counted as collected.
+{
+  const processing = { totalPrice: 150, paymentStatus: 'Refund Processing', paymentMode: 'full' as const, onlineAmount: 150, moyasarPaymentId: 'p9', status: 'Cancelled' };
+  const needsRefund = { ...processing, paymentStatus: 'Needs Refund' };
+  assertEqual(collectedAmount(processing), 0, 'Refund Processing: not counted as revenue');
+  assertEqual(customerAmountView(processing), customerAmountView(needsRefund), 'Refund Processing: customer sees the same as Needs Refund');
+  assertEqual(enumLabel('payment', 'Refund Processing', 'ar'), 'جارٍ الاسترداد', 'Refund Processing: Arabic label');
+}
+
+// Staff Cancel dialog: "Refunded" for an online payment is a refund DUE.
+{
+  const online = { moyasarPaymentId: 'pay-1', paymentStatus: 'Paid' };
+  const onlineDeposit = { moyasarPaymentId: 'pay-2', paymentStatus: 'Deposit Paid' };
+  const studio = { moyasarPaymentId: undefined, paymentStatus: 'Paid' };
+  const studioNull = { moyasarPaymentId: null, paymentStatus: 'Deposit Paid' };
+
+  const r1 = staffCancelPayment(online, 'Refunded');
+  assertEqual(r1.paymentStatus, 'Needs Refund', 'online Paid + Refunded -> Needs Refund, never Refunded');
+  assertEqual(r1.note, ` — Refund due: ${ONLINE_REFUND_DUE_NOTE}`, 'online: timeline says to use the Refund button');
+  assertEqual(ONLINE_REFUND_DUE_NOTE, 'Use the Refund button to return the money through Moyasar', 'note wording');
+  assertEqual(cancellationSmsKind(r1.paymentStatus), null, 'online + Refunded: no refunded SMS at cancellation');
+  assertEqual(staffCancelPayment(onlineDeposit, 'Refunded').paymentStatus, 'Needs Refund', 'online deposit + Refunded -> Needs Refund');
+
+  assertEqual(staffCancelPayment(online, undefined), { paymentStatus: 'Paid', note: ' — Not refunded' }, 'online + Not refunded -> kept as Paid');
+  assertEqual(cancellationSmsKind(staffCancelPayment(online, undefined).paymentStatus), 'notRefunded', 'online + Not refunded: not-refunded SMS as before');
+
+  assertEqual(staffCancelPayment(studio, 'Refunded'), { paymentStatus: 'Refunded', note: ' — Refunded' }, 'studio Paid + Refunded -> Refunded (unchanged)');
+  assertEqual(cancellationSmsKind(staffCancelPayment(studio, 'Refunded').paymentStatus), 'refunded', 'studio + Refunded: refunded SMS as before');
+  assertEqual(staffCancelPayment(studioNull, 'Refunded').paymentStatus, 'Refunded', 'studio (null payment id) + Refunded -> Refunded');
+  assertEqual(staffCancelPayment(studioNull, undefined), { paymentStatus: 'Deposit Paid', note: ' — Not refunded' }, 'studio + Not refunded -> kept');
+  assertEqual(staffCancelPayment({ paymentStatus: 'Unpaid' }, 'Refunded').paymentStatus, 'Refunded', 'no payment id at all -> as chosen');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
