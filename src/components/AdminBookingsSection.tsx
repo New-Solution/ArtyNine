@@ -30,7 +30,7 @@ const WALKIN_NO_INSTRUCTOR_TITLE = 'Walk-in — No Instructor';
 
 export const AdminBookingsSection: React.FC = () => {
   const { 
-    bookings, workshops, cancelBooking, updateBookingStatus, queue, updateQueueStatus,
+    bookings, workshops, cancelBooking, markBookingRefunded, updateBookingStatus, queue, updateQueueStatus,
     staff, workshopSessions
   } = useApp();
   const { lang, t } = useLanguage();
@@ -49,6 +49,8 @@ export const AdminBookingsSection: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [refundOption, setRefundOption] = useState<'Refunded' | 'NotRefunded'>('Refunded');
+  const [markingRefunded, setMarkingRefunded] = useState(false);
+  const [markRefundedError, setMarkRefundedError] = useState<string | null>(null);
 
   // Local state for CSV Toast
   const [csvToast, setCsvToast] = useState({ show: false, message: '' });
@@ -985,6 +987,31 @@ export const AdminBookingsSection: React.FC = () => {
                 >
                   {t('Cancel Booking', 'إلغاء الحجز')}
                 </button>
+
+                {/* A refund that is due: staff record it once it has been made.
+                    That sends the customer the registered "refunded" SMS. */}
+                {activeBookingDetail.paymentStatus === 'Needs Refund' && (
+                  <div className="space-y-2">
+                    <OnlineRefundNote booking={activeBookingDetail as Booking} />
+                    <button
+                      type="button"
+                      disabled={markingRefunded}
+                      onClick={async () => {
+                        setMarkingRefunded(true);
+                        setMarkRefundedError(null);
+                        const result = await markBookingRefunded(activeBookingDetail.id, 'Staff');
+                        setMarkingRefunded(false);
+                        if (!result.success) setMarkRefundedError(result.error || null);
+                      }}
+                      className="cursor-pointer w-full bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold py-2.5 rounded-xl transition-colors text-center block"
+                    >
+                      {t('Mark as Refunded', 'تسجيل كمسترد')}
+                    </button>
+                    {markRefundedError && (
+                      <p className="text-[11px] text-red-700">{markRefundedError}</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Status History Timeline */}

@@ -70,7 +70,7 @@ import {
 import { formatDate, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
 import { pieceTextForKey, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 import { customerPieceTitle, staffPieceTitle } from '../utils/pieceNotifications';
-import { bookingCancellationSms, cancellationSmsKind } from '../../supabase/functions/_shared/bookingSmsTemplates';
+import { bookingCancellationSms, cancellationSmsKind, type BookingCancellationKind } from '../../supabase/functions/_shared/bookingSmsTemplates';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
 
 /** A phone number + password that Supabase's phone sign-in did not accept. */
@@ -367,6 +367,11 @@ interface AppContextType {
    * page can say why instead of appearing to succeed.
    */
   cancelOwnBooking: (id: string) => Promise<{ success: boolean; error?: string; refunded?: boolean }>;
+  /**
+   * Staff mark a 'Needs Refund' booking as 'Refunded'. Sends the registered
+   * "cancelled and {amount} SAR refunded" SMS once, only on the transition.
+   */
+  markBookingRefunded: (id: string, user?: string) => Promise<{ success: boolean; error?: string }>;
   updateBookingStatus: (id: string, status: Booking['status'], paymentStatus?: Booking['paymentStatus'], user?: string) => void;
   /** A fresh read of the records an assignment conflict check needs. */
   getFreshAssignmentSources: () => Promise<{
@@ -2202,6 +2207,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   /**
+   * What was actually paid: an online payment (0046) records its own amount,
+   * which for a deposit is less than the booking total.
+   */
+  const bookingPaidAmount = (booking: Booking): number =>
+    booking.paymentMode && booking.onlineAmount !== undefined && booking.onlineAmount !== null
+      ? Number(booking.onlineAmount)
+      : booking.totalPrice;
+
+  /**
+   * Sends one registered cancellation SMS through send-sms — same established
+   * pattern as notifyPieceStatusChange(): fire-and-forget, phone passed through
+   * unnormalized (send-sms's shared helper normalizes it), failures logged
+   * only, never thrown, never blocking the caller's already-committed writes.
+   */
+  const sendBookingCancellationSms = (
+    booking: Booking,
+    smsKind: BookingCancellationKind,
+    amount: number,
+    logPrefix: string
+  ) => {
+    if (!booking.customerPhone) {
+      console.error(`${logPrefix}: SMS for booking ${booking.id} not sent — no phone number on file.`);
+      return;
+    }
+    const smsClient = supabaseStaff;
+    if (!smsClient) {
+      console.error(`${logPrefix}: SMS for booking ${booking.id} not sent — staff client not configured.`);
+      return;
+    }
+    (async () => {
+      try {
+        // Always English then Arabic, whatever the customer's language
+        // preference — the same shared template the Edge Functions use.
+        const smsText = bookingCancellationSms(smsKind, {
+          workshopTitle: booking.workshopTitle,
+          date: booking.date,
+          amount
+        });
+        const { data: smsData, error: smsError } = await smsClient.functions.invoke('send-sms', {
+          body: { phone: booking.customerPhone, message: smsText }
+        });
+        if (smsError) {
+          let reason = smsError.message || 'unknown error';
+          if (smsError instanceof FunctionsHttpError) {
+            try {
+              const body = await smsError.context.json();
+              reason = (body as { error?: string })?.error || reason;
+            } catch {
+              /* keep the generic reason */
+            }
+          }
+          console.error(`${logPrefix}: SMS for booking ${booking.id} failed:`, reason);
+        } else if (!(smsData as { success?: boolean })?.success) {
+          console.error(`${logPrefix}: SMS for booking ${booking.id} was not confirmed sent:`, (smsData as { error?: string })?.error);
+        }
+      } catch (err: any) {
+        console.error(`${logPrefix}: SMS for booking ${booking.id} failed:`, err?.message || err);
+      }
+    })();
+  };
+
+  /**
    * Computes the refunded/not-refunded message, writes a customer
    * notification row, and fires SMS — for cancelBooking() only (booking
    * cancellation notifications). Not shared with updateQueueStatus()'s
@@ -2230,9 +2297,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const formattedDate = formatDate(booking.date, { year: 'numeric', month: 'long', day: 'numeric', timeZone: RIYADH_TIME_ZONE });
     // What was actually paid: an online payment (0046) records its own amount,
     // which for a deposit is less than the booking total.
-    const refundAmount = booking.paymentMode && booking.onlineAmount !== undefined && booking.onlineAmount !== null
-      ? Number(booking.onlineAmount)
-      : booking.totalPrice;
+    const refundAmount = bookingPaidAmount(booking);
     // In-app wording is the same set cancel_own_booking writes (0031 / 0046 /
     // 0048), so notificationText.ts can show it in Arabic.
     const friendlyMsg = refunded
@@ -2276,46 +2341,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // never blocking cancelBooking()'s own already-committed writes.
     // No registered template is true (never paid, or a refund still due).
     if (!smsKind) return;
-    if (!booking.customerPhone) {
-      console.error(`notifyBookingCancellation: SMS for booking ${booking.id} not sent — no phone number on file.`);
-      return;
+    sendBookingCancellationSms(booking, smsKind, refundAmount, 'notifyBookingCancellation');
+  };
+
+  /**
+   * Staff record that a refund that was due ('Needs Refund') has been made.
+   *
+   * A 'Needs Refund' cancellation sends no SMS (neither registered text is true
+   * yet — see cancellationSmsKind()), so this is the moment the customer gets
+   * the registered "cancelled and {amount} SAR refunded" text.
+   *
+   * Sent once only: the write is a compare-and-set on payment_status =
+   * 'Needs Refund', so only the call that actually moves the booking to
+   * 'Refunded' sends it. A double click, a second staff tab, or a booking that
+   * is already Refunded updates no row and sends nothing.
+   */
+  const markBookingRefunded = async (id: string, user: string = 'Staff'): Promise<{ success: boolean; error?: string }> => {
+    const client = getDataClient();
+    if (!client) return { success: false, error: 'Not connected.' };
+    const booking = await db.bookings.get(id);
+    if (!booking) return { success: false, error: 'Booking not found.' };
+    if (booking.paymentStatus !== 'Needs Refund') {
+      return { success: false, error: 'This booking is not waiting for a refund.' };
     }
-    const smsClient = supabaseStaff;
-    if (!smsClient) {
-      console.error(`notifyBookingCancellation: SMS for booking ${booking.id} not sent — staff client not configured.`);
-      return;
-    }
-    (async () => {
-      try {
-        // Always English then Arabic, whatever the customer's language
-        // preference — the same shared template the Edge Functions use. The
-        // in-app notification above keeps friendlyMsg.
-        const smsText = bookingCancellationSms(smsKind, {
-          workshopTitle: booking.workshopTitle,
-          date: booking.date,
-          amount: refundAmount
-        });
-        const { data: smsData, error: smsError } = await smsClient.functions.invoke('send-sms', {
-          body: { phone: booking.customerPhone, message: smsText }
-        });
-        if (smsError) {
-          let reason = smsError.message || 'unknown error';
-          if (smsError instanceof FunctionsHttpError) {
-            try {
-              const body = await smsError.context.json();
-              reason = (body as { error?: string })?.error || reason;
-            } catch {
-              /* keep the generic reason */
-            }
-          }
-          console.error(`notifyBookingCancellation: SMS for booking ${booking.id} failed:`, reason);
-        } else if (!(smsData as { success?: boolean })?.success) {
-          console.error(`notifyBookingCancellation: SMS for booking ${booking.id} was not confirmed sent:`, (smsData as { error?: string })?.error);
-        }
-      } catch (err: any) {
-        console.error(`notifyBookingCancellation: SMS for booking ${booking.id} failed:`, err?.message || err);
-      }
-    })();
+
+    const nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const row = toRow('bookings', {
+      paymentStatus: 'Refunded',
+      timeline: [...(booking.timeline || []), { time: nowStr, action: `Payment updated to Refunded by ${user}` }]
+    });
+    const { data, error } = await client
+      .from('bookings')
+      .update(row)
+      .eq('id', id)
+      .eq('payment_status', 'Needs Refund')
+      .select('id');
+    if (error) return { success: false, error: error.message };
+    // Someone else already marked it refunded: no second SMS.
+    if (!data || data.length === 0) return { success: true };
+
+    sendBookingCancellationSms(booking, 'refunded', bookingPaidAmount(booking), 'markBookingRefunded');
+    return { success: true };
   };
 
   const cancelBooking = async (id: string, user: string = 'Staff', paymentStatusUpdate?: 'Refunded' | 'Paid' | 'Unpaid' | 'Deposit Paid') => {
@@ -4582,7 +4648,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sessionExpired, clearSessionExpired: () => setSessionExpired(false),
       phoneSetupPending,
       addBooking, bookingError, clearBookingError: () => setBookingError(null),
-      cancelBooking, cancelOwnBooking, updateBookingStatus,
+      cancelBooking, cancelOwnBooking, markBookingRefunded, updateBookingStatus,
       addCategoryIfMissing, updateCategoryNameAr, assignBookingStaff, updateWorkshopSession, appendBookingTimeline,
       getFreshAssignmentSources, getFreshStaff, getCustomerPieceCount,
       addQueueItem, addStaffNotification, updateQueueStatus, updateQueueItem, returnQueueItemToWaiting,
