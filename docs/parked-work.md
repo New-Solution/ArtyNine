@@ -558,8 +558,10 @@ and I1/I2.
   both the fragment and the query string. A link error still routes there deliberately, because
   that screen is the one that can explain an expired link.
 
-  **Verification is outstanding.** The confirmation email redirects to the Vercel deployment, so
-  the attempt made during the fix exercised the old build. Three checks against the deployed build:
+  **Verification is outstanding.** The confirmation email redirected to an old deployment, so
+  the attempt made during the fix exercised the old build. Make sure Supabase → Authentication →
+  URL Configuration points at the Cloudflare Pages sites (`staff.artybooking.com`,
+  `artybooking.com`), then run three checks against the deployed build:
 
   1. A **signup confirmation** link must land the user signed in, *not* on "Set a new password".
   2. A **password reset** link must still reach the reset screen. This is the regression risk —

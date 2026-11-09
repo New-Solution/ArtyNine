@@ -16,11 +16,12 @@ Pages project settings.
 
 ```
  Customer site  ─┐                       ┌─ Supabase Postgres (data, RLS, RPCs)
- (Cloudflare     │  supabase-js (anon    ├─ Supabase Auth (phone OTP / email)
-  Pages)         ├─ key + user JWT) ───► ├─ Supabase Storage (photos)
+ artybooking.com │  supabase-js (anon    ├─ Supabase Auth (phone OTP / email)
+ (coming)        ├─ key + user JWT) ───► ├─ Supabase Storage (photos)
  Staff console  ─┘                       └─ Supabase Edge Functions (Deno)
- (Cloudflare                                   │            │
-  Pages)                                       ▼            ▼
+ staff.                                        │            │
+ artybooking.com                               ▼            ▼
+ (both on Cloudflare Pages)
                                         Moyasar API    SMS provider
                                         (payments)     (mShastra / meertek)
 ```
@@ -36,7 +37,10 @@ Pages project settings.
 - **Edge Functions** do the things that need a secret: talking to Moyasar,
   sending SMS, creating staff logins, and the scheduled auto-cancel job
   (triggered every 5 minutes by **pg_cron** in the Supabase project).
-- **Hosting:** Cloudflare Pages. Pushing `main` rebuilds the front end.
+- **Hosting:** Cloudflare Pages only (account run by Ahsan). Staff console:
+  `staff.artybooking.com`. Customer site: `artybooking.com` (coming). The app
+  opens the staff console when the hostname has a `staff` label. Pushing
+  `main` rebuilds the front end.
   Pushing does **not** apply migrations or deploy Edge Functions; both are
   manual (see §4 and §5).
 - **Data access in the app:** `src/lib/supabaseDb.ts` (`sdb`, imported as
@@ -65,7 +69,7 @@ Key places in the code:
 | Service | Used for | Where it is configured |
 |---|---|---|
 | **Supabase** | Postgres database, Auth (phone OTP + email/password), Storage (workshop and piece photos), Edge Functions | Supabase dashboard; `supabase/` in the repo |
-| **Cloudflare Pages** | Hosting the customer site and the staff console | Cloudflare dashboard → Pages (two projects / deployments) |
+| **Cloudflare Pages** | The only host: staff console at `staff.artybooking.com`, customer site at `artybooking.com` (coming) | Cloudflare dashboard → Pages (account run by Ahsan) |
 | **Cloudflare Turnstile** | CAPTCHA on sign-in / sign-up (only when its key is set) | Site key in Pages env; secret key in Supabase → Authentication → Attack Protection |
 | **Moyasar** | Card + Apple Pay payments; webhook as a backup confirmation path; refunds (done by hand in the Moyasar dashboard) | Moyasar dashboard (keys, webhook, Apple Pay domains) |
 | **mShastra** | SMS provider (default) | Credentials as Supabase secrets |
@@ -86,8 +90,8 @@ Only public values belong here. Change one → **redeploy** for it to take effec
 |---|---|
 | `VITE_SUPABASE_URL` | The Supabase project URL. |
 | `VITE_SUPABASE_ANON_KEY` | Supabase public (anon) key. Safe in the browser; RLS protects data. |
-| `VITE_CUSTOMER_SITE_URL` | Link target for "Customer Site" from the console. Unset in local dev. |
-| `VITE_STAFF_SITE_URL` | Link target for "Staff Login" from the customer site. Unset in local dev. |
+| `VITE_CUSTOMER_SITE_URL` | Link target for "Customer Site" from the console (`https://artybooking.com` once it is live). Unset in local dev. |
+| `VITE_STAFF_SITE_URL` | Link target for "Staff Login" from the customer site (`https://staff.artybooking.com`). Unset in local dev. |
 | `VITE_PHONE_AUTH` | `"true"` turns on phone sign-in by SMS code (`src/utils/featureFlags.ts`). |
 | `VITE_TURNSTILE_SITE_KEY` | Turnstile site key. Unset = no CAPTCHA widget. |
 | `VITE_MOYASAR_PUBLISHABLE_KEY` | Moyasar publishable key (`pk_test_…` / `pk_live_…`). Unset = online payments cannot be switched on. |
@@ -114,7 +118,7 @@ Set with `npx supabase secrets set NAME=…`; list names with
 | `MSHASTRA_USERNAME`, `MSHASTRA_PASSWORD`, `MSHASTRA_SENDER_ID` | SMS (mShastra) | mShastra account and sender name. |
 | `MEERTEK_PROXY_TOKEN` | SMS (meertek) | Token for the meertek proxy endpoint. |
 | `SEND_SMS_HOOK_SECRET` | send-sms-hook | The `v1,whsec_…` secret of the Supabase Auth "Send SMS" hook. |
-| `STAFF_SITE_URL` | provision-staff | Where staff invitation emails point. |
+| `STAFF_SITE_URL` | provision-staff | Where staff invitation emails point (`https://staff.artybooking.com`). |
 
 Other secrets outside the functions: the Turnstile **secret** key (Supabase →
 Authentication → Attack Protection); the scripts in `scripts/` read
