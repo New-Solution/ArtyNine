@@ -2216,6 +2216,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       : booking.totalPrice;
 
   /**
+   * The stored in-app text for a refunded cancellation. Must match the
+   * 'refund' pattern in notificationText.ts, which renders it in Arabic.
+   */
+  const refundedNotificationMessage = (booking: Booking, amount: number): string => {
+    const formattedDate = formatDate(booking.date, { year: 'numeric', month: 'long', day: 'numeric', timeZone: RIYADH_TIME_ZONE });
+    return `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled, and ${amount} SAR has been refunded. We hope to see you again soon!`;
+  };
+
+  /**
    * Sends one registered cancellation SMS through send-sms — same established
    * pattern as notifyPieceStatusChange(): fire-and-forget, phone passed through
    * unnormalized (send-sms's shared helper normalizes it), failures logged
@@ -2301,7 +2310,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // In-app wording is the same set cancel_own_booking writes (0031 / 0046 /
     // 0048), so notificationText.ts can show it in Arabic.
     const friendlyMsg = refunded
-      ? `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled, and ${refundAmount} SAR has been refunded. We hope to see you again soon!`
+      ? refundedNotificationMessage(booking, refundAmount)
       : neverPaid
         ? `Your unpaid booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled. Nothing was charged.`
         : finalPaymentStatus === 'Needs Refund'
@@ -2377,10 +2386,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .eq('payment_status', 'Needs Refund')
       .select('id');
     if (error) return { success: false, error: error.message };
-    // Someone else already marked it refunded: no second SMS.
+    // Someone else already marked it refunded: no second SMS or bell.
     if (!data || data.length === 0) return { success: true };
 
-    sendBookingCancellationSms(booking, 'refunded', bookingPaidAmount(booking), 'markBookingRefunded');
+    const amount = bookingPaidAmount(booking);
+
+    // Bell notification: the same stored wording a refunded staff cancellation
+    // writes, so notificationText.ts already shows it in Arabic. Best-effort —
+    // the status change has committed; a failed insert is logged, not thrown.
+    try {
+      await db.notifications.add({
+        id: `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: 'customer',
+        customerPhone: booking.customerPhone,
+        title: 'Booking Cancelled — Refunded',
+        message: refundedNotificationMessage(booking, amount),
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        highlighted: false
+      });
+    } catch (err: any) {
+      console.error(`markBookingRefunded: in-app notification for booking ${booking.id} failed:`, err?.message || err);
+    }
+
+    sendBookingCancellationSms(booking, 'refunded', amount, 'markBookingRefunded');
     return { success: true };
   };
 

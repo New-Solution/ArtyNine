@@ -13,6 +13,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { paymentTone } from '../utils/onlinePayments';
 import { OnlineRefundNote } from './OnlineRefundNote';
+import { MarkRefundedAction } from './MarkRefundedAction';
 import { PaymentAmountsCell, PaymentAmountsDetails } from './PaymentAmounts';
 import { paymentBreakdown } from '../utils/onlinePayments';
 
@@ -607,6 +608,9 @@ export const AdminEventsSection: React.FC = () => {
                   </select>
                 </label>
               </div>
+
+              {/* A refund that is due: staff record it once it has been made. */}
+              <MarkRefundedAction booking={selectedEventBooking} />
 
               {/* Customer */}
               <section className="bg-white border border-brand-clay/60 rounded-2xl p-4 space-y-2">
