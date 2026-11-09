@@ -228,6 +228,10 @@ export const CustomerFooter: React.FC = () => {
           onClick: () => setCustomerTab('terms')
         },
         {
+          label: t('Privacy Policy', 'سياسة الخصوصية'),
+          onClick: () => setCustomerTab('privacy')
+        },
+        {
           label: t('Contact', 'تواصل معنا'),
           onClick: () => setCustomerTab('contact')
         }

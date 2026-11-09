@@ -23,6 +23,7 @@ import { MigrationWarning } from './components/MigrationWarning';
 import { PageTransition } from './components/PageTransition';
 import { CancellationPolicySection } from './components/CancellationPolicySection';
 import { TermsSection } from './components/TermsSection';
+import { PrivacyPolicySection } from './components/PrivacyPolicySection';
 import { ContactSection } from './components/ContactSection';
 
 import { AdminSidebar, AdminTopBar } from './components/AdminSidebar';
@@ -121,6 +122,7 @@ export default function App() {
             {/* Public info pages: no sign-in, linked from the footer. */}
             {customerTab === 'cancellation-policy' && <CancellationPolicySection />}
             {customerTab === 'terms' && <TermsSection />}
+            {customerTab === 'privacy' && <PrivacyPolicySection />}
             {customerTab === 'contact' && <ContactSection />}
             </PageTransition>
           </main>

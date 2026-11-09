@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * The public information pages: Cancellation & Refund Policy, Terms &
- * Conditions and Contact. Open to everyone, signed in or not.
+ * Conditions, Privacy Policy and Contact. Open to everyone, signed in or not.
  *
  * The site has no router, so these are customer tabs like any other. They can
  * also be opened by URL — `?page=cancellation-policy` — because:
@@ -16,7 +16,7 @@
  * infoPages.test.ts.
  */
 
-export const INFO_PAGES = ['cancellation-policy', 'terms', 'contact'] as const;
+export const INFO_PAGES = ['cancellation-policy', 'terms', 'privacy', 'contact'] as const;
 export type InfoPage = typeof INFO_PAGES[number];
 
 export const INFO_PAGE_PARAM = 'page';
