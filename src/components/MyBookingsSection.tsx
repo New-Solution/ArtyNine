@@ -568,7 +568,7 @@ export const MyBookingsSection: React.FC = () => {
                           every cancelled booking, refunded or not. */}
                       {b.paymentStatus === 'Refunded'
                         ? t('Refunded', 'تم استرداد المبلغ')
-                        : b.paymentStatus === 'Needs Refund'
+                        : b.paymentStatus === 'Needs Refund' || b.paymentStatus === 'Refund Processing'
                           ? t('Refund on its way from the studio', 'سيعيد الاستوديو المبلغ')
                           : b.paymentStatus === 'Expired'
                             ? t('Not paid in time — nothing charged', 'لم يُدفع في الوقت — لم يُخصم أي مبلغ')

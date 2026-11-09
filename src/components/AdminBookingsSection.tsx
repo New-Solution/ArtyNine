@@ -18,7 +18,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { PAYMENT_STATUSES, paymentTone } from '../utils/onlinePayments';
 import { OnlineRefundNote } from './OnlineRefundNote';
-import { MarkRefundedAction } from './MarkRefundedAction';
+import { RefundAction } from './RefundAction';
 import { PaymentAmountsCell, PaymentAmountsDetails } from './PaymentAmounts';
 import { paymentBreakdown } from '../utils/onlinePayments';
 
@@ -987,8 +987,8 @@ export const AdminBookingsSection: React.FC = () => {
                   {t('Cancel Booking', 'إلغاء الحجز')}
                 </button>
 
-                {/* A refund that is due: staff record it once it has been made. */}
-                <MarkRefundedAction booking={activeBookingDetail as Booking} />
+                {/* A refund that is due: Refund through Moyasar (online), or Mark as Refunded (paid at the studio). */}
+                <RefundAction booking={activeBookingDetail as Booking} />
               </div>
 
               {/* Status History Timeline */}
@@ -1088,8 +1088,17 @@ export const AdminBookingsSection: React.FC = () => {
                         : 'bg-white border-brand-clay/60 hover:bg-brand-sand/50'
                     }`}
                   >
-                    <span>{t('Mark as Refunded', 'تسجيل كمسترد')}</span>
-                    <span className="text-[9px] font-normal opacity-85">{t('Reverts payment as Refunded', 'يعيد حالة الدفع إلى مسترد')}</span>
+                    {bookings.find(b => b.id === cancellingBookingId)?.moyasarPaymentId ? (
+                      <>
+                        <span>{t('Refund Due', 'استرداد مستحق')}</span>
+                        <span className="text-[9px] font-normal opacity-85">{t('Marks it Needs Refund — then use the Refund button', 'يُسجَّل «يحتاج استردادًا» — ثم استخدم زر الاسترداد')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{t('Mark as Refunded', 'تسجيل كمسترد')}</span>
+                        <span className="text-[9px] font-normal opacity-85">{t('Reverts payment as Refunded', 'يعيد حالة الدفع إلى مسترد')}</span>
+                      </>
+                    )}
                   </button>
 
                   <button

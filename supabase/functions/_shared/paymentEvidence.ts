@@ -11,6 +11,10 @@
  *     GET /v1/payments/{id}, with `source.token` removed.
  *   - webhook: the full webhook body with `secret_token` removed (at any
  *     depth) and `source.token` removed from the payment in it.
+ *   - refund-payment (migration 0054): the GET /v1/payments/{id} fetched
+ *     before refunding (event_type 'refund-check'), and the full response to
+ *     POST .../void or .../refund (event_type 'void' / 'refund'), success or
+ *     error, with `source.token` removed.
  *   Those are the only changes. ip, source.transaction_url and everything
  *   else are kept as received.
  * Card data: Moyasar's API never returns a full card number or a CVC. A
@@ -30,7 +34,7 @@
  * No Deno/npm imports, so moyasarLogic.test.ts runs it under tsx.
  */
 
-export type EvidenceSource = 'verify-payment' | 'webhook' | 'return-page';
+export type EvidenceSource = 'verify-payment' | 'webhook' | 'return-page' | 'refund-payment';
 
 export interface PaymentEvidenceRow {
   booking_id: string | null;
@@ -119,6 +123,29 @@ export function webhookEvidence(body: unknown): PaymentEvidenceRow {
     source: 'webhook',
     event_type: typeof b.type === 'string' ? b.type : null,
     raw: withoutSecretToken(body ?? {})
+  };
+}
+
+/**
+ * A row for refund-payment (0054): the payment fetched before refunding
+ * ('refund-check'), or Moyasar's answer to a void / refund. booking_id and the
+ * payment id are the ones refund-payment read from the database (an error body
+ * carries neither). `raw` is the body as returned, minus source.token.
+ */
+export function refundEvidence(
+  eventType: 'refund-check' | 'void' | 'refund',
+  bookingId: string,
+  paymentId: string,
+  body: unknown
+): PaymentEvidenceRow {
+  const cols = paymentColumns(body);
+  return {
+    ...cols,
+    booking_id: bookingId,
+    moyasar_payment_id: paymentId,
+    source: 'refund-payment',
+    event_type: eventType,
+    raw: body === null || body === undefined ? { unparsed: null } : withoutCardToken(body)
   };
 }
 

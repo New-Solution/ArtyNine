@@ -111,7 +111,7 @@ Set with `npx supabase secrets set NAME=…`; list names with
 | Name | Used by | What it does |
 |---|---|---|
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | all | Provided by Supabase automatically. Service role bypasses RLS; used only server-side. |
-| `MOYASAR_SECRET_KEY` | verify-payment, moyasar-webhook, auto-cancel-bookings | Moyasar secret key, to fetch payments. |
+| `MOYASAR_SECRET_KEY` | verify-payment, moyasar-webhook, auto-cancel-bookings, refund-payment | Moyasar secret key, to fetch payments (and void / refund them, refund-payment). |
 | `MOYASAR_MODE` | same | Optional `test` / `live`; the functions refuse to run if it doesn't match the key. |
 | `MOYASAR_WEBHOOK_SECRET` | moyasar-webhook | The "secret token" configured on the Moyasar webhook. |
 | `SMS_PROVIDER` | all SMS senders | Unset / `mshastra` (default) or `meertek`. |
@@ -138,7 +138,8 @@ keeps it on. **Never run `supabase config push`** (see the warning in
 | Function | Called by | What it does |
 |---|---|---|
 | `verify-payment` | the customer's browser after paying (and the 3-D Secure return page) | Fetches the payment from Moyasar with the secret key, logs it, and calls `confirm_booking_payment()`. The only normal path to "paid". |
-| `moyasar-webhook` | Moyasar | Backup confirmation path: checks the secret token, re-fetches the payment, same confirm call. |
+| `moyasar-webhook` | Moyasar | Backup confirmation path: checks the secret token, re-fetches the payment, same confirm call. For `payment_refunded` / `payment_voided`, moves a Needs Refund booking to Refunded (bell + SMS once, 0054). |
+| `refund-payment` | staff console (Refund button, Bookings / Events panels) | Staff with Bookings or Events access return an online payment through Moyasar: claims the booking (`Refund Processing`), re-reads the payment, voids it while Moyasar allows, otherwise refunds the full amount from the database, then Refunded + timeline + bell + refunded SMS once; on failure back to Needs Refund with Moyasar's message (0054). |
 | `auto-cancel-bookings` | **pg_cron** in the Supabase project, **every 5 minutes** (job set up in the dashboard, not in a migration) | Cancels no-shows and expires unpaid holds, after first checking Moyasar for a payment that arrived without the customer coming back. Sends the no-show SMS. |
 | `notify-own-booking` | the customer's browser after self-cancelling | Sends the cancellation SMS, only with a registered template that is true for the booking (none for unpaid or refund-due). |
 | `send-sms` | staff console | Sends one SMS (staff only, `is_staff()` checked). |
@@ -221,6 +222,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0051 | Data Reset only via `reset_all_data()` (Super Admin + phrase); guard refuses non–Super Admin table wipes | Applied |
 | 0052 | Retire `customer_signin_email()` and `signin_attempts` (phone sign-in is Supabase Auth only) | Applied |
 | 0053 | `app_settings` writes: `onlinePayments` Super Admin only; other keys need the Settings page permission (`can_write_app_setting`) | Applied |
+| 0054 | In-app refunds: `Refund Processing` status, refund columns, `claim/release/complete_booking_refund` (service role only), evidence source `refund-payment` | Applied |
 
 Re-running an old test block after a later migration can fail by design (e.g.
 0046/0048 guest cases are refused after 0049). That is not a regression.

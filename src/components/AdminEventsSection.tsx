@@ -13,7 +13,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { paymentTone } from '../utils/onlinePayments';
 import { OnlineRefundNote } from './OnlineRefundNote';
-import { MarkRefundedAction } from './MarkRefundedAction';
+import { RefundAction } from './RefundAction';
 import { PaymentAmountsCell, PaymentAmountsDetails } from './PaymentAmounts';
 import { paymentBreakdown } from '../utils/onlinePayments';
 
@@ -609,8 +609,8 @@ export const AdminEventsSection: React.FC = () => {
                 </label>
               </div>
 
-              {/* A refund that is due: staff record it once it has been made. */}
-              <MarkRefundedAction booking={selectedEventBooking} />
+              {/* A refund that is due: Refund through Moyasar (online), or Mark as Refunded (paid at the studio). */}
+              <RefundAction booking={selectedEventBooking} />
 
               {/* Customer */}
               <section className="bg-white border border-brand-clay/60 rounded-2xl p-4 space-y-2">
@@ -802,14 +802,18 @@ export const AdminEventsSection: React.FC = () => {
                 <>
                   هل أنت متأكد من إلغاء الحجز <strong className="font-mono text-brand-charcoal">{cancellingBookingId}</strong>؟ سيؤدي هذا إلى تحرير المقاعد المحجوزة ووضع علامة «ملغى» على الحجز
                   {refundOption === 'Refunded'
-                    ? '، وسيتم وضع علامة «مُسترد» على الدفعة.'
+                    ? (liveBookings.find(b => b.id === cancellingBookingId)?.moyasarPaymentId
+                        ? '، وسيُسجَّل الدفع «يحتاج استردادًا». استخدم زر الاسترداد لإعادة المبلغ عبر Moyasar.'
+                        : '، وسيتم وضع علامة «مُسترد» على الدفعة.')
                     : '، ولن يُسترد المبلغ وسيبقى الدفع كما هو مسجَّل.'}
                 </>
               ) : (
                 <>
                   Are you sure you want to cancel booking <strong className="font-mono text-brand-charcoal">{cancellingBookingId}</strong>? This will release reserved seats and mark the reservation as cancelled
                   {refundOption === 'Refunded'
-                    ? ', and the payment will be marked as refunded.'
+                    ? (liveBookings.find(b => b.id === cancellingBookingId)?.moyasarPaymentId
+                        ? ', and the payment will be marked Needs Refund. Use the Refund button to return the money through Moyasar.'
+                        : ', and the payment will be marked as refunded.')
                     : ' — the payment will not be refunded and stays as recorded.'}
                 </>
               )}
@@ -830,8 +834,17 @@ export const AdminEventsSection: React.FC = () => {
                       : 'bg-white border-brand-clay/60 hover:bg-brand-sand/50'
                   }`}
                 >
-                  <span>{t('Mark as Refunded', 'تحديد كمُسترد')}</span>
-                  <span className="text-[9px] font-normal opacity-85">{t('Reverts payment as Refunded', 'يُسجَّل الدفع كمُسترد')}</span>
+                  {liveBookings.find(b => b.id === cancellingBookingId)?.moyasarPaymentId ? (
+                    <>
+                      <span>{t('Refund Due', 'استرداد مستحق')}</span>
+                      <span className="text-[9px] font-normal opacity-85">{t('Marks it Needs Refund — then use the Refund button', 'يُسجَّل «يحتاج استردادًا» — ثم استخدم زر الاسترداد')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{t('Mark as Refunded', 'تحديد كمُسترد')}</span>
+                      <span className="text-[9px] font-normal opacity-85">{t('Reverts payment as Refunded', 'يُسجَّل الدفع كمُسترد')}</span>
+                    </>
+                  )}
                 </button>
 
                 <button
