@@ -372,6 +372,13 @@ interface AppContextType {
    * "cancelled and {amount} SAR refunded" SMS once, only on the transition.
    */
   markBookingRefunded: (id: string, user?: string) => Promise<{ success: boolean; error?: string }>;
+  /**
+   * Return an online payment to the customer's card through Moyasar
+   * (refund-payment Edge Function, 0054). The server reads the payment and
+   * amount from the database, refunds once, records it, and sends the
+   * refunded SMS and bell.
+   */
+  refundBookingOnline: (id: string) => Promise<{ success: boolean; error?: string; method?: string }>;
   updateBookingStatus: (id: string, status: Booking['status'], paymentStatus?: Booking['paymentStatus'], user?: string) => void;
   /** A fresh read of the records an assignment conflict check needs. */
   getFreshAssignmentSources: () => Promise<{
@@ -1652,7 +1659,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (b.status === 'Cancelled') continue;
           // An online hold (0046) is not a booking yet: it joins the queue once
           // paid, when this sync runs again. Expired / refund cases never do.
-          if (b.paymentStatus === 'Awaiting Payment' || b.paymentStatus === 'Expired' || b.paymentStatus === 'Needs Refund') continue;
+          if (b.paymentStatus === 'Awaiting Payment' || b.paymentStatus === 'Expired' || b.paymentStatus === 'Needs Refund' || b.paymentStatus === 'Refund Processing') continue;
 
           // Fresh query on each iteration to prevent race conditions within loop
           const currentQueue = await db.queue.toArray();
@@ -2373,6 +2380,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (booking.paymentStatus !== 'Needs Refund') {
       return { success: false, error: 'This booking is not waiting for a refund.' };
     }
+    // Paid online: the money goes back through Moyasar (refundBookingOnline),
+    // which records the refund itself. Marking it here would say "refunded"
+    // while the customer's card was never credited.
+    if (booking.moyasarPaymentId) {
+      return { success: false, error: 'This booking was paid online. Use the Refund button to return the money through Moyasar.' };
+    }
 
     const nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     const row = toRow('bookings', {
@@ -2411,6 +2424,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     sendBookingCancellationSms(booking, 'refunded', amount, 'markBookingRefunded');
     return { success: true };
+  };
+
+  /**
+   * Staff refund an online payment through Moyasar. Everything is decided by
+   * refund-payment on the server: it is sent the booking id only, never the
+   * amount or payment id. The booking's new status (Refunded, or back to
+   * Needs Refund on failure) arrives through the bookings realtime channel.
+   */
+  const refundBookingOnline = async (id: string): Promise<{ success: boolean; error?: string; method?: string }> => {
+    if (!supabaseStaff) return { success: false, error: 'Staff client not configured.' };
+    try {
+      const { data, error } = await supabaseStaff.functions.invoke('refund-payment', { body: { bookingId: id } });
+      let body = data as { success?: boolean; error?: string; method?: string } | null;
+      if (error) {
+        if (error instanceof FunctionsHttpError) {
+          try {
+            body = await error.context.json();
+          } catch {
+            return { success: false, error: 'The server returned an unexpected response. Check the booking before trying again.' };
+          }
+        } else {
+          return { success: false, error: error.message || 'Could not reach the server. Check your connection and try again.' };
+        }
+      }
+      if (body?.success) return { success: true, method: body.method };
+      return { success: false, error: body?.error || 'The refund did not go through.' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Could not reach the server. Check your connection and try again.' };
+    }
   };
 
   const cancelBooking = async (id: string, user: string = 'Staff', paymentStatusUpdate?: 'Refunded' | 'Paid' | 'Unpaid' | 'Deposit Paid') => {
@@ -4677,7 +4719,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sessionExpired, clearSessionExpired: () => setSessionExpired(false),
       phoneSetupPending,
       addBooking, bookingError, clearBookingError: () => setBookingError(null),
-      cancelBooking, cancelOwnBooking, markBookingRefunded, updateBookingStatus,
+      cancelBooking, cancelOwnBooking, markBookingRefunded, refundBookingOnline, updateBookingStatus,
       addCategoryIfMissing, updateCategoryNameAr, assignBookingStaff, updateWorkshopSession, appendBookingTimeline,
       getFreshAssignmentSources, getFreshStaff, getCustomerPieceCount,
       addQueueItem, addStaffNotification, updateQueueStatus, updateQueueItem, returnQueueItemToWaiting,

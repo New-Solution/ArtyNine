@@ -68,6 +68,7 @@ assertEqual(paymentTone('Paid'), 'paid', 'Paid -> paid');
 assertEqual(paymentTone('Deposit Paid'), 'paid', 'Deposit Paid -> paid');
 assertEqual(paymentTone('Awaiting Payment'), 'waiting', 'Awaiting Payment -> waiting');
 assertEqual(paymentTone('Needs Refund'), 'attention', 'Needs Refund -> attention');
+assertEqual(paymentTone('Refund Processing'), 'waiting', 'Refund Processing (0054) -> waiting');
 assertEqual(paymentTone('Refunded'), 'refunded', 'Refunded -> refunded');
 assertEqual(paymentTone('Expired'), 'closed', 'Expired -> closed');
 assertEqual(paymentTone('Unpaid'), 'unpaid', 'Unpaid -> unpaid');

@@ -92,6 +92,7 @@ export const PAYMENT_STATUSES = [
   'Unpaid',
   'Awaiting Payment',
   'Needs Refund',
+  'Refund Processing',
   'Refunded',
   'Expired'
 ] as const;
@@ -118,6 +119,8 @@ export function paymentTone(status?: string | null): PaymentTone {
       return 'waiting';
     case 'Needs Refund':
       return 'attention';
+    case 'Refund Processing':
+      return 'waiting';
     case 'Refunded':
       return 'refunded';
     case 'Expired':
@@ -229,7 +232,7 @@ export function paymentBreakdown(b: PaidFields): PaymentBreakdown {
 }
 
 /** Statuses a booking can have once Moyasar money actually arrived for it. */
-const ONLINE_PAID_STATUSES = ['Deposit Paid', 'Paid', 'Needs Refund', 'Refunded'];
+const ONLINE_PAID_STATUSES = ['Deposit Paid', 'Paid', 'Needs Refund', 'Refund Processing', 'Refunded'];
 
 /** A Moyasar payment is recorded and the status says the money arrived. */
 export function isOnlinePaidRecord(b: { moyasarPaymentId?: string | null; paymentStatus?: string | null }): boolean {
@@ -315,7 +318,7 @@ export function customerAmountView(b: PaidFields & { status?: string | null }): 
   // cancelled line says "Refunded". (cancel_own_booking also writes Refunded
   // for an UNPAID booking cancelled with >24h notice, so "Paid" here could be
   // a lie.)
-  if (status === 'Refunded' || status === 'Needs Refund') return { kind: 'none' };
+  if (status === 'Refunded' || status === 'Needs Refund' || status === 'Refund Processing') return { kind: 'none' };
 
   // Unpaid (or any status that does not say money arrived). A cancelled one
   // owes nothing, so it shows no amount at all.

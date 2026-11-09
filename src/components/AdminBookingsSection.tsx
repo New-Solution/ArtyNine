@@ -18,7 +18,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
 import { PAYMENT_STATUSES, paymentTone } from '../utils/onlinePayments';
 import { OnlineRefundNote } from './OnlineRefundNote';
-import { MarkRefundedAction } from './MarkRefundedAction';
+import { RefundAction } from './RefundAction';
 import { PaymentAmountsCell, PaymentAmountsDetails } from './PaymentAmounts';
 import { paymentBreakdown } from '../utils/onlinePayments';
 
@@ -987,8 +987,8 @@ export const AdminBookingsSection: React.FC = () => {
                   {t('Cancel Booking', 'إلغاء الحجز')}
                 </button>
 
-                {/* A refund that is due: staff record it once it has been made. */}
-                <MarkRefundedAction booking={activeBookingDetail as Booking} />
+                {/* A refund that is due: Refund through Moyasar (online), or Mark as Refunded (paid at the studio). */}
+                <RefundAction booking={activeBookingDetail as Booking} />
               </div>
 
               {/* Status History Timeline */}

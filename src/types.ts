@@ -233,8 +233,9 @@ export interface Booking {
   source: 'Website' | 'Walk-in' | 'Admin';
   status: 'Pending' | 'Checked In' | 'In Progress' | 'Completed' | 'Cancelled';
   /** See PAYMENT_STATUSES (utils/onlinePayments.ts). 'Awaiting Payment',
-   *  'Expired' and 'Needs Refund' are written by the database only (0046). */
-  paymentStatus: 'Paid' | 'Unpaid' | 'Refunded' | 'Deposit Paid' | 'Awaiting Payment' | 'Expired' | 'Needs Refund';
+   *  'Expired' and 'Needs Refund' are written by the database only (0046);
+   *  'Refund Processing' only by refund-payment while it talks to Moyasar (0054). */
+  paymentStatus: 'Paid' | 'Unpaid' | 'Refunded' | 'Deposit Paid' | 'Awaiting Payment' | 'Expired' | 'Needs Refund' | 'Refund Processing';
   // ---- Online payment (0046). READ-ONLY in the app: deliberately absent from
   // TABLE_COLUMNS.bookings, so no client write can ever send them — only the
   // booking RPCs and confirm_booking_payment() set them.
@@ -247,6 +248,14 @@ export interface Booking {
   paymentExpiresAt?: string;
   moyasarPaymentId?: string;
   paidAt?: string;
+  // ---- In-app refunds (0054). READ-ONLY, written by refund-payment /
+  // moyasar-webhook only.
+  /** When the booking became Refunded through Moyasar. */
+  refundedAt?: string;
+  /** void | refund | moyasar_refunded | moyasar_voided */
+  refundMethod?: string;
+  /** Moyasar's refund id, when its answer carried one. */
+  moyasarRefundId?: string;
   notes?: string;
   /** Staff member hosting this event/birthday. Ids are stable; the name is
    *  denormalised for display only, exactly as workshop sessions do it. */
