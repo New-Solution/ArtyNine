@@ -5,6 +5,7 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import { staffSessionBlockReason, type StaffSessionBlockReason } from '../utils/staffSessionBlock';
 import { useLanguage } from '../context/LanguageContext';
 import { ShieldCheck, Lock, ChevronDown, Store } from 'lucide-react';
 import { PrePaymentPopup } from './PrePaymentPopup';
@@ -28,7 +29,8 @@ export const CheckoutPaymentSection: React.FC = () => {
     pendingBooking, setPendingBooking, setCustomerTab, addBooking, setLastBookingCreated, workshops, currentUser,
     birthdayPackages,
     sessionExpired,
-    appSettings
+    appSettings,
+    currentStaff, signOutStaffHere, logoutCustomer
   } = useApp();
   const { lang, t } = useLanguage();
 
@@ -50,6 +52,35 @@ export const CheckoutPaymentSection: React.FC = () => {
    * without rebuilding the whole booking.
    */
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  /**
+   * A staff session would make this booking a staff booking (no hold, no
+   * online payment), so it is refused — see addBooking. Shown as soon as a
+   * staff console session is known, and set from the write's refusal for the
+   * cases only the database can see (the signed-in account is itself staff).
+   */
+  const [staffBlockFromWrite, setStaffBlockFromWrite] = useState<StaffSessionBlockReason | null>(null);
+  const staffBlock: StaffSessionBlockReason | null = currentStaff ? 'staff-console' : staffBlockFromWrite;
+  const [signingOutStaff, setSigningOutStaff] = useState(false);
+
+  const handleStaffSignOut = async () => {
+    if (signingOutStaff) return;
+    setSigningOutStaff(true);
+    try {
+      if (staffBlock === 'staff-account') {
+        // The customer-site session IS a staff account: signing out of the
+        // console would not help. Sign out here; they sign back in with their
+        // customer account.
+        await logoutCustomer();
+      } else {
+        await signOutStaffHere();
+      }
+      setStaffBlockFromWrite(null);
+      setSubmitError(null);
+    } finally {
+      setSigningOutStaff(false);
+    }
+  };
 
   /**
    * One reference code for every attempt at THIS booking.
@@ -212,6 +243,14 @@ export const CheckoutPaymentSection: React.FC = () => {
           birthdayDetails: pendingBooking.birthdayDetails
         }, refCodeRef.current!);
       } catch (err: any) {
+        // Refused before anything was written: a staff session is signed in.
+        const blocked = staffSessionBlockReason(err);
+        if (blocked) {
+          setStaffBlockFromWrite(blocked);
+          setSubmitError(null);
+          setIsProcessing(false);
+          return;
+        }
         // Stay on the payment step with the customer's details intact — never
         // advance to the confirmation for a booking the database refused.
         const raw = String(err?.message || '');
@@ -483,6 +522,34 @@ export const CheckoutPaymentSection: React.FC = () => {
               <p className="text-xs text-red-500 font-semibold text-center">{submitError}</p>
             )}
 
+            {staffBlock && (
+              <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-center">
+                <p className="text-sm font-semibold text-amber-900">
+                  {staffBlock === 'staff-account'
+                    ? t(
+                        'This account is a staff account. Sign out, then sign in with your customer account to book.',
+                        'هذا الحساب حساب موظف. سجّل الخروج، ثم سجّل الدخول بحساب العميل الخاص بك لإتمام الحجز.'
+                      )
+                    : t(
+                        "You're signed in as staff. Sign out of the staff console to book as a customer.",
+                        'أنت مسجّل الدخول كموظف. سجّل الخروج من لوحة الموظفين لتتمكن من الحجز كعميل.'
+                      )}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleStaffSignOut}
+                  disabled={signingOutStaff}
+                  className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-xl bg-brand-charcoal px-5 py-2.5 text-sm font-semibold text-brand-cream disabled:opacity-50"
+                >
+                  {signingOutStaff
+                    ? t('Signing out…', 'جارٍ تسجيل الخروج…')
+                    : staffBlock === 'staff-account'
+                      ? t('Sign out', 'تسجيل الخروج')
+                      : t('Sign out of the staff console', 'تسجيل الخروج من لوحة الموظفين')}
+                </button>
+              </div>
+            )}
+
             {/* MOBILE SUMMARY — see CheckoutInfoSection. Open by default here:
                 this is the step that charges the card, so the breakdown should
                 be on screen rather than one tap away. */}
@@ -499,7 +566,7 @@ export const CheckoutPaymentSection: React.FC = () => {
 
             <button
               type="submit"
-              disabled={isProcessing || !!bookingError}
+              disabled={isProcessing || !!bookingError || !!staffBlock}
               className="w-full cursor-pointer bg-brand-terracotta text-brand-cream font-semibold py-4 rounded-2xl shadow-card-sm hover:bg-brand-terracotta-hover transition-all flex items-center justify-center gap-2 text-base mt-6 disabled:opacity-50"
             >
               <Lock className="h-4 w-4" />
