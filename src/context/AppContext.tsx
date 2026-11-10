@@ -600,39 +600,82 @@ async function linkAuthToCustomer(identifier: string | undefined, authId: string
 }
 
 /**
- * The staff console and customer site are served from different origins
- * on Cloudflare Pages: staff.artybooking.com (staff) and artybooking.com
- * (customer, coming). Splitting on both '.' and '-' and requiring an exact
- * 'staff' segment matches the staff subdomain (and hyphenated preview
- * hostnames such as arty-staff.pages.dev), while still rejecting a hostname
- * that merely contains "staff" inside a longer word (e.g. staffing-tool.com).
- * Anything else — including localhost/dev — defaults to 'customer';
- * the existing "Staff Login" click is still how you reach the staff area
- * locally, unchanged by this.
+ * Which area a page load opens in.
+ *
+ * Two ways in to the staff console:
+ *
+ *  - A dedicated staff hostname (staff.artybooking.com, or a preview host such
+ *    as arty-staff.pages.dev). Splitting on both '.' and '-' and requiring an
+ *    exact 'staff' segment matches those while rejecting a hostname that only
+ *    contains "staff" inside a longer word (e.g. staffing-tool.com). Such a
+ *    host always opens the console.
+ *  - `?staff` in the URL on any other host (app.artybooking.com, localhost).
+ *    The single-domain setup serves customers and staff from one origin, so
+ *    the area is carried in the URL: "Staff Login" switches in the same tab
+ *    and adds `?staff` (see the area effect in AppProvider), and a refresh
+ *    lands back in the console. The staff session itself lives in the staff
+ *    Supabase client's own storage on this origin, so a signed-in staff
+ *    member stays signed in; anyone else just sees the staff login screen.
  */
-function initialAreaFromHostname(): 'customer' | 'staff' {
+const STAFF_AREA_PARAM = 'staff';
+
+function isStaffHostname(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.hostname.toLowerCase().split(/[.-]/).includes('staff');
+}
+
+function initialAreaFromLocation(): 'customer' | 'staff' {
   if (typeof window === 'undefined') return 'customer';
-  const segments = window.location.hostname.split(/[.-]/);
-  if (segments.includes('staff')) return 'staff';
-  // Local dev shortcut (no separate staff hostname to test against):
-  // visiting with ?staff lands straight in the staff console. Dev-only.
-  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('staff')) return 'staff';
+  if (isStaffHostname()) return 'staff';
+  if (new URLSearchParams(window.location.search).has(STAFF_AREA_PARAM)) return 'staff';
   return 'customer';
 }
 
+/** Adds or removes `?staff` in place (no reload, no new history entry),
+ *  keeping every other parameter and the fragment — Supabase auth links
+ *  carry their token in the fragment. */
+function syncStaffAreaParam(area: 'customer' | 'staff') {
+  if (typeof window === 'undefined' || isStaffHostname()) return;
+  const url = new URL(window.location.href);
+  const has = url.searchParams.has(STAFF_AREA_PARAM);
+  if ((area === 'staff') === has) return;
+  if (area === 'staff') url.searchParams.set(STAFF_AREA_PARAM, '');
+  else url.searchParams.delete(STAFF_AREA_PARAM);
+  // "?staff" rather than "?staff=".
+  const search = url.search.replace(/([?&])staff=(?=&|$)/, '$1staff');
+  window.history.replaceState(window.history.state, '', url.pathname + search + url.hash);
+}
+
 /**
- * Cross-domain link targets, set only once the two sites are actually
- * deployed separately. Unset (local dev, or a single shared deployment)
- * falls back to today's in-app setArea(...) switch — see goToStaffLogin,
- * viewCustomerSite and returnToStaffConsole below.
+ * Where "View Customer Site" goes from a dedicated staff hostname
+ * (staff.artybooking.com). On every other host the customer site is the same
+ * origin, so the switch happens in the tab and this is not used. Unset falls
+ * back to the in-tab switch everywhere.
+ *
+ * There is deliberately no staff-site counterpart any more: "Staff Login"
+ * always opens the console on the domain the visitor is already on.
  */
 const CUSTOMER_SITE_URL = import.meta.env.VITE_CUSTOMER_SITE_URL || undefined;
-const STAFF_SITE_URL = import.meta.env.VITE_STAFF_SITE_URL || undefined;
+
+function isOtherOrigin(target: string): boolean {
+  try {
+    return new URL(target, window.location.href).origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation State
-  // Everyone starts on the customer site, unless the hostname says otherwise (see initialAreaFromHostname).
-  const [area, setArea] = useState<'customer' | 'staff'>(initialAreaFromHostname);
+  // Everyone starts on the customer site, unless the hostname or ?staff says
+  // otherwise (see initialAreaFromLocation).
+  const [area, setArea] = useState<'customer' | 'staff'>(initialAreaFromLocation);
+
+  // Keeps ?staff in the URL in step with the area on a shared domain, so a
+  // refresh reopens the same area.
+  useEffect(() => {
+    syncStaffAreaParam(area);
+  }, [area]);
 
   // Keeps the tab title honest about which site you're on — matters most
   // in local dev / a single shared deployment, where the same tab can
@@ -4064,25 +4107,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setArea('customer');
   };
 
+  // Always the console on the domain the visitor is already on — the same tab,
+  // no cross-domain hop. On a shared domain this adds ?staff (see above).
   const goToStaffLogin = () => {
-    if (STAFF_SITE_URL) { window.location.href = STAFF_SITE_URL; return; }
     setArea('staff');
   };
   const viewCustomerSite = () => {
-    if (CUSTOMER_SITE_URL) { window.location.href = CUSTOMER_SITE_URL; return; }
+    // Only a dedicated staff hostname sends the browser elsewhere; on a shared
+    // domain (or when the configured URL is this origin) it is an in-tab switch.
+    if (CUSTOMER_SITE_URL && isStaffHostname() && isOtherOrigin(CUSTOMER_SITE_URL)) {
+      window.location.href = CUSTOMER_SITE_URL;
+      return;
+    }
     setArea('customer');
   };
-  /**
-   * Only meaningful for an authenticated staff member. Once the sites are
-   * split, a staff session's storage lives on the staff origin, so
-   * currentStaffId is never populated while landing on the customer
-   * origin from a fresh cross-domain navigation — this stays dead code
-   * in that case, which is correct: there's no session to jump back into
-   * without visiting the staff site's own login again.
-   */
+  /** Back to the console from the customer area, for a signed-in staff member. */
   const returnToStaffConsole = () => {
     if (!currentStaffId) return;
-    if (STAFF_SITE_URL) { window.location.href = STAFF_SITE_URL; return; }
     setArea('staff');
   };
 
