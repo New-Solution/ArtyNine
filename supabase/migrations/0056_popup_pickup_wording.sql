@@ -1,4 +1,5 @@
--- STATUS: NOT APPLIED
+-- STATUS: APPLIED
+-- Applied manually in the Supabase SQL Editor on 10 Nov 2026.
 -- =============================================================================
 -- 0056 — BOOKING POP-UP: PICKUP WORDING MATCHES THE TERMS
 --
