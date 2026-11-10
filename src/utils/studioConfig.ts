@@ -31,9 +31,13 @@ export const STUDIO_ADDRESS_AR = 'حي الزهراء، الساحة سكوير�
 /** The short form shown on the booking confirmation and in the calendar file. */
 export const STUDIO_ADDRESS_SHORT = 'Ahmad Al Attas St, Jeddah';
 export const STUDIO_ADDRESS_SHORT_AR = STUDIO_ADDRESS_AR;
-/** The company that operates Arty Café (no CR / VAT number is published). */
-export const STUDIO_LEGAL_NAME = 'Hiba Reda Marei Arts Company';
-export const STUDIO_LEGAL_NAME_AR = 'شركة هبة رضا مرعي للفنون';
+/** The company that operates Arty Café, as written on its official documents. */
+export const STUDIO_LEGAL_NAME = 'Hiba Reda Mohammed Marei Arts Company';
+export const STUDIO_LEGAL_NAME_AR = 'شركة هبه رضا محمد مرعي للفنون';
+/** Commercial Registration — Unified National Number (الرقم الوطني الموحد). */
+export const STUDIO_CR_UNIFIED_NO = '7023475275';
+/** VAT registration number (الرقم الضريبي). */
+export const STUDIO_VAT_NO = '312288880100003';
 
 export const STUDIO_MAPS_URL = 'https://maps.app.goo.gl/Br4QagaCrPKeJ8EW8';
 

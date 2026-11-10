@@ -4,8 +4,8 @@
  *
  * Contact — public, no sign-in. Every detail comes from studioConfig.ts, the
  * same constants the home page's "Slow down & visit us" block and the footer
- * use. Only the legal name is published under business details: the studio
- * has no CR / VAT number to show.
+ * use. Business details (legal name, CR unified number, VAT number) are from
+ * the studio's official documents.
  */
 
 import React from 'react';
@@ -14,7 +14,8 @@ import { useLanguage } from '../context/LanguageContext';
 import {
   STUDIO_PHONE, STUDIO_PHONE_TEL, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL,
   STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_MAPS_URL, STUDIO_INSTAGRAM_URL, STUDIO_INSTAGRAM_HANDLE,
-  STUDIO_TIKTOK_URL, STUDIO_FACEBOOK_URL, STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR
+  STUDIO_TIKTOK_URL, STUDIO_FACEBOOK_URL, STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR,
+  STUDIO_CR_UNIFIED_NO, STUDIO_VAT_NO
 } from '../utils/studioConfig';
 import { InfoPageLayout, InfoSection, InfoPageLink } from './ui/InfoPage';
 import { StudioHours } from './ui/StudioHours';
@@ -84,7 +85,17 @@ export const ContactSection: React.FC = () => {
 
       <InfoSection title={t('Business details', 'بيانات المنشأة')}>
         <Row icon={Building2} label={t('Registered business', 'المنشأة المسجلة')}>
-          <p>{t('Legal name', 'الاسم النظامي')}: {t(STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR)}</p>
+          <ul className="space-y-1">
+            <li>{t('Legal name', 'الاسم النظامي')}: {t(STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR)}</li>
+            <li>
+              {t('Commercial Registration (Unified No.)', 'الرقم الوطني الموحد')}:{' '}
+              <span dir="ltr" className="font-mono ltr-numerals">{STUDIO_CR_UNIFIED_NO}</span>
+            </li>
+            <li>
+              {t('VAT Registration No.', 'الرقم الضريبي')}:{' '}
+              <span dir="ltr" className="font-mono ltr-numerals">{STUDIO_VAT_NO}</span>
+            </li>
+          </ul>
         </Row>
       </InfoSection>
 

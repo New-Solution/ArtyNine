@@ -7,7 +7,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
 import { InfoPageNewTabLink } from './ui/InfoPage';
-import { STUDIO_ADDRESS_SHORT, STUDIO_ADDRESS_SHORT_AR } from '../utils/studioConfig';
+import { STUDIO_ADDRESS_SHORT, STUDIO_ADDRESS_SHORT_AR, STUDIO_VAT_NO } from '../utils/studioConfig';
 import { Sparkles, Calendar, MapPin } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { STUDIO_PHONE } from '../utils/studioConfig';
@@ -354,10 +354,16 @@ export const BookingConfirmationSection: React.FC = () => {
               <span className="font-semibold text-brand-terracotta text-sm ltr-numerals">{sarAmount(pay.paid)} {t('SAR', 'ريال')}</span>
             </div>
           ) : isPaidStatus((booking as { paymentStatus?: string }).paymentStatus) ? (
-            <div className="flex justify-between">
-              <span className="font-semibold text-brand-muted">{t('Total Paid (VAT incl.)', 'الإجمالي المدفوع (شامل الضريبة)')}</span>
-              <span className="font-semibold text-brand-terracotta text-sm">{booking.totalPrice} {t('SAR', 'ريال')}</span>
-            </div>
+            <>
+              <div className="flex justify-between">
+                <span className="font-semibold text-brand-muted">{t('Total Paid (VAT incl.)', 'الإجمالي المدفوع (شامل الضريبة)')}</span>
+                <span className="font-semibold text-brand-terracotta text-sm">{booking.totalPrice} {t('SAR', 'ريال')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-brand-muted">{t('VAT Registration No.', 'الرقم الضريبي')}</span>
+                <span dir="ltr" className="font-semibold text-brand-charcoal ltr-numerals">{STUDIO_VAT_NO}</span>
+              </div>
+            </>
           ) : (
             // Nothing was paid online: the whole amount is paid at the studio.
             <div className="flex justify-between">

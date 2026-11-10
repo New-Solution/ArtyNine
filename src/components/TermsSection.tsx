@@ -19,7 +19,7 @@
 
 import React from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR } from '../utils/studioConfig';
+import { STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR, STUDIO_CR_UNIFIED_NO, STUDIO_VAT_NO } from '../utils/studioConfig';
 import {
   InfoPageLayout, InfoSection, InfoList, InfoPageLink, useUpdatedLine
 } from './ui/InfoPage';
@@ -38,7 +38,11 @@ export const TermsSection: React.FC = () => {
             'These terms apply when you book or attend a session at Arty Café, Jeddah. By booking, you agree to them. Arty Café is operated by',
             'تنطبق هذه الشروط عند الحجز أو حضور جلسة في آرتي كافيه، جدة. بإتمامك الحجز فإنك توافق عليها. يُدار آرتي كافيه من قِبل'
           )}{' '}
-          {t(STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR)}.
+          {t(STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR)}{' '}
+          ({t('Commercial Registration (Unified No.)', 'الرقم الوطني الموحد')}:{' '}
+          <span dir="ltr" className="ltr-numerals">{STUDIO_CR_UNIFIED_NO}</span>
+          {t(', VAT Registration No.', '، الرقم الضريبي')}:{' '}
+          <span dir="ltr" className="ltr-numerals">{STUDIO_VAT_NO}</span>).
         </>
       }
       updated={updated}
