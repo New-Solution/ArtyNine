@@ -22,6 +22,7 @@ import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
 import { isBuiltInFieldCustomerVisible } from '../types';
 import { ONLINE_PAYMENTS_SETTING_ID, normalizeOnlinePayments, bookingPaymentNote } from '../utils/onlinePayments';
 import { ONLINE_PAYMENTS_AVAILABLE } from '../utils/featureFlags';
+import { InfoPageNewTabLink } from './ui/InfoPage';
 
 export const WorkshopDetailSection: React.FC = () => {
   const { 
@@ -747,8 +748,9 @@ export const WorkshopDetailSection: React.FC = () => {
             </button>
 
             {/* The real policy, from the same Online Payments setting the
-                database enforces (bookingPaymentNote). A "Cancellation policy"
-                link is added once the policy-pages branch is merged. */}
+                database enforces (bookingPaymentNote), then a link to the full
+                Cancellation & Refund Policy. The link opens in a new tab so the
+                chosen time slot and form here are not lost. */}
             {(() => {
               const note = bookingPaymentNote({
                 available: ONLINE_PAYMENTS_AVAILABLE,
@@ -758,7 +760,13 @@ export const WorkshopDetailSection: React.FC = () => {
               });
               return (
                 <p className="text-[10px] text-center text-brand-charcoal/40 italic">
-                  {t(note.en, note.ar)}
+                  {t(note.en, note.ar)}{' '}
+                  <InfoPageNewTabLink
+                    page="cancellation-policy"
+                    className="not-italic font-semibold text-brand-terracotta underline underline-offset-2 hover:text-brand-terracotta-hover"
+                  >
+                    {t('Cancellation policy', 'سياسة الإلغاء')}
+                  </InfoPageNewTabLink>
                 </p>
               );
             })()}
