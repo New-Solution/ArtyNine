@@ -14,6 +14,8 @@ interface Props {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  /** Called when the field loses focus, after the draft is dropped — e.g. to save. */
+  onBlur?: () => void;
 }
 
 /**
@@ -31,7 +33,7 @@ interface Props {
  * the draft so the field re-syncs with whatever was actually saved.
  */
 export const LineListTextarea: React.FC<Props> = ({
-  value, onChange, rows = 3, placeholder, className = '', disabled
+  value, onChange, rows = 3, placeholder, className = '', disabled, onBlur
 }) => {
   const [draft, setDraft] = useState<string | null>(null);
 
@@ -47,7 +49,7 @@ export const LineListTextarea: React.FC<Props> = ({
         setDraft(raw);
         onChange(raw.split('\n').map(line => line.trim()).filter(Boolean));
       }}
-      onBlur={() => setDraft(null)}
+      onBlur={() => { setDraft(null); onBlur?.(); }}
     />
   );
 };

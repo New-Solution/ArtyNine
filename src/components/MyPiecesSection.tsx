@@ -49,7 +49,7 @@ export const MyPiecesSection: React.FC = () => {
   );
 
   const STAGES = customerStages.length > 0
-    ? customerStages.map(stageCustomerLabel)
+    ? customerStages.map(stage => stageCustomerLabel(stage, lang === 'ar' ? 'ar' : 'en'))
     : [t('Created', 'تم الإنشاء'), t('First Burn and Colored', 'الحرق الأول والتلوين'), t('Ready for Pickup', 'جاهزة للاستلام')];
 
   /**

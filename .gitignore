@@ -9,3 +9,6 @@ coverage/
 
 # Supabase CLI local state (link target, version cache) — machine-specific
 supabase/.temp/
+
+# Local database backups (supabase db dump) — never commit
+backup_*.sql

@@ -4,7 +4,7 @@ For the long-term maintainers. This is the map: what runs where, what each
 piece is for, and where to look when something goes wrong. Detailed procedures
 live in the files linked from here; this file does not repeat them.
 
-Last reviewed: 8 Nov 2026 (after migration 0051).
+Last reviewed: 9 Nov 2026 (after migration 0053).
 
 **Never write a secret value in this file, in a commit, or in a chat.** Names
 only. Values live in the Supabase dashboard / CLI secrets and in the Cloudflare
@@ -16,19 +16,23 @@ Pages project settings.
 
 ```
  Customer site  ─┐                       ┌─ Supabase Postgres (data, RLS, RPCs)
- (Cloudflare     │  supabase-js (anon    ├─ Supabase Auth (phone OTP / email)
-  Pages)         ├─ key + user JWT) ───► ├─ Supabase Storage (photos)
- Staff console  ─┘                       └─ Supabase Edge Functions (Deno)
- (Cloudflare                                   │            │
-  Pages)                                       ▼            ▼
+ + staff console │  supabase-js (anon    ├─ Supabase Auth (phone OTP / email)
+ app.            ├─ key + user JWT) ───► ├─ Supabase Storage (photos)
+ artybooking.com─┘                       └─ Supabase Edge Functions (Deno)
+ (staff console                                │            │
+  ?staff; staff.                               ▼            ▼
+  still works)   (Cloudflare Pages)
                                         Moyasar API    SMS provider
                                         (payments)     (mShastra / meertek)
 ```
 
-- **One React + Vite codebase** (`src/`) builds both the customer site and the
-  staff console. Which one a deployment is depends on its
-  `VITE_CUSTOMER_SITE_URL` / `VITE_STAFF_SITE_URL`. With neither set (local
-  dev) the app switches areas in-app.
+- **One React + Vite codebase** (`src/`) serves the customer site and the
+  staff console from **one domain**, `app.artybooking.com`. "Staff Login"
+  switches to the console in the same tab and adds `?staff` to the URL, so a
+  refresh stays in the console (`initialAreaFromLocation` in `AppContext.tsx`).
+  A hostname with a `staff` label (`staff.artybooking.com`) still always opens
+  the console. The café's main website is `https://artybooking.com` (the
+  header logo and "Main website" link go there).
 - **No application server.** The browser talks to Supabase directly. Every
   rule that matters (prices, seats, who can see what, who can mark something
   paid) is enforced **in Postgres** with RLS and `SECURITY DEFINER` functions,
@@ -36,7 +40,10 @@ Pages project settings.
 - **Edge Functions** do the things that need a secret: talking to Moyasar,
   sending SMS, creating staff logins, and the scheduled auto-cancel job
   (triggered every 5 minutes by **pg_cron** in the Supabase project).
-- **Hosting:** Cloudflare Pages. Pushing `main` rebuilds the front end.
+- **Hosting:** Cloudflare Pages only (account run by Ahsan). Customers and
+  staff: `app.artybooking.com`. `staff.artybooking.com` keeps working (it opens
+  the console because the hostname has a `staff` label). Pushing
+  `main` rebuilds the front end.
   Pushing does **not** apply migrations or deploy Edge Functions; both are
   manual (see §4 and §5).
 - **Data access in the app:** `src/lib/supabaseDb.ts` (`sdb`, imported as
@@ -65,7 +72,7 @@ Key places in the code:
 | Service | Used for | Where it is configured |
 |---|---|---|
 | **Supabase** | Postgres database, Auth (phone OTP + email/password), Storage (workshop and piece photos), Edge Functions | Supabase dashboard; `supabase/` in the repo |
-| **Cloudflare Pages** | Hosting the customer site and the staff console | Cloudflare dashboard → Pages (two projects / deployments) |
+| **Cloudflare Pages** | The only host: customers and staff at `app.artybooking.com` (`staff.artybooking.com` still works); the café's main website is `artybooking.com` | Cloudflare dashboard → Pages (account run by Ahsan) |
 | **Cloudflare Turnstile** | CAPTCHA on sign-in / sign-up (only when its key is set) | Site key in Pages env; secret key in Supabase → Authentication → Attack Protection |
 | **Moyasar** | Card + Apple Pay payments; webhook as a backup confirmation path; refunds (done by hand in the Moyasar dashboard) | Moyasar dashboard (keys, webhook, Apple Pay domains) |
 | **mShastra** | SMS provider (default) | Credentials as Supabase secrets |
@@ -86,13 +93,13 @@ Only public values belong here. Change one → **redeploy** for it to take effec
 |---|---|
 | `VITE_SUPABASE_URL` | The Supabase project URL. |
 | `VITE_SUPABASE_ANON_KEY` | Supabase public (anon) key. Safe in the browser; RLS protects data. |
-| `VITE_CUSTOMER_SITE_URL` | Link target for "Customer Site" from the console. Unset in local dev. |
-| `VITE_STAFF_SITE_URL` | Link target for "Staff Login" from the customer site. Unset in local dev. |
+| `VITE_CUSTOMER_SITE_URL` | Where "View Customer Site" goes **from `staff.artybooking.com` only** (`https://app.artybooking.com`). Ignored on any other host. Unset in local dev. |
 | `VITE_PHONE_AUTH` | `"true"` turns on phone sign-in by SMS code (`src/utils/featureFlags.ts`). |
 | `VITE_TURNSTILE_SITE_KEY` | Turnstile site key. Unset = no CAPTCHA widget. |
 | `VITE_MOYASAR_PUBLISHABLE_KEY` | Moyasar publishable key (`pk_test_…` / `pk_live_…`). Unset = online payments cannot be switched on. |
 
 Not read by the code (safe to remove from Cloudflare if present):
+`VITE_STAFF_SITE_URL` (Staff Login always stays on the current domain, since 10 Nov 2026),
 `VITE_MOYASAR_METHODS` (payment methods are fixed in `src/lib/onlinePayment.ts`,
 `MOYASAR_METHODS`), `GEMINI_API_KEY`, `APP_URL`, `DISABLE_HMR` (AI Studio
 template leftovers, removed from `.env.example` / `vite.config.ts` on 8 Nov 2026).
@@ -107,14 +114,14 @@ Set with `npx supabase secrets set NAME=…`; list names with
 | Name | Used by | What it does |
 |---|---|---|
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | all | Provided by Supabase automatically. Service role bypasses RLS; used only server-side. |
-| `MOYASAR_SECRET_KEY` | verify-payment, moyasar-webhook, auto-cancel-bookings | Moyasar secret key, to fetch payments. |
+| `MOYASAR_SECRET_KEY` | verify-payment, moyasar-webhook, auto-cancel-bookings, refund-payment | Moyasar secret key, to fetch payments (and void / refund them, refund-payment). |
 | `MOYASAR_MODE` | same | Optional `test` / `live`; the functions refuse to run if it doesn't match the key. |
 | `MOYASAR_WEBHOOK_SECRET` | moyasar-webhook | The "secret token" configured on the Moyasar webhook. |
 | `SMS_PROVIDER` | all SMS senders | Unset / `mshastra` (default) or `meertek`. |
 | `MSHASTRA_USERNAME`, `MSHASTRA_PASSWORD`, `MSHASTRA_SENDER_ID` | SMS (mShastra) | mShastra account and sender name. |
 | `MEERTEK_PROXY_TOKEN` | SMS (meertek) | Token for the meertek proxy endpoint. |
 | `SEND_SMS_HOOK_SECRET` | send-sms-hook | The `v1,whsec_…` secret of the Supabase Auth "Send SMS" hook. |
-| `STAFF_SITE_URL` | provision-staff | Where staff invitation emails point. |
+| `STAFF_SITE_URL` | provision-staff | Where staff invitation emails point (`https://app.artybooking.com/?staff`). |
 
 Other secrets outside the functions: the Turnstile **secret** key (Supabase →
 Authentication → Attack Protection); the scripts in `scripts/` read
@@ -134,7 +141,8 @@ keeps it on. **Never run `supabase config push`** (see the warning in
 | Function | Called by | What it does |
 |---|---|---|
 | `verify-payment` | the customer's browser after paying (and the 3-D Secure return page) | Fetches the payment from Moyasar with the secret key, logs it, and calls `confirm_booking_payment()`. The only normal path to "paid". |
-| `moyasar-webhook` | Moyasar | Backup confirmation path: checks the secret token, re-fetches the payment, same confirm call. |
+| `moyasar-webhook` | Moyasar | Backup confirmation path: checks the secret token, re-fetches the payment, same confirm call. For `payment_refunded` / `payment_voided`, moves a Needs Refund booking to Refunded (bell + SMS once, 0054). |
+| `refund-payment` | staff console (Refund button, Bookings / Events panels) | Staff with Bookings or Events access return an online payment through Moyasar: claims the booking (`Refund Processing`), re-reads the payment, voids it while Moyasar allows, otherwise refunds the full amount from the database, then Refunded + timeline + bell + refunded SMS once; on failure back to Needs Refund with Moyasar's message (0054). |
 | `auto-cancel-bookings` | **pg_cron** in the Supabase project, **every 5 minutes** (job set up in the dashboard, not in a migration) | Cancels no-shows and expires unpaid holds, after first checking Moyasar for a payment that arrived without the customer coming back. Sends the no-show SMS. |
 | `notify-own-booking` | the customer's browser after self-cancelling | Sends the cancellation SMS, only with a registered template that is true for the booking (none for unpaid or refund-due). |
 | `send-sms` | staff console | Sends one SMS (staff only, `is_staff()` checked). |
@@ -168,7 +176,7 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0002 | Atomic seat allocation (`book_session_seats`) | Applied (inferred) |
 | 0003 | Customer site write path | Applied (inferred) |
 | 0004 | Assign a staff member to a birthday/event booking | Applied (inferred) |
-| 0005 | Sign in with phone or email | Applied (inferred) |
+| 0005 | Sign in with phone or email | Applied (inferred); `customer_signin_email()` dropped by 0052 |
 | 0006 | Pottery pipeline clean-up | Applied (inferred) |
 | 0007 | Pottery lifecycle: 3 customer-facing stages | Applied (inferred) |
 | 0008 | Café table assignment for the Live Queue | Applied (inferred) |
@@ -215,6 +223,10 @@ and ⚠ where the header disagrees with reality (see §11).
 | 0049 | Bookings need a signed-in caller (no guest `customer_id`) | Applied |
 | 0050 | Payments OFF: website bookings always `Unpaid` (+ backstop trigger) | Applied |
 | 0051 | Data Reset only via `reset_all_data()` (Super Admin + phrase); guard refuses non–Super Admin table wipes | Applied |
+| 0052 | Retire `customer_signin_email()` and `signin_attempts` (phone sign-in is Supabase Auth only) | Applied |
+| 0053 | `app_settings` writes: `onlinePayments` Super Admin only; other keys need the Settings page permission (`can_write_app_setting`) | Applied |
+| 0054 | In-app refunds: `Refund Processing` status, refund columns, `claim/release/complete_booking_refund` (service role only), evidence source `refund-payment` | Applied |
+| 0055 | Security Advisor fixes: `resolve_customer_record` signed-in only, `normalize_customer_phone` fixed search_path, `public-media` no public listing (staff-only SELECT), `customers_self_*` use `(select auth.uid())` | Applied |
 
 Re-running an old test block after a later migration can fail by design (e.g.
 0046/0048 guest cases are refused after 0049). That is not a regression.

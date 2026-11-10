@@ -109,16 +109,11 @@ export const MIGRATION_REQUIREMENTS: MigrationRequirement[] = [
     probe: tableExists('bookings', 'staff_id')
   },
 
-  // 0005 — signing in with a phone number or an email address.
-  // customer_signin_route() and customer_claim_email_matches() are not probed:
-  // 0043 revokes anon/authenticated EXECUTE on both, so a probe would be a
-  // refused request on every page load. The app no longer calls them with
-  // VITE_PHONE_AUTH on.
-  {
-    name: 'customer_signin_email()',
-    migration: '0005_signin_by_phone_or_email.sql',
-    probe: rpcExists('customer_signin_email', { p_identifier: '', p_password: '' })
-  },
+  // 0005 — signing in with a phone number or an email address. Nothing from
+  // it is probed: 0043 revoked anon/authenticated EXECUTE on
+  // customer_signin_route() and customer_claim_email_matches(), and 0052
+  // drops customer_signin_email(). A probe of either would be a refused (or,
+  // after 0052, a "missing") request on every page load.
 
   // 0006 — the four-stage pottery pipeline. Without it the stage rows are still
   // duplicated and pieces.status still rejects the new stage names.

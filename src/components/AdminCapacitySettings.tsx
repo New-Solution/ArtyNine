@@ -3,12 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { StudioTableConfig, CapacitySettingsConfig } from '../types';
 import { Save, AlertTriangle, Plus, Trash2, Check, LayoutGrid } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { enumLabel } from '../utils/enumLabels';
+import { tableSeatTotal } from '../utils/tableSeatingUtils';
+import { useServerDraft, ServerChangedNotice } from './ui/useServerDraft';
+import { SaveErrorBanner, useSaveError } from './ui/SaveErrorBanner';
+
+const SAVE_CAPACITY = { en: 'the capacity settings', ar: 'إعدادات السعة' };
+const SAVE_RESOURCES = { en: 'the studio rooms', ar: 'قاعات الاستوديو' };
+
+const DEFAULT_TABLES: StudioTableConfig[] = Array.from({ length: 8 }, (_, i) => ({
+  id: `table-${i + 1}`, number: i + 1, name: `Table ${i + 1}`, seats: 4, status: 'Active' as const
+}));
 
 export const AdminCapacitySettings: React.FC = () => {
   const {
@@ -29,9 +39,12 @@ export const AdminCapacitySettings: React.FC = () => {
     setTimeout(() => setResourceToast(null), 3500);
   };
 
+  const capacitySave = useSaveError();
+  const resourceSave = useSaveError();
+
   const handleAddResource = async () => {
     const roomCount = studioResources.filter(r => r.type === 'Studio Room').length;
-    await addStudioResource({
+    const ok = await resourceSave.run(() => addStudioResource({
       name: `Studio Room ${roomCount + 1}`,
       type: 'Studio Room',
       seats: 10,
@@ -39,51 +52,46 @@ export const AdminCapacitySettings: React.FC = () => {
       notes: '',
       status: 'Active',
       order: studioResources.length
-    });
+    }), SAVE_RESOURCES);
+    if (!ok) return;
     showResourceToast(t('Resource added. It is now selectable on the Workshop pages.', 'تمت إضافة المورد. يمكن اختياره الآن في صفحات الورش.'));
   };
 
   const handleSetResourceStatus = async (id: string, status: 'Active' | 'Inactive' | 'Maintenance', name: string) => {
-    await updateStudioResource(id, { status });
+    const ok = await resourceSave.run(() => updateStudioResource(id, { status }), SAVE_RESOURCES);
+    if (!ok) return;
     showResourceToast(t(`"${name}" set to ${status}.`, `تم ضبط "${name}" على ${enumLabel('resourceStatus', status, lang)}.`));
   };
 
   const handleRemoveResource = async (id: string, name: string) => {
     if (!window.confirm(t(`Remove "${name}"? If it is used by existing sessions it will be set to Inactive instead.`, `إزالة "${name}"؟ إذا كان مستخدمًا في جلسات قائمة فسيتم ضبطه على «غير نشط» بدلًا من ذلك.`))) return;
-    const result = await removeStudioResource(id);
+    let result: Awaited<ReturnType<typeof removeStudioResource>> | undefined;
+    const ok = await resourceSave.run(async () => { result = await removeStudioResource(id); }, SAVE_RESOURCES);
+    if (!ok || !result) return;
     showResourceToast(result.message || t(`"${name}" removed.`, `تمت إزالة "${name}".`));
   };
   const rawConfig = rawAppSettings.find(s => s.id === 'capacitySettings')?.value as CapacitySettingsConfig | undefined;
 
-  const [totalTables, setTotalTables] = useState<number>(rawConfig?.totalTables ?? 8);
-  const [totalSeats, setTotalSeats] = useState<number>(rawConfig?.totalSeats ?? 32);
-  const [defaultSeatsPerTable, setDefaultSeatsPerTable] = useState<number>(rawConfig?.defaultSeatsPerTable ?? 4);
-  const [maxGroupSize, setMaxGroupSize] = useState<number>(rawConfig?.maxGroupSize ?? 10);
-  const [oneGroupPerTable, setOneGroupPerTable] = useState<boolean>(rawConfig?.oneGroupPerTable ?? false);
-  const [tablesList, setTablesList] = useState<StudioTableConfig[]>(rawConfig?.tables ?? [
-    { id: 'table-1', number: 1, name: 'Table 1', seats: 4, status: 'Active' },
-    { id: 'table-2', number: 2, name: 'Table 2', seats: 4, status: 'Active' },
-    { id: 'table-3', number: 3, name: 'Table 3', seats: 4, status: 'Active' },
-    { id: 'table-4', number: 4, name: 'Table 4', seats: 4, status: 'Active' },
-    { id: 'table-5', number: 5, name: 'Table 5', seats: 4, status: 'Active' },
-    { id: 'table-6', number: 6, name: 'Table 6', seats: 4, status: 'Active' },
-    { id: 'table-7', number: 7, name: 'Table 7', seats: 4, status: 'Active' },
-    { id: 'table-8', number: 8, name: 'Table 8', seats: 4, status: 'Active' },
-  ]);
+  // One draft for the whole form. It follows the saved value until edited, and
+  // a realtime update never wipes unsaved edits (useServerDraft).
+  const capacity = useServerDraft<CapacitySettingsConfig>({
+    defaultSeatsPerTable: rawConfig?.defaultSeatsPerTable ?? 4,
+    oneGroupPerTable: rawConfig?.oneGroupPerTable ?? false,
+    tables: rawConfig?.tables && rawConfig.tables.length > 0 ? rawConfig.tables : DEFAULT_TABLES
+  });
+  const { defaultSeatsPerTable, oneGroupPerTable } = capacity.draft;
+  const tablesList = capacity.draft.tables;
+  const setDraft = (patch: Partial<CapacitySettingsConfig>) => capacity.setDraft(d => ({ ...d, ...patch }));
+  const setTablesList = (tables: StudioTableConfig[]) => setDraft({ tables });
+  /** Replaces one table immutably (the old code edited the array in place). */
+  const updateTable = (idx: number, patch: Partial<StudioTableConfig>) =>
+    setTablesList(tablesList.map((tbl, i) => (i === idx ? { ...tbl, ...patch } : tbl)));
+
+  // The seat total is always the sum of the tables' seats — never typed in.
+  const totalSeats = tableSeatTotal(tablesList);
 
   const [warningBanner, setWarningBanner] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (rawConfig) {
-      if (rawConfig.totalTables !== undefined) setTotalTables(rawConfig.totalTables);
-      if (rawConfig.totalSeats !== undefined) setTotalSeats(rawConfig.totalSeats);
-      if (rawConfig.defaultSeatsPerTable !== undefined) setDefaultSeatsPerTable(rawConfig.defaultSeatsPerTable);
-      if (rawConfig.maxGroupSize !== undefined) setMaxGroupSize(rawConfig.maxGroupSize);
-      if (rawConfig.oneGroupPerTable !== undefined) setOneGroupPerTable(rawConfig.oneGroupPerTable);
-      if (rawConfig.tables && rawConfig.tables.length > 0) setTablesList(rawConfig.tables);
-    }
-  }, [rawConfig]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,23 +101,21 @@ export const AdminCapacitySettings: React.FC = () => {
       .filter(q => q.status === 'In Progress' || q.status === 'Waiting')
       .reduce((sum, item) => sum + (item.participants || 1), 0);
 
-    const newSeats = Number(totalSeats) || 32;
-
+    // Only what is read is stored: no totalSeats / totalTables / maxGroupSize.
     const updatedConfig: CapacitySettingsConfig = {
-      totalTables: Number(totalTables) || tablesList.length,
-      totalSeats: newSeats,
       defaultSeatsPerTable: Number(defaultSeatsPerTable) || 4,
-      maxGroupSize: Number(maxGroupSize) || 10,
       oneGroupPerTable,
       tables: tablesList
     };
 
-    await updateSetting('capacitySettings', updatedConfig);
+    const ok = await capacitySave.run(() => updateSetting('capacitySettings', updatedConfig), SAVE_CAPACITY);
+    if (!ok) return;
+    capacity.markSaved(updatedConfig);
 
-    if (activeOccupancy > newSeats) {
+    if (activeOccupancy > totalSeats) {
       setWarningBanner(t(
-        `Current occupancy (${activeOccupancy} seats) exceeds newly configured capacity (${newSeats} seats). Active sessions are preserved, but available capacity is set to 0.`,
-        `يتجاوز الإشغال الحالي (${activeOccupancy} مقعد) السعة المضبوطة حديثًا (${newSeats} مقعد). تُحفظ الجلسات النشطة، لكن السعة المتاحة تُضبط على 0.`
+        `Current occupancy (${activeOccupancy} seats) exceeds the tables' total (${totalSeats} seats). Active sessions are preserved, but available capacity is set to 0.`,
+        `يتجاوز الإشغال الحالي (${activeOccupancy} مقعد) إجمالي مقاعد الطاولات (${totalSeats} مقعد). تُحفظ الجلسات النشطة، لكن السعة المتاحة تُضبط على 0.`
       ));
     } else {
       setWarningBanner(null);
@@ -131,17 +137,10 @@ export const AdminCapacitySettings: React.FC = () => {
         status: 'Active'
       }
     ]);
-    setTotalTables(tablesList.length + 1);
-    setTotalSeats(totalSeats + defaultSeatsPerTable);
   };
 
   const handleRemoveTable = (id: string) => {
-    const tableToRemove = tablesList.find(tbl => tbl.id === id);
-    if (!tableToRemove) return;
-    const updated = tablesList.filter(tbl => tbl.id !== id);
-    setTablesList(updated);
-    setTotalTables(updated.length);
-    setTotalSeats(Math.max(0, totalSeats - tableToRemove.seats));
+    setTablesList(tablesList.filter(tbl => tbl.id !== id));
   };
 
   return (
@@ -149,7 +148,7 @@ export const AdminCapacitySettings: React.FC = () => {
       <div className="border-b border-brand-clay/40 pb-4">
         <h2 className="font-display text-xl font-extrabold text-brand-charcoal">{t('Studio & Queue Capacity Configuration', 'إعدادات سعة الاستوديو والطابور')}</h2>
         <p className="text-xs text-brand-charcoal/70 mt-1">
-          {t('Manage live queue seat allocation, maximum group thresholds, table inventory, and seat counts across the studio.', 'إدارة تخصيص مقاعد الطابور المباشر وحدود المجموعات القصوى وجرد الطاولات وأعداد المقاعد في الاستوديو.')}
+          {t('Manage live queue seat allocation, the table inventory and its seats. The studio’s seat total is the sum of the active tables’ seats.', 'إدارة تخصيص مقاعد الطابور المباشر وجرد الطاولات ومقاعدها. إجمالي مقاعد الاستوديو هو مجموع مقاعد الطاولات النشطة.')}
         </p>
       </div>
 
@@ -164,6 +163,9 @@ export const AdminCapacitySettings: React.FC = () => {
         </div>
       )}
 
+      <SaveErrorBanner error={capacitySave.error} onDismiss={capacitySave.clear} />
+      <ServerChangedNotice show={capacity.serverChanged} onLoad={capacity.discard} />
+
       {savedSuccess && (
         <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
           <Check className="h-4 w-4 text-emerald-600" />
@@ -172,28 +174,19 @@ export const AdminCapacitySettings: React.FC = () => {
       )}
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Global capacity metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Global capacity metrics. Tables and seats are COUNTED from the
+            inventory below, not typed in; "Max Walk-in Group Size" was removed
+            because nothing read it. */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-1">
-            <label className="text-xs font-bold text-brand-charcoal/80 block">{t('Total Tables', 'إجمالي الطاولات')}</label>
-            <input
-              type="number"
-              min={1}
-              value={totalTables}
-              onChange={e => setTotalTables(parseInt(e.target.value) || 1)}
-              className="w-full bg-white border border-brand-clay rounded-xl py-2 px-3 text-sm font-bold text-brand-charcoal font-mono"
-            />
+            <span className="text-xs font-bold text-brand-charcoal/80 block">{t('Total Tables', 'إجمالي الطاولات')}</span>
+            <span className="block py-2 text-sm font-bold text-brand-charcoal font-mono">{tablesList.length}</span>
           </div>
 
           <div className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-1">
-            <label className="text-xs font-bold text-brand-charcoal/80 block">{t('Total Studio Seats', 'إجمالي مقاعد الاستوديو')}</label>
-            <input
-              type="number"
-              min={1}
-              value={totalSeats}
-              onChange={e => setTotalSeats(parseInt(e.target.value) || 1)}
-              className="w-full bg-white border border-brand-clay rounded-xl py-2 px-3 text-sm font-bold text-brand-charcoal font-mono"
-            />
+            <span className="text-xs font-bold text-brand-charcoal/80 block">{t('Total Studio Seats', 'إجمالي مقاعد الاستوديو')}</span>
+            <span className="block py-2 text-sm font-bold text-brand-charcoal font-mono">{totalSeats}</span>
+            <span className="block text-[10px] text-brand-charcoal/55">{t('Sum of the active tables’ seats', 'مجموع مقاعد الطاولات النشطة')}</span>
           </div>
 
           <div className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-1">
@@ -202,18 +195,7 @@ export const AdminCapacitySettings: React.FC = () => {
               type="number"
               min={1}
               value={defaultSeatsPerTable}
-              onChange={e => setDefaultSeatsPerTable(parseInt(e.target.value) || 1)}
-              className="w-full bg-white border border-brand-clay rounded-xl py-2 px-3 text-sm font-bold text-brand-charcoal font-mono"
-            />
-          </div>
-
-          <div className="p-4 bg-brand-cream/35 border border-brand-clay rounded-2xl space-y-1">
-            <label className="text-xs font-bold text-brand-charcoal/80 block">{t('Max Walk-in Group Size', 'الحد الأقصى لحجم مجموعة الزيارة المباشرة')}</label>
-            <input
-              type="number"
-              min={1}
-              value={maxGroupSize}
-              onChange={e => setMaxGroupSize(parseInt(e.target.value) || 1)}
+              onChange={e => setDraft({ defaultSeatsPerTable: parseInt(e.target.value) || 1 })}
               className="w-full bg-white border border-brand-clay rounded-xl py-2 px-3 text-sm font-bold text-brand-charcoal font-mono"
             />
           </div>
@@ -230,7 +212,7 @@ export const AdminCapacitySettings: React.FC = () => {
           <input
             type="checkbox"
             checked={oneGroupPerTable}
-            onChange={e => setOneGroupPerTable(e.target.checked)}
+            onChange={e => setDraft({ oneGroupPerTable: e.target.checked })}
             className="h-5 w-5 rounded border-brand-clay text-brand-terracotta focus:ring-brand-terracotta cursor-pointer"
           />
         </div>
@@ -270,11 +252,7 @@ export const AdminCapacitySettings: React.FC = () => {
                       <input
                         type="text"
                         value={tbl.name}
-                        onChange={e => {
-                          const updated = [...tablesList];
-                          updated[idx].name = e.target.value;
-                          setTablesList(updated);
-                        }}
+                        onChange={e => updateTable(idx, { name: e.target.value })}
                         className="bg-transparent border border-brand-clay/40 rounded p-1 text-xs font-semibold text-brand-charcoal"
                       />
                     </td>
@@ -283,25 +261,14 @@ export const AdminCapacitySettings: React.FC = () => {
                         type="number"
                         min={1}
                         value={tbl.seats}
-                        onChange={e => {
-                          const val = parseInt(e.target.value) || 1;
-                          const updated = [...tablesList];
-                          const diff = val - updated[idx].seats;
-                          updated[idx].seats = val;
-                          setTablesList(updated);
-                          setTotalSeats(Math.max(1, totalSeats + diff));
-                        }}
+                        onChange={e => updateTable(idx, { seats: parseInt(e.target.value) || 1 })}
                         className="w-16 bg-transparent border border-brand-clay/40 rounded p-1 text-xs font-semibold text-brand-charcoal text-center"
                       />
                     </td>
                     <td className="p-3">
                       <select
                         value={tbl.status}
-                        onChange={e => {
-                          const updated = [...tablesList];
-                          updated[idx].status = e.target.value as any;
-                          setTablesList(updated);
-                        }}
+                        onChange={e => updateTable(idx, { status: e.target.value as StudioTableConfig['status'] })}
                         className="bg-white border border-brand-clay/60 text-[11px] font-bold rounded-lg px-2 py-1"
                       >
                         <option value="Active">{enumLabel('resourceStatus', 'Active', lang)}</option>
@@ -365,6 +332,7 @@ export const AdminCapacitySettings: React.FC = () => {
           </button>
         </div>
 
+        <SaveErrorBanner error={resourceSave.error} onDismiss={resourceSave.clear} />
         {resourceToast && (
           <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
             <Check className="h-4 w-4 text-emerald-600" />

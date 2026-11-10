@@ -77,11 +77,18 @@ import {
 import { formatDate, RIYADH_TIME_ZONE } from '../utils/calendarConfig';
 import { pieceTextForKey, bilingualSms, PICKUP_REMINDER_TEXT, type KilnSmsVariant } from '../utils/pieceSmsTemplates';
 import { customerPieceTitle, staffPieceTitle } from '../utils/pieceNotifications';
-import { bookingCancellationSms, cancellationSmsKind } from '../../supabase/functions/_shared/bookingSmsTemplates';
+import { bookingCancellationSms, cancellationSmsKind, type BookingCancellationKind } from '../../supabase/functions/_shared/bookingSmsTemplates';
 import { PHONE_AUTH_ENABLED } from '../utils/featureFlags';
+
+/** A phone number + password that Supabase's phone sign-in did not accept. */
+const PHONE_SIGNIN_FAILED = {
+  en: 'Incorrect phone number or password. If you signed up with an email address, sign in with your email.',
+  ar: 'رقم الجوال أو كلمة المرور غير صحيحة. إذا سجّلت باستخدام بريد إلكتروني، فسجّل الدخول ببريدك الإلكتروني.'
+} as const;
 import { toE164Saudi, isPhoneSetupPending } from '../utils/phoneAuth';
 import { isCaptchaError, CAPTCHA_FAILED_MESSAGE, type CaptchaProvider } from '../utils/captcha';
 import { getConfiguredTables, computeTableStates, validateTableSelection } from '../utils/tableSeatingUtils';
+import { staffCancelPayment } from '../utils/onlinePayments';
 
 export {
   getRiyadhNow,
@@ -206,6 +213,8 @@ interface AppContextType {
     Promise<{
       success: boolean;
       error?: string;
+      /** Arabic for `error`, when one exists. Screens show it in Arabic mode. */
+      errorAr?: string;
       needsPasswordSetup?: boolean;
       /** The masked address the claim confirmation will be sent to, if known. */
       claimEmailHint?: string;
@@ -366,6 +375,18 @@ interface AppContextType {
    * page can say why instead of appearing to succeed.
    */
   cancelOwnBooking: (id: string) => Promise<{ success: boolean; error?: string; refunded?: boolean }>;
+  /**
+   * Staff mark a 'Needs Refund' booking as 'Refunded'. Sends the registered
+   * "cancelled and {amount} SAR refunded" SMS once, only on the transition.
+   */
+  markBookingRefunded: (id: string, user?: string) => Promise<{ success: boolean; error?: string }>;
+  /**
+   * Return an online payment to the customer's card through Moyasar
+   * (refund-payment Edge Function, 0054). The server reads the payment and
+   * amount from the database, refunds once, records it, and sends the
+   * refunded SMS and bell.
+   */
+  refundBookingOnline: (id: string) => Promise<{ success: boolean; error?: string; method?: string }>;
   updateBookingStatus: (id: string, status: Booking['status'], paymentStatus?: Booking['paymentStatus'], user?: string) => void;
   /** A fresh read of the records an assignment conflict check needs. */
   getFreshAssignmentSources: () => Promise<{
@@ -586,41 +607,82 @@ async function linkAuthToCustomer(identifier: string | undefined, authId: string
 }
 
 /**
- * Post-split, the staff console and customer site are served from
- * different origins. That's a real subdomain once there's a custom
- * domain (staff.artycafe.com), but today it's Vercel's auto-generated
- * preview/production URL (arty-staff.vercel.app), where "staff" is a
- * hyphen-separated word rather than a dot-separated label. Splitting on
- * both '.' and '-' and requiring an exact 'staff' segment matches both,
- * while still rejecting an unrelated domain that merely contains "staff"
- * as a substring of a longer word (e.g. staffing-tool.vercel.app).
- * Anything else — including localhost/dev — defaults to 'customer';
- * the existing "Staff Login" click is still how you reach the staff area
- * locally, unchanged by this.
+ * Which area a page load opens in.
+ *
+ * Two ways in to the staff console:
+ *
+ *  - A dedicated staff hostname (staff.artybooking.com, or a preview host such
+ *    as arty-staff.pages.dev). Splitting on both '.' and '-' and requiring an
+ *    exact 'staff' segment matches those while rejecting a hostname that only
+ *    contains "staff" inside a longer word (e.g. staffing-tool.com). Such a
+ *    host always opens the console.
+ *  - `?staff` in the URL on any other host (app.artybooking.com, localhost).
+ *    The single-domain setup serves customers and staff from one origin, so
+ *    the area is carried in the URL: "Staff Login" switches in the same tab
+ *    and adds `?staff` (see the area effect in AppProvider), and a refresh
+ *    lands back in the console. The staff session itself lives in the staff
+ *    Supabase client's own storage on this origin, so a signed-in staff
+ *    member stays signed in; anyone else just sees the staff login screen.
  */
-function initialAreaFromHostname(): 'customer' | 'staff' {
+const STAFF_AREA_PARAM = 'staff';
+
+function isStaffHostname(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.hostname.toLowerCase().split(/[.-]/).includes('staff');
+}
+
+function initialAreaFromLocation(): 'customer' | 'staff' {
   if (typeof window === 'undefined') return 'customer';
-  const segments = window.location.hostname.split(/[.-]/);
-  if (segments.includes('staff')) return 'staff';
-  // Local dev shortcut (no separate staff hostname to test against):
-  // visiting with ?staff lands straight in the staff console. Dev-only.
-  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('staff')) return 'staff';
+  if (isStaffHostname()) return 'staff';
+  if (new URLSearchParams(window.location.search).has(STAFF_AREA_PARAM)) return 'staff';
   return 'customer';
 }
 
+/** Adds or removes `?staff` in place (no reload, no new history entry),
+ *  keeping every other parameter and the fragment — Supabase auth links
+ *  carry their token in the fragment. */
+function syncStaffAreaParam(area: 'customer' | 'staff') {
+  if (typeof window === 'undefined' || isStaffHostname()) return;
+  const url = new URL(window.location.href);
+  const has = url.searchParams.has(STAFF_AREA_PARAM);
+  if ((area === 'staff') === has) return;
+  if (area === 'staff') url.searchParams.set(STAFF_AREA_PARAM, '');
+  else url.searchParams.delete(STAFF_AREA_PARAM);
+  // "?staff" rather than "?staff=".
+  const search = url.search.replace(/([?&])staff=(?=&|$)/, '$1staff');
+  window.history.replaceState(window.history.state, '', url.pathname + search + url.hash);
+}
+
 /**
- * Cross-domain link targets, set only once the two sites are actually
- * deployed separately. Unset (local dev, or a single shared deployment)
- * falls back to today's in-app setArea(...) switch — see goToStaffLogin,
- * viewCustomerSite and returnToStaffConsole below.
+ * Where "View Customer Site" goes from a dedicated staff hostname
+ * (staff.artybooking.com). On every other host the customer site is the same
+ * origin, so the switch happens in the tab and this is not used. Unset falls
+ * back to the in-tab switch everywhere.
+ *
+ * There is deliberately no staff-site counterpart any more: "Staff Login"
+ * always opens the console on the domain the visitor is already on.
  */
 const CUSTOMER_SITE_URL = import.meta.env.VITE_CUSTOMER_SITE_URL || undefined;
-const STAFF_SITE_URL = import.meta.env.VITE_STAFF_SITE_URL || undefined;
+
+function isOtherOrigin(target: string): boolean {
+  try {
+    return new URL(target, window.location.href).origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation State
-  // Everyone starts on the customer site, unless the hostname says otherwise (see initialAreaFromHostname).
-  const [area, setArea] = useState<'customer' | 'staff'>(initialAreaFromHostname);
+  // Everyone starts on the customer site, unless the hostname or ?staff says
+  // otherwise (see initialAreaFromLocation).
+  const [area, setArea] = useState<'customer' | 'staff'>(initialAreaFromLocation);
+
+  // Keeps ?staff in the URL in step with the area on a shared domain, so a
+  // refresh reopens the same area.
+  useEffect(() => {
+    syncStaffAreaParam(area);
+  }, [area]);
 
   // Keeps the tab title honest about which site you're on — matters most
   // in local dev / a single shared deployment, where the same tab can
@@ -871,9 +933,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    *   - an identifier with nothing behind it is answered exactly like a real
    *     account, so this cannot be used to discover who is on file.
    *
-   * Supabase Auth still mints every session. A phone sign-in only needs the
-   * address the account lives at, and the RPC releases that solely to a caller
-   * who has already proved they hold the password.
+   * Supabase Auth mints every session and checks every password. A phone
+   * number is signed in only through Supabase's own phone sign-in; an account
+   * that lives at an email address signs in with that email. (The
+   * phone-to-email lookup, customer_signin_email(), was retired in 0052: it
+   * checked passwords outside Supabase Auth, without its rate limiting or the
+   * CAPTCHA.)
    */
   /**
    * After Supabase Auth has already authenticated `authUser` for `email`,
@@ -924,9 +989,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const looksLikeEmail = typedEmail.includes('@');
 
     // Phone accounts (VITE_PHONE_AUTH only): a phone-like identifier is tried
-    // as a Supabase phone sign-in first. Any failure falls through to the
-    // unchanged path below, which ends in the same "Incorrect phone number or
-    // password." — so the two cannot be told apart.
+    // as a Supabase phone sign-in. Any failure falls through to the path
+    // below, which ends in the same PHONE_SIGNIN_FAILED message whatever the
+    // reason — so a wrong password and an unknown number cannot be told apart.
     if (PHONE_AUTH_ENABLED && !looksLikeEmail) {
       const e164 = toE164Saudi(input);
       if (e164) {
@@ -977,9 +1042,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Scoped to an email-typed identifier only: with an email already
       // in hand, signInWithPassword() can be attempted directly. A
       // phone-typed identifier reaching this route has no equivalent
-      // path today — customer_signin_email() requires row.user_id to
-      // already be set (it reads auth.users through that id), so it
-      // cannot resolve the real email for a still-unclaimed row. That
+      // path: a phone is never resolved to an email address (the old
+      // customer_signin_email() lookup was retired in 0052). That
       // narrower case keeps today's "claim" messaging below, unchanged.
       if (looksLikeEmail) {
         const { data: attemptData, error: attemptError } = await supabase.auth.signInWithPassword({
@@ -1034,27 +1098,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Step 2 — a password is expected. Signing in by phone needs the address
-    // the auth account lives at; the RPC returns it only once the password
-    // checks out, and returns nothing at all for a wrong one or an unknown
-    // identifier, so the two are indistinguishable.
-    let email = typedEmail;
+    // Step 2 — a password is expected. A phone number reaching this point was
+    // not accepted by Supabase's phone sign-in above (wrong password, unknown
+    // number, or an account that lives at an email address), and it is never
+    // looked up to find an email: customer_signin_email() did that, checking
+    // the password outside Supabase Auth, and was retired in 0052. One answer
+    // for every case, pointing email accounts at their email.
     if (!looksLikeEmail) {
-      const { data: resolvedEmail, error: lookupError } = await supabase.rpc('customer_signin_email', {
-        p_identifier: input,
-        p_password: password
-      });
-
-      if (lookupError) {
-        console.error('customer_signin_email failed:', lookupError.message);
-        return { success: false, error: 'Could not sign you in right now. Please try again.' };
-      }
-
-      if (typeof resolvedEmail !== 'string' || !resolvedEmail.includes('@')) {
-        return { success: false, error: 'Incorrect phone number or password.' };
-      }
-      email = canonicalEmail(resolvedEmail);
+      return { success: false, error: PHONE_SIGNIN_FAILED.en, errorAr: PHONE_SIGNIN_FAILED.ar };
     }
+    const email = typedEmail;
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email, password, options: { captchaToken: await captcha?.() }
@@ -1659,7 +1712,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (b.status === 'Cancelled') continue;
           // An online hold (0046) is not a booking yet: it joins the queue once
           // paid, when this sync runs again. Expired / refund cases never do.
-          if (b.paymentStatus === 'Awaiting Payment' || b.paymentStatus === 'Expired' || b.paymentStatus === 'Needs Refund') continue;
+          if (b.paymentStatus === 'Awaiting Payment' || b.paymentStatus === 'Expired' || b.paymentStatus === 'Needs Refund' || b.paymentStatus === 'Refund Processing') continue;
 
           // Fresh query on each iteration to prevent race conditions within loop
           const currentQueue = await db.queue.toArray();
@@ -2214,6 +2267,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   /**
+   * What was actually paid: an online payment (0046) records its own amount,
+   * which for a deposit is less than the booking total.
+   */
+  const bookingPaidAmount = (booking: Booking): number =>
+    booking.paymentMode && booking.onlineAmount !== undefined && booking.onlineAmount !== null
+      ? Number(booking.onlineAmount)
+      : booking.totalPrice;
+
+  /**
+   * The stored in-app text for a refunded cancellation. Must match the
+   * 'refund' pattern in notificationText.ts, which renders it in Arabic.
+   */
+  const refundedNotificationMessage = (booking: Booking, amount: number): string => {
+    const formattedDate = formatDate(booking.date, { year: 'numeric', month: 'long', day: 'numeric', timeZone: RIYADH_TIME_ZONE });
+    return `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled, and ${amount} SAR has been refunded. We hope to see you again soon!`;
+  };
+
+  /**
+   * Sends one registered cancellation SMS through send-sms — same established
+   * pattern as notifyPieceStatusChange(): fire-and-forget, phone passed through
+   * unnormalized (send-sms's shared helper normalizes it), failures logged
+   * only, never thrown, never blocking the caller's already-committed writes.
+   */
+  const sendBookingCancellationSms = (
+    booking: Booking,
+    smsKind: BookingCancellationKind,
+    amount: number,
+    logPrefix: string
+  ) => {
+    if (!booking.customerPhone) {
+      console.error(`${logPrefix}: SMS for booking ${booking.id} not sent — no phone number on file.`);
+      return;
+    }
+    const smsClient = supabaseStaff;
+    if (!smsClient) {
+      console.error(`${logPrefix}: SMS for booking ${booking.id} not sent — staff client not configured.`);
+      return;
+    }
+    (async () => {
+      try {
+        // Always English then Arabic, whatever the customer's language
+        // preference — the same shared template the Edge Functions use.
+        const smsText = bookingCancellationSms(smsKind, {
+          workshopTitle: booking.workshopTitle,
+          date: booking.date,
+          amount
+        });
+        const { data: smsData, error: smsError } = await smsClient.functions.invoke('send-sms', {
+          body: { phone: booking.customerPhone, message: smsText }
+        });
+        if (smsError) {
+          let reason = smsError.message || 'unknown error';
+          if (smsError instanceof FunctionsHttpError) {
+            try {
+              const body = await smsError.context.json();
+              reason = (body as { error?: string })?.error || reason;
+            } catch {
+              /* keep the generic reason */
+            }
+          }
+          console.error(`${logPrefix}: SMS for booking ${booking.id} failed:`, reason);
+        } else if (!(smsData as { success?: boolean })?.success) {
+          console.error(`${logPrefix}: SMS for booking ${booking.id} was not confirmed sent:`, (smsData as { error?: string })?.error);
+        }
+      } catch (err: any) {
+        console.error(`${logPrefix}: SMS for booking ${booking.id} failed:`, err?.message || err);
+      }
+    })();
+  };
+
+  /**
    * Computes the refunded/not-refunded message, writes a customer
    * notification row, and fires SMS — for cancelBooking() only (booking
    * cancellation notifications). Not shared with updateQueueStatus()'s
@@ -2242,13 +2366,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const formattedDate = formatDate(booking.date, { year: 'numeric', month: 'long', day: 'numeric', timeZone: RIYADH_TIME_ZONE });
     // What was actually paid: an online payment (0046) records its own amount,
     // which for a deposit is less than the booking total.
-    const refundAmount = booking.paymentMode && booking.onlineAmount !== undefined && booking.onlineAmount !== null
-      ? Number(booking.onlineAmount)
-      : booking.totalPrice;
+    const refundAmount = bookingPaidAmount(booking);
     // In-app wording is the same set cancel_own_booking writes (0031 / 0046 /
     // 0048), so notificationText.ts can show it in Arabic.
     const friendlyMsg = refunded
-      ? `Your booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled, and ${refundAmount} SAR has been refunded. We hope to see you again soon!`
+      ? refundedNotificationMessage(booking, refundAmount)
       : neverPaid
         ? `Your unpaid booking for "${booking.workshopTitle}" on ${formattedDate} has been cancelled. Nothing was charged.`
         : finalPaymentStatus === 'Needs Refund'
@@ -2288,56 +2410,115 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // never blocking cancelBooking()'s own already-committed writes.
     // No registered template is true (never paid, or a refund still due).
     if (!smsKind) return;
-    if (!booking.customerPhone) {
-      console.error(`notifyBookingCancellation: SMS for booking ${booking.id} not sent — no phone number on file.`);
-      return;
+    sendBookingCancellationSms(booking, smsKind, refundAmount, 'notifyBookingCancellation');
+  };
+
+  /**
+   * Staff record that a refund that was due ('Needs Refund') has been made.
+   *
+   * A 'Needs Refund' cancellation sends no SMS (neither registered text is true
+   * yet — see cancellationSmsKind()), so this is the moment the customer gets
+   * the registered "cancelled and {amount} SAR refunded" text.
+   *
+   * Sent once only: the write is a compare-and-set on payment_status =
+   * 'Needs Refund', so only the call that actually moves the booking to
+   * 'Refunded' sends it. A double click, a second staff tab, or a booking that
+   * is already Refunded updates no row and sends nothing.
+   */
+  const markBookingRefunded = async (id: string, user: string = 'Staff'): Promise<{ success: boolean; error?: string }> => {
+    const client = getDataClient();
+    if (!client) return { success: false, error: 'Not connected.' };
+    const booking = await db.bookings.get(id);
+    if (!booking) return { success: false, error: 'Booking not found.' };
+    if (booking.paymentStatus !== 'Needs Refund') {
+      return { success: false, error: 'This booking is not waiting for a refund.' };
     }
-    const smsClient = supabaseStaff;
-    if (!smsClient) {
-      console.error(`notifyBookingCancellation: SMS for booking ${booking.id} not sent — staff client not configured.`);
-      return;
+    // Paid online: the money goes back through Moyasar (refundBookingOnline),
+    // which records the refund itself. Marking it here would say "refunded"
+    // while the customer's card was never credited.
+    if (booking.moyasarPaymentId) {
+      return { success: false, error: 'This booking was paid online. Use the Refund button to return the money through Moyasar.' };
     }
-    (async () => {
-      try {
-        // Always English then Arabic, whatever the customer's language
-        // preference — the same shared template the Edge Functions use. The
-        // in-app notification above keeps friendlyMsg.
-        const smsText = bookingCancellationSms(smsKind, {
-          workshopTitle: booking.workshopTitle,
-          date: booking.date,
-          amount: refundAmount
-        });
-        const { data: smsData, error: smsError } = await smsClient.functions.invoke('send-sms', {
-          body: { phone: booking.customerPhone, message: smsText }
-        });
-        if (smsError) {
-          let reason = smsError.message || 'unknown error';
-          if (smsError instanceof FunctionsHttpError) {
-            try {
-              const body = await smsError.context.json();
-              reason = (body as { error?: string })?.error || reason;
-            } catch {
-              /* keep the generic reason */
-            }
+
+    const nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const row = toRow('bookings', {
+      paymentStatus: 'Refunded',
+      timeline: [...(booking.timeline || []), { time: nowStr, action: `Payment updated to Refunded by ${user}` }]
+    });
+    const { data, error } = await client
+      .from('bookings')
+      .update(row)
+      .eq('id', id)
+      .eq('payment_status', 'Needs Refund')
+      .select('id');
+    if (error) return { success: false, error: error.message };
+    // Someone else already marked it refunded: no second SMS or bell.
+    if (!data || data.length === 0) return { success: true };
+
+    const amount = bookingPaidAmount(booking);
+
+    // Bell notification: the same stored wording a refunded staff cancellation
+    // writes, so notificationText.ts already shows it in Arabic. Best-effort —
+    // the status change has committed; a failed insert is logged, not thrown.
+    try {
+      await db.notifications.add({
+        id: `NOTIF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: 'customer',
+        customerPhone: booking.customerPhone,
+        title: 'Booking Cancelled — Refunded',
+        message: refundedNotificationMessage(booking, amount),
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        highlighted: false
+      });
+    } catch (err: any) {
+      console.error(`markBookingRefunded: in-app notification for booking ${booking.id} failed:`, err?.message || err);
+    }
+
+    sendBookingCancellationSms(booking, 'refunded', amount, 'markBookingRefunded');
+    return { success: true };
+  };
+
+  /**
+   * Staff refund an online payment through Moyasar. Everything is decided by
+   * refund-payment on the server: it is sent the booking id only, never the
+   * amount or payment id. The booking's new status (Refunded, or back to
+   * Needs Refund on failure) arrives through the bookings realtime channel.
+   */
+  const refundBookingOnline = async (id: string): Promise<{ success: boolean; error?: string; method?: string }> => {
+    if (!supabaseStaff) return { success: false, error: 'Staff client not configured.' };
+    try {
+      const { data, error } = await supabaseStaff.functions.invoke('refund-payment', { body: { bookingId: id } });
+      let body = data as { success?: boolean; error?: string; method?: string } | null;
+      if (error) {
+        if (error instanceof FunctionsHttpError) {
+          try {
+            body = await error.context.json();
+          } catch {
+            return { success: false, error: 'The server returned an unexpected response. Check the booking before trying again.' };
           }
-          console.error(`notifyBookingCancellation: SMS for booking ${booking.id} failed:`, reason);
-        } else if (!(smsData as { success?: boolean })?.success) {
-          console.error(`notifyBookingCancellation: SMS for booking ${booking.id} was not confirmed sent:`, (smsData as { error?: string })?.error);
+        } else {
+          return { success: false, error: error.message || 'Could not reach the server. Check your connection and try again.' };
         }
-      } catch (err: any) {
-        console.error(`notifyBookingCancellation: SMS for booking ${booking.id} failed:`, err?.message || err);
       }
-    })();
+      if (body?.success) return { success: true, method: body.method };
+      return { success: false, error: body?.error || 'The refund did not go through.' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Could not reach the server. Check your connection and try again.' };
+    }
   };
 
   const cancelBooking = async (id: string, user: string = 'Staff', paymentStatusUpdate?: 'Refunded' | 'Paid' | 'Unpaid' | 'Deposit Paid') => {
     const booking = await db.bookings.get(id);
     if (booking && booking.status !== 'Cancelled') {
-      // Staff choose the refund outcome explicitly; whatever they pick is
-      // written verbatim, with no 24-hour-policy override in either direction.
-      const finalPaymentStatus: Booking['paymentStatus'] = paymentStatusUpdate || booking.paymentStatus;
-      const actionMsg = `Booking cancelled by ${user}` +
-        (finalPaymentStatus === 'Refunded' ? ' — Refunded' : ' — Not refunded');
+      // Staff choose the refund outcome explicitly, with no 24-hour-policy
+      // override in either direction — except that "Refunded" for an online
+      // payment becomes 'Needs Refund': cancelling moves no money, and the
+      // Refund button returns it through Moyasar (staffCancelPayment()). A
+      // Needs Refund cancellation sends no refunded SMS.
+      const outcome = staffCancelPayment(booking, paymentStatusUpdate);
+      const finalPaymentStatus = outcome.paymentStatus as Booking['paymentStatus'];
+      const actionMsg = `Booking cancelled by ${user}${outcome.note}`;
 
       const nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
       const nowIso = new Date().toISOString();
@@ -3935,25 +4116,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setArea('customer');
   };
 
+  // Always the console on the domain the visitor is already on — the same tab,
+  // no cross-domain hop. On a shared domain this adds ?staff (see above).
   const goToStaffLogin = () => {
-    if (STAFF_SITE_URL) { window.location.href = STAFF_SITE_URL; return; }
     setArea('staff');
   };
   const viewCustomerSite = () => {
-    if (CUSTOMER_SITE_URL) { window.location.href = CUSTOMER_SITE_URL; return; }
+    // Only a dedicated staff hostname sends the browser elsewhere; on a shared
+    // domain (or when the configured URL is this origin) it is an in-tab switch.
+    if (CUSTOMER_SITE_URL && isStaffHostname() && isOtherOrigin(CUSTOMER_SITE_URL)) {
+      window.location.href = CUSTOMER_SITE_URL;
+      return;
+    }
     setArea('customer');
   };
-  /**
-   * Only meaningful for an authenticated staff member. Once the sites are
-   * split, a staff session's storage lives on the staff origin, so
-   * currentStaffId is never populated while landing on the customer
-   * origin from a fresh cross-domain navigation — this stays dead code
-   * in that case, which is correct: there's no session to jump back into
-   * without visiting the staff site's own login again.
-   */
+  /** Back to the console from the customer area, for a signed-in staff member. */
   const returnToStaffConsole = () => {
     if (!currentStaffId) return;
-    if (STAFF_SITE_URL) { window.location.href = STAFF_SITE_URL; return; }
     setArea('staff');
   };
 
@@ -4594,7 +4773,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sessionExpired, clearSessionExpired: () => setSessionExpired(false),
       phoneSetupPending,
       addBooking, bookingError, clearBookingError: () => setBookingError(null),
-      cancelBooking, cancelOwnBooking, updateBookingStatus,
+      cancelBooking, cancelOwnBooking, markBookingRefunded, refundBookingOnline, updateBookingStatus,
       addCategoryIfMissing, updateCategoryNameAr, assignBookingStaff, updateWorkshopSession, appendBookingTimeline,
       getFreshAssignmentSources, getFreshStaff, getCustomerPieceCount,
       addQueueItem, addStaffNotification, updateQueueStatus, updateQueueItem, returnQueueItemToWaiting,

@@ -65,6 +65,8 @@ export type VerifyResult =
       state: VerifyState;
       paymentId: string;
       bookingId: string | null;
+      /** Moyasar's status for the payment as fetched (paid, refunded, voided…). */
+      paymentStatus: string;
       /** Moyasar's decline message, for 'failed'. */
       message?: string | null;
       /** Present for 'confirmed'. */
@@ -181,6 +183,7 @@ export async function verifyAndConfirmPayment(
       state: stateForUnpaidStatus(facts.status),
       paymentId: facts.id,
       bookingId: facts.bookingId,
+      paymentStatus: facts.status,
       message: facts.message
     };
   }
@@ -188,7 +191,7 @@ export async function verifyAndConfirmPayment(
   // 6. Paid, and already judged a final failure: same answer, no second alert.
   const previousOutcome: string | null = previous?.outcome ?? null;
   if (previousOutcome && FINAL_FAILURE_OUTCOMES.has(previousOutcome)) {
-    return { ok: true, state: stateForOutcome(previousOutcome), paymentId: facts.id, bookingId: facts.bookingId };
+    return { ok: true, state: stateForOutcome(previousOutcome), paymentId: facts.id, bookingId: facts.bookingId, paymentStatus: facts.status };
   }
 
   // 7. Paid: let the database decide.
@@ -243,5 +246,5 @@ export async function verifyAndConfirmPayment(
     if (data) booking = summarise(data);
   }
 
-  return { ok: true, state, paymentId: facts.id, bookingId: facts.bookingId, booking };
+  return { ok: true, state, paymentId: facts.id, bookingId: facts.bookingId, paymentStatus: facts.status, booking };
 }

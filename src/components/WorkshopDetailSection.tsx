@@ -19,11 +19,14 @@ import { Edit, ChevronLeft, ChevronRight } from 'lucide-react';
 import { BackButton } from './ui/BackButton';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
+import { isBuiltInFieldCustomerVisible } from '../types';
+import { ONLINE_PAYMENTS_SETTING_ID, normalizeOnlinePayments, bookingPaymentNote } from '../utils/onlinePayments';
+import { ONLINE_PAYMENTS_AVAILABLE } from '../utils/featureFlags';
 
 export const WorkshopDetailSection: React.FC = () => {
   const { 
     workshops, selectedWorkshopId, setCustomerTab, setPendingBooking, currentUser, todayDateStr, staff, queue,
-    workshopFields, categories,
+    workshopFields, categories, appSettings,
     // Shared records, narrowed to this workshop below.
     workshopSessions
   } = useApp();
@@ -372,10 +375,16 @@ export const WorkshopDetailSection: React.FC = () => {
               original per-cell borders take over unchanged. */}
           <div className="grid grid-cols-2 gap-px bg-brand-clay sm:grid-cols-2 sm:gap-0 sm:bg-brand-cream lg:grid-cols-4 rounded-[22px] border border-brand-clay overflow-hidden">
             {[
-              { label: t('Duration', 'المدة'), value: durationLabel(workshop.duration, lang) },
-              { label: t('Ages', 'الأعمار'), value: ageRangeLabel(workshop.ageRange, lang) },
-              { label: t('Tutor', 'المدرّب'), value: workshopTutorName },
-              { label: t('Location', 'الموقع'), value: workshop.room.split('(')[0] },
+              // Built-in fields follow their "Visible to Customers" toggle in
+              // Settings -> Workshop Detail Lists, like the custom ones below.
+              ...([
+                { boundTo: 'duration', label: t('Duration', 'المدة'), value: durationLabel(workshop.duration, lang) },
+                { boundTo: 'ageRange', label: t('Ages', 'الأعمار'), value: ageRangeLabel(workshop.ageRange, lang) },
+                { boundTo: 'staffId', label: t('Tutor', 'المدرّب'), value: workshopTutorName },
+                { boundTo: 'roomId', label: t('Location', 'الموقع'), value: workshop.room.split('(')[0] }
+              ]
+                .filter(cell => isBuiltInFieldCustomerVisible(workshopFields, cell.boundTo))
+                .map(({ label, value }) => ({ label, value }))),
               ...customerVisibleFields.map(field => {
                 const raw = workshop?.customFields?.[field.fieldKey];
                 const text = Array.isArray(raw) ? raw.join(', ') : raw;
@@ -737,9 +746,22 @@ export const WorkshopDetailSection: React.FC = () => {
               {selectedSlot ? t('Confirm Booking', 'تأكيد الحجز') : t('Select a Time Slot', 'اختر وقتًا')}
             </button>
 
-            <p className="text-[10px] text-center text-brand-charcoal/40 italic">
-              {t('Free cancellation up to 24h before session starts.', 'إلغاء مجاني حتى 24 ساعة قبل بدء الجلسة.')}
-            </p>
+            {/* The real policy, from the same Online Payments setting the
+                database enforces (bookingPaymentNote). A "Cancellation policy"
+                link is added once the policy-pages branch is merged. */}
+            {(() => {
+              const note = bookingPaymentNote({
+                available: ONLINE_PAYMENTS_AVAILABLE,
+                config: normalizeOnlinePayments(appSettings.find(s => s.id === ONLINE_PAYMENTS_SETTING_ID)?.value),
+                kind: 'workshop',
+                total: totalPrice
+              });
+              return (
+                <p className="text-[10px] text-center text-brand-charcoal/40 italic">
+                  {t(note.en, note.ar)}
+                </p>
+              );
+            })()}
 
           </div>
         </div>

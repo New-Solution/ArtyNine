@@ -92,6 +92,7 @@ export const PAYMENT_STATUSES = [
   'Unpaid',
   'Awaiting Payment',
   'Needs Refund',
+  'Refund Processing',
   'Refunded',
   'Expired'
 ] as const;
@@ -118,6 +119,8 @@ export function paymentTone(status?: string | null): PaymentTone {
       return 'waiting';
     case 'Needs Refund':
       return 'attention';
+    case 'Refund Processing':
+      return 'waiting';
     case 'Refunded':
       return 'refunded';
     case 'Expired':
@@ -229,11 +232,40 @@ export function paymentBreakdown(b: PaidFields): PaymentBreakdown {
 }
 
 /** Statuses a booking can have once Moyasar money actually arrived for it. */
-const ONLINE_PAID_STATUSES = ['Deposit Paid', 'Paid', 'Needs Refund', 'Refunded'];
+const ONLINE_PAID_STATUSES = ['Deposit Paid', 'Paid', 'Needs Refund', 'Refund Processing', 'Refunded'];
 
 /** A Moyasar payment is recorded and the status says the money arrived. */
 export function isOnlinePaidRecord(b: { moyasarPaymentId?: string | null; paymentStatus?: string | null }): boolean {
   return !!b.moyasarPaymentId && ONLINE_PAID_STATUSES.includes(String(b.paymentStatus ?? ''));
+}
+
+/** The staff-facing instruction for an online refund that is due. */
+export const ONLINE_REFUND_DUE_NOTE = 'Use the Refund button to return the money through Moyasar';
+
+/**
+ * What a STAFF cancellation writes for the payment, from the outcome chosen in
+ * the Cancel dialog ('Refunded', or undefined for "Not refunded").
+ *
+ *   Paid online (moyasarPaymentId) + 'Refunded' -> 'Needs Refund'. Cancelling
+ *     moves no money, so "Refunded" would be false; the Refund button
+ *     (refund-payment, 0054) returns it through Moyasar and only then sends
+ *     the refunded SMS. A Needs Refund cancellation sends no SMS
+ *     (cancellationSmsKind()).
+ *   Anything else -> as chosen (studio payments: staff refund in person, so
+ *     'Refunded' is written as today), or the status kept when nothing was
+ *     chosen.
+ *
+ * `note` is appended to the timeline entry "Booking cancelled by {user}".
+ */
+export function staffCancelPayment(
+  booking: { moyasarPaymentId?: string | null; paymentStatus: string },
+  chosen?: string | null
+): { paymentStatus: string; note: string } {
+  if (chosen === 'Refunded' && booking.moyasarPaymentId) {
+    return { paymentStatus: 'Needs Refund', note: ` — Refund due: ${ONLINE_REFUND_DUE_NOTE}` };
+  }
+  const paymentStatus = chosen || booking.paymentStatus;
+  return { paymentStatus, note: paymentStatus === 'Refunded' ? ' — Refunded' : ' — Not refunded' };
 }
 
 /**
@@ -315,10 +347,55 @@ export function customerAmountView(b: PaidFields & { status?: string | null }): 
   // cancelled line says "Refunded". (cancel_own_booking also writes Refunded
   // for an UNPAID booking cancelled with >24h notice, so "Paid" here could be
   // a lie.)
-  if (status === 'Refunded' || status === 'Needs Refund') return { kind: 'none' };
+  if (status === 'Refunded' || status === 'Needs Refund' || status === 'Refund Processing') return { kind: 'none' };
 
   // Unpaid (or any status that does not say money arrived). A cancelled one
   // owes nothing, so it shows no amount at all.
   if (b.status === 'Cancelled') return { kind: 'none' };
   return { kind: 'due', amount: total };
+}
+
+// -----------------------------------------------------------------------------
+// The one-line payment / cancellation note shown next to a booking button.
+// -----------------------------------------------------------------------------
+
+export interface PaymentNoteText { en: string; ar: string }
+
+/**
+ * What a customer is told before booking, from the same setting the database
+ * enforces (online_payments_config, 0046) and the same refund rule
+ * (cancel_own_booking, 0048):
+ *   payments off (or no payment step in this build) -> pay at the studio,
+ *                                                       free cancellation
+ *   deposit mode -> non-refundable deposit of min(deposit, price) paid online
+ *   full mode    -> refunded when cancelled more than 24 hours ahead
+ * `total` is the booking's price as currently selected; 0 or unknown quotes
+ * the configured deposit.
+ */
+export function bookingPaymentNote(opts: {
+  available: boolean;
+  config: OnlinePaymentsConfig;
+  kind: 'workshop' | 'birthday';
+  total?: number;
+}): PaymentNoteText {
+  const { available, config, kind } = opts;
+  if (!available || !config.enabled) {
+    return {
+      en: 'Pay at the studio — free cancellation, nothing charged.',
+      ar: 'الدفع في الاستوديو — إلغاء مجاني، دون خصم أي مبلغ.'
+    };
+  }
+  const k = config[kind];
+  if (k.mode === 'deposit') {
+    const total = Number(opts.total) || 0;
+    const amount = total > 0 ? estimateOnlineAmount(total, k).dueNow : k.depositAmount;
+    return {
+      en: `A non-refundable deposit of ${amount} SAR is paid online when you book.`,
+      ar: `يُدفع عربون غير قابل للاسترداد بقيمة ${amount} ريال إلكترونيًا عند الحجز.`
+    };
+  }
+  return {
+    en: 'Cancel more than 24 hours before for a full refund.',
+    ar: 'ألغِ قبل أكثر من 24 ساعة لاسترداد المبلغ كاملًا.'
+  };
 }

@@ -29,7 +29,12 @@ assertEqual(canSeeSettingsSection('settings-data-reset', superAdmin), true, 'Sup
 assertEqual(canSeeSettingsSection('settings-data-reset', admin), false, 'Admin does not');
 assertEqual(canSeeSettingsSection('settings-data-reset', staff), false, 'Staff does not');
 assertEqual(canSeeSettingsSection('settings-data-reset', null), false, 'nobody signed in does not');
-assertEqual(canSeeSettingsSection('settings-payments', admin), true, 'other sections unchanged');
+console.log('canSeeSettingsSection() — Online Payments is Super Admin only (0053)');
+assertEqual(canSeeSettingsSection('settings-payments', superAdmin), true, 'Super Admin sees Online Payments');
+assertEqual(canSeeSettingsSection('settings-payments', admin), false, 'Admin does not see Online Payments');
+assertEqual(canSeeSettingsSection('settings-payments', staff), false, 'Staff does not see Online Payments');
+assertEqual(canSeeSettingsSection('settings-payments', null), false, 'nobody signed in does not see Online Payments');
+assertEqual(canSeeSettingsSection('settings-capacity', admin), true, 'other sections unchanged');
 
 console.log('isDataResetConfirmed() — exact phrase only');
 assertEqual(DATA_RESET_PHRASE, 'DELETE EVERYTHING', 'the phrase');

@@ -46,16 +46,31 @@
  * full number, no CVC). Verification-code events are not
  * stored. A failed insert is logged and never changes the response.
  *
+ * REFUNDS (0054)
+ * For payment_refunded / payment_voided, once the fresh fetch confirms the
+ * payment really is refunded / voided, the booking holding it is brought in
+ * line by applyMoyasarRefundEvent() (_shared/refundCompletion.ts): a 'Needs
+ * Refund' booking becomes 'Refunded' through the same exactly-once
+ * complete_booking_refund() refund-payment uses (bell + refunded SMS once);
+ * an already Refunded booking, or one refund-payment is processing, is left
+ * alone (no duplicate SMS); any other booking is left as it is and staff are
+ * alerted. A database failure answers 500 so Moyasar retries.
+ *
  * verify_jwt = false (config.toml): Moyasar sends no Supabase JWT.
  *
  * SECRETS: MOYASAR_WEBHOOK_SECRET, MOYASAR_SECRET_KEY, optional MOYASAR_MODE,
- * plus the platform's SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.
+ * the SMS provider secrets (refunded SMS), plus the platform's SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.112.2';
 import { verifyAndConfirmPayment } from '../_shared/confirmPayment.ts';
 import { parseWebhook, secretKeyProblem, tokensMatch, keyMode, webhookVerification } from '../_shared/moyasarLogic.ts';
 import { recordPaymentEvidence, webhookEvidence } from '../_shared/paymentEvidence.ts';
+import { applyMoyasarRefundEvent } from '../_shared/refundCompletion.ts';
+import { sendSms } from '../_shared/sms.ts';
+
+/** Events that can mean the money went back to the customer. */
+const REFUND_EVENTS = new Set(['payment_refunded', 'payment_voided']);
 
 const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -130,6 +145,13 @@ Deno.serve(async (req: Request) => {
     }
     // Moyasar or the database did not answer: let Moyasar retry.
     return reply(500, { error: 'Temporary failure, please retry.' });
+  }
+
+  // Refunded / voided — believed only because the fetch above says so.
+  if (REFUND_EVENTS.has(parsed.eventType) && (result.paymentStatus === 'refunded' || result.paymentStatus === 'voided')) {
+    const refund = await applyMoyasarRefundEvent(admin, sendSms, result.paymentId, result.paymentStatus);
+    if (!refund.ok) return reply(500, { error: 'Temporary failure, please retry.' });
+    return reply(200, { event: parsed.eventType, state: result.state, refund: refund.action });
   }
 
   return reply(200, { event: parsed.eventType, state: result.state });

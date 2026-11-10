@@ -218,7 +218,7 @@ export const CheckoutInfoSection: React.FC = () => {
 
     const res = await loginCustomer(loginEmail, loginPassword, loginCaptcha.getToken);
     if (!res.success) {
-      setModalError(res.error || t('Login failed.', 'فشل تسجيل الدخول.'));
+      setModalError(res.error && res.errorAr ? t(res.error, res.errorAr) : res.error || t('Login failed.', 'فشل تسجيل الدخول.'));
       // The record exists but has no password. Sending them to the Login page
       // is where the claim step lives.
       setNeedsPasswordSetup(!!res.needsPasswordSetup);

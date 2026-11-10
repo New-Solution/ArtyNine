@@ -228,7 +228,7 @@ export const AuthSection: React.FC = () => {
         setClaimEmail('');
         setClaimEmailHint(res.claimEmailHint || null);
       }
-      setErrorMsg(res.error || 'Invalid credentials.');
+      setErrorMsg(res.error && res.errorAr ? t(res.error, res.errorAr) : res.error || 'Invalid credentials.');
       return;
     }
 

@@ -127,7 +127,6 @@ export const BirthdayBookingSection: React.FC = () => {
 
   // Terms come from Settings → Events & Birthday, never hardcoded here.
   const terms: BirthdayTermsConfig = eventsSettings?.birthdayTerms || DEFAULT_BIRTHDAY_TERMS;
-  const cancellationDays = Number(eventsSettings?.cancellationNoticeDays) || 4;
 
   // Arabic terms exist only when their body is non-empty. When they do AND the visitor
   // reads Arabic, the WHOLE Arabic set replaces the English one; languages never mix.
@@ -574,7 +573,7 @@ export const BirthdayBookingSection: React.FC = () => {
       terms.suppliesIntro,
       ...terms.supplies.map((item, i) => `${i + 1}. ${item}`),
       ...terms.trailingItems
-    ].map(line => renderTermsLine(line, { deposit: depositAmount, cancellationDays }));
+    ].map(line => renderTermsLine(line, { deposit: depositAmount }));
 
     // Arabic twin of the snapshot, only when Arabic terms exist. Built like the English
     // one (same substitutions, numbering baked in) and mirrors what step 4 displays:
@@ -589,7 +588,7 @@ export const BirthdayBookingSection: React.FC = () => {
               ]
             : []),
           ...arTrailing
-        ].map(line => renderTermsLine(line, { deposit: depositAmount, cancellationDays }))
+        ].map(line => renderTermsLine(line, { deposit: depositAmount }))
       : undefined;
     // Which set the customer was actually looking at right now.
     const termsShownLang: 'en' | 'ar' = showArabicTerms ? 'ar' : 'en';
@@ -1092,18 +1091,27 @@ export const BirthdayBookingSection: React.FC = () => {
               {estimatedTotal ? `${estimatedTotal} ${t('SAR', 'ريال')}` : '—'}
             </span>
           </div>
-          <div className="flex items-center justify-between gap-4">
-            <span className="font-semibold text-brand-charcoal">
-              {payMode === 'full' ? t('Due today', 'المستحق اليوم') : t('Deposit due today', 'العربون المستحق اليوم')}
-            </span>
-            <span className="font-display text-xl font-semibold text-brand-terracotta ltr-numerals">
-              {depositAmount} {t('SAR', 'ريال')}
-            </span>
-          </div>
+          {/* Payments off: nothing is charged online (0050 saves the booking
+              Unpaid), so the deposit is shown as due AT THE STUDIO, not today. */}
+          {(onlineLive || depositAmount > 0) && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="font-semibold text-brand-charcoal">
+                {!onlineLive
+                  ? t('Deposit due at the studio', 'العربون المستحق في الاستوديو')
+                  : payMode === 'full' ? t('Due today', 'المستحق اليوم') : t('Deposit due today', 'العربون المستحق اليوم')}
+              </span>
+              <span className="font-display text-xl font-semibold text-brand-terracotta ltr-numerals">
+                {depositAmount} {t('SAR', 'ريال')}
+              </span>
+            </div>
+          )}
           <p className="text-[11px] leading-relaxed text-brand-muted">
-            {payMode === 'full'
+            {!onlineLive
+              ? t('Pay at the studio — nothing charged online.', 'الدفع في الاستوديو — لا يُخصم أي مبلغ إلكترونيًا.')
+              : payMode === 'full'
               ? t('Paid in full online. Any cake upgrade is added at the studio. Cancel more than 24 hours ahead for a refund.', 'يُدفع المبلغ كاملًا إلكترونيًا. أي ترقية للكعكة تُضاف في الاستوديو. يُسترد المبلغ عند الإلغاء قبل أكثر من 24 ساعة.')
-              : t('The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')}
+              // Online deposit: never refunded on a customer cancellation (0048).
+              : t('The deposit is non-refundable. The balance is settled at the studio. Any cake upgrade is added to the final bill.', 'العربون غير قابل للاسترداد. يُسدد باقي المبلغ في الاستوديو. أي ترقية للكعكة تُضاف إلى الفاتورة النهائية.')}
           </p>
         </div>
       </div>
@@ -1368,7 +1376,7 @@ export const BirthdayBookingSection: React.FC = () => {
                       <div className="mt-4 space-y-3 text-xs leading-relaxed text-brand-ink">
                               {shownTerms.leadingItems.map((line, idx) => (
                                 <p key={idx} className="font-semibold text-brand-charcoal">
-                                  {renderTermsLine(line, { deposit: depositAmount, cancellationDays })}
+                                  {renderTermsLine(line, { deposit: depositAmount })}
                                 </p>
                               ))}
 
@@ -1376,7 +1384,7 @@ export const BirthdayBookingSection: React.FC = () => {
                                 <div>
                                   {(!showArabicTerms || shownTerms.suppliesIntro) && (
                                     <p className="mb-1 font-semibold text-brand-charcoal">
-                                      {renderTermsLine(shownTerms.suppliesIntro, { deposit: depositAmount, cancellationDays })}
+                                      {renderTermsLine(shownTerms.suppliesIntro, { deposit: depositAmount })}
                                     </p>
                                   )}
                                   <ol className="list-decimal space-y-0.5 ps-5 font-medium">
@@ -1387,7 +1395,7 @@ export const BirthdayBookingSection: React.FC = () => {
 
                               {shownTerms.trailingItems.map((line, idx) => (
                                 <p key={idx} className="font-medium">
-                                  {renderTermsLine(line, { deposit: depositAmount, cancellationDays })}
+                                  {renderTermsLine(line, { deposit: depositAmount })}
                                 </p>
                               ))}
                       </div>
@@ -1447,9 +1455,12 @@ export const BirthdayBookingSection: React.FC = () => {
                   type="submit"
                   className="cursor-pointer rounded-full bg-brand-terracotta px-8 py-4 text-base font-semibold text-brand-cream shadow-button transition-colors hover:bg-brand-terracotta-hover active:scale-[0.99]"
                 >
-                  {payMode === 'full'
-                    ? <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR', 'ريال')}</>
-                    : <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR Deposit', 'ريال عربون')}</>}
+                  {!onlineLive
+                    // Nothing is charged online, so the button must not say "Pay".
+                    ? t('Confirm Booking — Pay at the studio', 'تأكيد الحجز — الدفع في الاستوديو')
+                    : payMode === 'full'
+                      ? <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR', 'ريال')}</>
+                      : <>{t('Pay', 'ادفع')} {depositAmount} {t('SAR Deposit', 'ريال عربون')}</>}
                 </button>
               )}
             </div>
