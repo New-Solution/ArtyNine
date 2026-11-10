@@ -21,12 +21,6 @@ export type InfoPage = typeof INFO_PAGES[number];
 
 export const INFO_PAGE_PARAM = 'page';
 
-/**
- * Marks every statement the studio still has to confirm. One string, so the
- * remaining items can be found with a single search before launch.
- */
-export const CONFIRM_WITH_CLIENT = '[CONFIRM WITH CLIENT]';
-
 export function isInfoPage(value: unknown): value is InfoPage {
   return typeof value === 'string' && (INFO_PAGES as readonly string[]).includes(value);
 }

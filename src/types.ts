@@ -1890,15 +1890,17 @@ export const DEFAULT_PREPAYMENT_POPUP: PrePaymentPopupConfig = {
   enabled: true,
   title: 'Important Studio Safety & Timeline Instructions',
   message: 'Please note the following studio rules before proceeding to payment.',
+  // Matches the Terms page (pickup about two weeks; pieces kept about 1.5
+  // months; aprons provided). Change the two together.
   instructions: [
-    'Clay Processing Time: All pottery created in the studio takes 10 to 14 days to completely air dry, undergo bisque-firing, be hand-glazed, and fired a second time.',
+    'Clay Processing Time: All pottery created in the studio takes about two weeks to completely air dry, undergo bisque-firing, be hand-glazed, and fired a second time.',
     'Live Tracker: Once booked, your piece will appear in your "My Pieces" collection tracker where you can track its lifecycle stages.',
-    'Safety Attire: We recommend wearing clothes you do not mind getting a little clay on (although aprons are provided!).',
-    'Storage Window: Your finished pieces will be held at our collection shelves for up to 30 days post-firing.'
+    'Safety Attire: We recommend wearing clothes you do not mind getting a little clay on. Aprons are provided.',
+    'Storage Window: Your finished pieces are kept for about 1.5 months after they are ready, so please collect them within that time.'
   ],
   buttonLabel: 'Continue to Payment',
   requiredCheckbox: true,
-  checkboxLabel: 'I confirm I have read these safety rules and understand the 10-14 day firing timeline.'
+  checkboxLabel: 'I confirm I have read these studio rules and understand the firing timeline of about two weeks.'
 };
 
 /** Turns a fragment of the old HTML body into readable plain text. */
@@ -1977,10 +1979,21 @@ export const DEFAULT_POPUP_AR: Array<{ en: string; ar: string }> = [
     ar: 'تعليمات مهمة للسلامة والجدول الزمني في الاستوديو' },
   { en: 'Please note the following studio rules before proceeding to payment.',
     ar: 'يرجى الاطلاع على قواعد الاستوديو التالية قبل المتابعة إلى الدفع.' },
+  { en: 'Clay Processing Time: All pottery created in the studio takes about two weeks to completely air dry, undergo bisque-firing, be hand-glazed, and fired a second time.',
+    ar: 'مدة تجهيز الفخار: تستغرق جميع القطع الفخارية التي تُصنع في الاستوديو أسبوعين تقريبًا لتجف تمامًا، ثم تخضع للحرق الأول، وتُزجَّج يدويًا، وتُحرق مرة ثانية.' },
+  // The previous wording, still stored in the live setting until it is edited
+  // or 0056 runs; kept so it still shows in Arabic meanwhile.
   { en: 'Clay Processing Time: All pottery created in the studio takes 10 to 14 days to completely air dry, undergo bisque-firing, be hand-glazed, and fired a second time.',
     ar: 'مدة تجهيز الفخار: تستغرق جميع القطع الفخارية التي تُصنع في الاستوديو من 10 إلى 14 يومًا لتجف تمامًا، ثم تخضع للحرق الأول، وتُزجَّج يدويًا، وتُحرق مرة ثانية.' },
   { en: 'Live Tracker: Once booked, your piece will appear in your "My Pieces" collection tracker where you can track its lifecycle stages.',
     ar: 'المتابعة المباشرة: بعد الحجز ستظهر قطعتك في متتبع «أعمالي» حيث يمكنك متابعة مراحلها.' },
+  { en: 'Safety Attire: We recommend wearing clothes you do not mind getting a little clay on. Aprons are provided.',
+    ar: 'ملابس مناسبة: نوصي بارتداء ملابس لا تمانع أن يصيبها بعض الطين. نوفّر المآزر.' },
+  { en: 'Storage Window: Your finished pieces are kept for about 1.5 months after they are ready, so please collect them within that time.',
+    ar: 'مدة الحفظ: نحتفظ بقطعك المكتملة لمدة شهر ونصف تقريبًا بعد جاهزيتها، لذا يرجى استلامها خلال هذه المدة.' },
+  { en: 'I confirm I have read these studio rules and understand the firing timeline of about two weeks.',
+    ar: 'أؤكد أنني قرأت قواعد الاستوديو هذه وأفهم أن مدة الحرق أسبوعان تقريبًا.' },
+  // Previous wording (see above).
   { en: 'Safety Attire: We recommend wearing clothes you do not mind getting a little clay on (although aprons are provided!).',
     ar: 'ملابس مناسبة: نوصي بارتداء ملابس لا تمانع أن يصيبها بعض الطين (علمًا بأن المآزر متوفرة!).' },
   { en: 'Storage Window: Your finished pieces will be held at our collection shelves for up to 30 days post-firing.',

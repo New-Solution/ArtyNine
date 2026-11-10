@@ -4,9 +4,9 @@
  *
  * Privacy Policy — public, no sign-in. Same layout and plain style as Terms.
  *
- * Statements the studio has not confirmed are wrapped in <ConfirmWithClient>,
- * which prints the literal [CONFIRM WITH CLIENT] marker. Remove the wrapper
- * once a statement is confirmed (or reword it).
+ * Legal name, photo permission, retention (while the account is active) and
+ * the reply time (a few business days) were confirmed by the studio on
+ * 10 Nov 2026.
  *
  * Facts taken from the code rather than assumed:
  *   - customers: name, phone, optional email; bookings; birthday details
@@ -28,7 +28,8 @@
 
 import React from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { InfoPageLayout, InfoSection, InfoList, ConfirmWithClient, InfoPageLink } from './ui/InfoPage';
+import { STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR } from '../utils/studioConfig';
+import { InfoPageLayout, InfoSection, InfoList, InfoPageLink } from './ui/InfoPage';
 
 export const PrivacyPolicySection: React.FC = () => {
   const { t } = useLanguage();
@@ -43,10 +44,10 @@ export const PrivacyPolicySection: React.FC = () => {
             'This policy explains what personal information Arty Café, Jeddah collects when you use this website or visit the studio, why we use it, and the choices you have. Arty Café is operated by',
             'توضح هذه السياسة المعلومات الشخصية التي يجمعها آرتي كافيه، جدة عند استخدامك هذا الموقع أو زيارتك للاستوديو، وسبب استخدامنا لها، والخيارات المتاحة لك. يُدار آرتي كافيه من قِبل'
           )}{' '}
-          <ConfirmWithClient>{t('legal entity name, CR number', 'الاسم النظامي للمنشأة، رقم السجل التجاري')}</ConfirmWithClient>.
+          {t(STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR)}.
         </>
       }
-      updated={t('Last updated: 9 November 2026', 'آخر تحديث: ٩ نوفمبر ٢٠٢٦')}
+      updated={t('Last updated: 10 November 2026', 'آخر تحديث: ١٠ نوفمبر ٢٠٢٦')}
     >
       <InfoSection title={t('1. What we collect', '١. المعلومات التي نجمعها')}>
         <InfoList items={[
@@ -149,34 +150,23 @@ export const PrivacyPolicySection: React.FC = () => {
             'Photos of your pieces are stored privately and are visible only to our staff.',
             'تُخزَّن صور قطعك بشكل خاص، وهي مرئية لموظفينا فقط.'
           ),
-          <ConfirmWithClient>
-            {t(
-              'We will not post photos of your pieces, or of you or your child, on social media without your permission. You can tell a member of staff at any time if you would rather not appear.',
-              'لن ننشر صور قطعك أو صورك أو صور طفلك على وسائل التواصل الاجتماعي دون إذنك. ويمكنك إبلاغ أحد الموظفين في أي وقت إن كنت لا ترغب في الظهور.'
-            )}
-          </ConfirmWithClient>,
-          <ConfirmWithClient>
-            {t(
-              'Piece photos are deleted when the piece has been collected, or with your account.',
-              'تُحذف صور القطع بعد استلام القطعة، أو عند حذف حسابك.'
-            )}
-          </ConfirmWithClient>
+          t(
+            'The studio asks for your permission before photographing you.',
+            'يستأذنك الاستوديو قبل تصويرك.'
+          )
         ]} />
       </InfoSection>
 
       <InfoSection title={t('6. How long we keep it', '٦. مدة الاحتفاظ بالمعلومات')}>
         <InfoList items={[
-          <>
-            {t('Your account and booking history: for as long as you have an account, and', 'حسابك وسجل حجوزاتك: طوال مدة وجود حسابك، و')}{' '}
-            <ConfirmWithClient>{t('X months after your last visit', 'X شهرًا بعد آخر زيارة')}</ConfirmWithClient>.
-          </>,
-          <>
-            {t(
-              'Payment and refund records: for as long as Saudi accounting and tax rules require, even if you delete your account.',
-              'سجلات المدفوعات والمبالغ المستردة: للمدة التي تتطلبها الأنظمة المحاسبية والضريبية في المملكة، حتى لو حذفت حسابك.'
-            )}{' '}
-            <ConfirmWithClient>{t('Number of years', 'عدد السنوات')}</ConfirmWithClient>
-          </>,
+          t(
+            'Your account and booking history: kept while your account is active.',
+            'حسابك وسجل حجوزاتك: نحتفظ بها طوال فترة نشاط حسابك.'
+          ),
+          t(
+            'Payment and refund records: for as long as Saudi accounting and tax rules require, even if you delete your account.',
+            'سجلات المدفوعات والمبالغ المستردة: للمدة التي تتطلبها الأنظمة المحاسبية والضريبية في المملكة، حتى لو حذفت حسابك.'
+          ),
           t(
             'Your browser keeps you signed in and remembers your language choice on your own device. Signing out clears your session.',
             'يُبقيك متصفحك مسجّل الدخول ويتذكّر اختيارك للغة على جهازك. ويؤدي تسجيل الخروج إلى إنهاء جلستك.'
@@ -192,10 +182,9 @@ export const PrivacyPolicySection: React.FC = () => {
           )}
           <InfoPageLink page="contact">{t('Contact the studio', 'تواصل مع الاستوديو')}</InfoPageLink>
           {t(
-            ' from the phone number on your account, and we will reply within',
-            ' من رقم الجوال المسجّل في حسابك، وسنرد خلال'
-          )}{' '}
-          <ConfirmWithClient>{t('X days', 'X يومًا')}</ConfirmWithClient>.
+            ' from the phone number on your account, and we will reply within a few business days.',
+            ' من رقم الجوال المسجّل في حسابك، وسنرد خلال بضعة أيام عمل.'
+          )}
         </p>
         <p>
           {t(

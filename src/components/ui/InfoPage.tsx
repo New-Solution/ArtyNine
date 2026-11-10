@@ -11,7 +11,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { CONFIRM_WITH_CLIENT, infoPageHref, type InfoPage } from '../../utils/infoPages';
+import { infoPageHref, type InfoPage } from '../../utils/infoPages';
 
 interface InfoPageLayoutProps {
   eyebrow: string;
@@ -50,19 +50,6 @@ export const InfoList: React.FC<{ items: React.ReactNode[] }> = ({ items }) => (
   </ul>
 );
 
-/**
- * Text the studio still has to confirm. Rendered visibly, in both languages,
- * with the literal CONFIRM_WITH_CLIENT marker so it cannot slip into launch
- * unnoticed and every one can be found with a single search.
- */
-export const ConfirmWithClient: React.FC<{ children?: React.ReactNode }> = ({ children }) => (
-  <span className="rounded bg-amber-100 px-1 py-0.5 font-semibold text-amber-900">
-    {children}
-    {children ? ' ' : ''}
-    <span dir="ltr">{CONFIRM_WITH_CLIENT}</span>
-  </span>
-);
-
 /** An in-site link to another customer page. */
 export const InfoPageLink: React.FC<{ page: InfoPage; children: React.ReactNode }> = ({ page, children }) => {
   const { setCustomerTab } = useApp();
@@ -80,7 +67,7 @@ export const InfoPageLink: React.FC<{ page: InfoPage; children: React.ReactNode 
 /** "Last updated" line. The date is the day the wording was written. */
 export const useUpdatedLine = (): string => {
   const { t } = useLanguage();
-  return t('Last updated: 8 November 2026', 'آخر تحديث: ٨ نوفمبر ٢٠٢٦');
+  return t('Last updated: 10 November 2026', 'آخر تحديث: ١٠ نوفمبر ٢٠٢٦');
 };
 
 /**

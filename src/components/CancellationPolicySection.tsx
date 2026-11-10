@@ -18,6 +18,9 @@
  *     'full' = the whole price.
  *   - holdMinutes: an unpaid hold stops taking a seat at payment_expires_at;
  *     auto-cancel-bookings marks it Expired (after checking Moyasar).
+ * Studio practice confirmed by the studio (10 Nov 2026), not enforced in code:
+ * refunds within about one week; an alternative appointment when the studio
+ * cancels or reschedules; more than 15 minutes late = moved to another time.
  * Amounts and modes come from the live onlinePayments setting, read through
  * the same normalizeOnlinePayments() the checkout uses, so this page cannot
  * quote a different deposit or hold time from the one being charged.
@@ -33,7 +36,7 @@ import {
   type OnlinePaymentKindConfig
 } from '../utils/onlinePayments';
 import {
-  InfoPageLayout, InfoSection, InfoList, ConfirmWithClient, InfoPageLink, useUpdatedLine
+  InfoPageLayout, InfoSection, InfoList, InfoPageLink, useUpdatedLine
 } from './ui/InfoPage';
 
 /** Mirrors cancel_own_booking's `hours_notice > 24`. */
@@ -51,11 +54,9 @@ export const CancellationPolicySection: React.FC = () => {
   const refundHow = (
     <>
       {t(
-        'The refund is issued by the studio, to the original payment method, within',
-        'يُصدر الاستوديو المبلغ المسترد إلى وسيلة الدفع الأصلية خلال'
-      )}{' '}
-      <ConfirmWithClient>{t('X business days', 'X أيام عمل')}</ConfirmWithClient>
-      {t('. Your bank may take a few extra days to show it.', '. قد يستغرق ظهوره في حسابك البنكي بضعة أيام إضافية.')}
+        'The refund is issued by the studio to the original payment method within about one week. Your bank may take a few extra days to show it.',
+        'يُصدر الاستوديو المبلغ المسترد إلى وسيلة الدفع الأصلية خلال أسبوع تقريبًا. قد يستغرق ظهوره في حسابك البنكي بضعة أيام إضافية.'
+      )}
     </>
   );
 
@@ -186,6 +187,15 @@ export const CancellationPolicySection: React.FC = () => {
         </p>
       </InfoSection>
 
+      <InfoSection title={t('Late arrival', 'التأخر عن الموعد')}>
+        <p>
+          {t(
+            'If you arrive more than 15 minutes late, the appointment is cancelled and moved to another time.',
+            'في حال التأخر أكثر من 15 دقيقة عن الموعد، يُلغى الموعد ويُنقل إلى وقت آخر.'
+          )}
+        </p>
+      </InfoSection>
+
       <InfoSection title={t('No-shows', 'عدم الحضور')}>
         <p>
           {t(
@@ -211,12 +221,10 @@ export const CancellationPolicySection: React.FC = () => {
 
       <InfoSection title={t('If the studio cancels or changes a session', 'إذا ألغى الاستوديو جلسة أو غيّرها')}>
         <p>
-          <ConfirmWithClient>
-            {t(
-              'If the studio has to cancel or reschedule your session, you can choose a new time or a full refund of everything you paid, including any deposit.',
-              'إذا اضطر الاستوديو إلى إلغاء جلستك أو تغيير موعدها، يمكنك اختيار موعد جديد أو استرداد كامل ما دفعته، بما في ذلك العربون.'
-            )}
-          </ConfirmWithClient>
+          {t(
+            'If the studio has to cancel or reschedule your session, you will be offered an alternative appointment.',
+            'إذا اضطر الاستوديو إلى إلغاء جلستك أو تغيير موعدها، سيُعرض عليك موعد بديل.'
+          )}
         </p>
       </InfoSection>
 

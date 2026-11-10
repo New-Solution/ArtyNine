@@ -26,10 +26,15 @@ export const STUDIO_WHATSAPP_URL = `https://wa.me/${STUDIO_WHATSAPP_DIGITS}`;
 export const STUDIO_EMAIL = 'arty.cafe85@gmail.com';
 
 export const STUDIO_ADDRESS = '3331 Ahmad Al Attas, Al Zahra District, Jeddah 23521, Saudi Arabia';
-export const STUDIO_ADDRESS_AR = '3331 شارع أحمد العطاس، حي الزهراء، جدة 23521، المملكة العربية السعودية';
+/** The studio's own Arabic wording (confirmed 10 Nov 2026), not a translation of the English. */
+export const STUDIO_ADDRESS_AR = 'حي الزهراء، الساحة سكوير، جدة';
 /** The short form shown on the booking confirmation and in the calendar file. */
 export const STUDIO_ADDRESS_SHORT = 'Ahmad Al Attas St, Jeddah';
-export const STUDIO_ADDRESS_SHORT_AR = 'شارع أحمد العطاس، جدة';
+export const STUDIO_ADDRESS_SHORT_AR = STUDIO_ADDRESS_AR;
+/** The company that operates Arty Café (no CR / VAT number is published). */
+export const STUDIO_LEGAL_NAME = 'Hiba Reda Marei Arts Company';
+export const STUDIO_LEGAL_NAME_AR = 'شركة هبة رضا مرعي للفنون';
+
 export const STUDIO_MAPS_URL = 'https://maps.app.goo.gl/Br4QagaCrPKeJ8EW8';
 
 /**

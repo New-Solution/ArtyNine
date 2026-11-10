@@ -4,7 +4,8 @@
  *
  * Contact — public, no sign-in. Every detail comes from studioConfig.ts, the
  * same constants the home page's "Slow down & visit us" block and the footer
- * use. Items the site does not have yet are shown as [CONFIRM WITH CLIENT].
+ * use. Only the legal name is published under business details: the studio
+ * has no CR / VAT number to show.
  */
 
 import React from 'react';
@@ -13,9 +14,9 @@ import { useLanguage } from '../context/LanguageContext';
 import {
   STUDIO_PHONE, STUDIO_PHONE_TEL, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL,
   STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_MAPS_URL, STUDIO_INSTAGRAM_URL, STUDIO_INSTAGRAM_HANDLE,
-  STUDIO_TIKTOK_URL, STUDIO_FACEBOOK_URL
+  STUDIO_TIKTOK_URL, STUDIO_FACEBOOK_URL, STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR
 } from '../utils/studioConfig';
-import { InfoPageLayout, InfoSection, ConfirmWithClient, InfoPageLink } from './ui/InfoPage';
+import { InfoPageLayout, InfoSection, InfoPageLink } from './ui/InfoPage';
 import { StudioHours } from './ui/StudioHours';
 
 const linkClass = 'font-semibold text-brand-charcoal hover:text-brand-terracotta break-words';
@@ -83,11 +84,7 @@ export const ContactSection: React.FC = () => {
 
       <InfoSection title={t('Business details', 'بيانات المنشأة')}>
         <Row icon={Building2} label={t('Registered business', 'المنشأة المسجلة')}>
-          <ul className="space-y-1">
-            <li>{t('Legal name', 'الاسم النظامي')}: <ConfirmWithClient /></li>
-            <li>{t('Commercial Registration (CR) no.', 'رقم السجل التجاري')}: <ConfirmWithClient /></li>
-            <li>{t('VAT no.', 'الرقم الضريبي')}: <ConfirmWithClient /></li>
-          </ul>
+          <p>{t('Legal name', 'الاسم النظامي')}: {t(STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR)}</p>
         </Row>
       </InfoSection>
 

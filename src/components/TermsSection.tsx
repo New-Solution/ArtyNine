@@ -4,22 +4,24 @@
  *
  * Terms & Conditions — public, no sign-in. Deliberately short and plain.
  *
- * Statements the studio has not confirmed are wrapped in <ConfirmWithClient>,
- * which prints the literal [CONFIRM WITH CLIENT] marker. Remove the wrapper
- * once a statement is confirmed (or reword it).
+ * Studio practice (late arrival, children's ages, aprons, pickup window,
+ * broken pieces, photos, VAT, how the balance is paid, legal name) was
+ * confirmed by the studio on 10 Nov 2026.
  *
  * Facts taken from the code rather than assumed:
  *   - online booking needs an account (0049: bookings require a signed-in caller);
  *   - Moyasar, SAR, methods 'creditcard' + 'applepay' (MOYASAR_METHODS) —
  *     Moyasar's card form takes Visa, Mastercard and mada;
  *   - "ready for pickup in approximately two weeks" and SMS updates
- *     (pieceSmsTemplates.ts).
+ *     (pieceSmsTemplates.ts);
+ *   - the pickup window matches the Booking Pop-up default (DEFAULT_PREPAYMENT_POPUP).
  */
 
 import React from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR } from '../utils/studioConfig';
 import {
-  InfoPageLayout, InfoSection, InfoList, ConfirmWithClient, InfoPageLink, useUpdatedLine
+  InfoPageLayout, InfoSection, InfoList, InfoPageLink, useUpdatedLine
 } from './ui/InfoPage';
 
 export const TermsSection: React.FC = () => {
@@ -36,7 +38,7 @@ export const TermsSection: React.FC = () => {
             'These terms apply when you book or attend a session at Arty Café, Jeddah. By booking, you agree to them. Arty Café is operated by',
             'تنطبق هذه الشروط عند الحجز أو حضور جلسة في آرتي كافيه، جدة. بإتمامك الحجز فإنك توافق عليها. يُدار آرتي كافيه من قِبل'
           )}{' '}
-          <ConfirmWithClient>{t('legal entity name, CR number', 'الاسم النظامي للمنشأة، رقم السجل التجاري')}</ConfirmWithClient>.
+          {t(STUDIO_LEGAL_NAME, STUDIO_LEGAL_NAME_AR)}.
         </>
       }
       updated={updated}
@@ -51,12 +53,10 @@ export const TermsSection: React.FC = () => {
             'A booking paid online is confirmed once the payment succeeds. A booking paid at the studio is confirmed when you complete it.',
             'يتأكد الحجز المدفوع إلكترونيًا عند نجاح الدفع، ويتأكد الحجز المدفوع في الاستوديو عند إتمامه.'
           ),
-          <>
-            {t('Places are limited. Please arrive on time.', 'الأماكن محدودة. يرجى الحضور في الموعد.')}{' '}
-            <ConfirmWithClient>
-              {t('A late arrival may have a shorter session.', 'قد تقصر مدة الجلسة عند التأخر.')}
-            </ConfirmWithClient>
-          </>,
+          t(
+            'Places are limited. Please arrive on time: if you arrive more than 15 minutes late, the appointment is cancelled and moved to another time.',
+            'الأماكن محدودة. يرجى الحضور في الموعد: في حال التأخر أكثر من 15 دقيقة يُلغى الموعد ويُنقل إلى وقت آخر.'
+          ),
           <>
             {t('Cancellations and refunds follow our ', 'يخضع الإلغاء والاسترداد لـ')}
             <InfoPageLink page="cancellation-policy">{t('Cancellation & Refund Policy', 'سياسة الإلغاء والاسترداد')}</InfoPageLink>.
@@ -67,9 +67,7 @@ export const TermsSection: React.FC = () => {
       <InfoSection title={t('2. Payments', '٢. المدفوعات')}>
         <InfoList items={[
           t('All prices are in Saudi riyals (SAR).', 'جميع الأسعار بالريال السعودي.'),
-          <ConfirmWithClient>
-            {t('Prices include VAT.', 'الأسعار شاملة ضريبة القيمة المضافة.')}
-          </ConfirmWithClient>,
+          t('All prices include VAT.', 'جميع الأسعار شاملة ضريبة القيمة المضافة.'),
           t(
             'Online payments are processed securely by Moyasar, a licensed Saudi payment provider. You can pay by credit or debit card (Visa, Mastercard), mada or Apple Pay.',
             'تتم معالجة المدفوعات الإلكترونية بأمان عبر Moyasar، مزوّد دفع سعودي مرخّص. يمكنك الدفع ببطاقة ائتمانية أو بطاقة خصم (Visa وMastercard) أو مدى أو Apple Pay.'
@@ -78,31 +76,20 @@ export const TermsSection: React.FC = () => {
             'Your card details are entered on Moyasar\'s secure form. Arty Café never sees or stores your full card number.',
             'تُدخل بيانات بطاقتك في نموذج Moyasar الآمن، ولا يطّلع آرتي كافيه على رقم بطاقتك الكامل ولا يحتفظ به.'
           ),
-          <>
-            {t('Any amount still due is paid at the studio by', 'يُدفع أي مبلغ متبقٍ في الاستوديو عبر')}{' '}
-            <ConfirmWithClient>{t('cash, card or mada', 'النقد أو البطاقة أو مدى')}</ConfirmWithClient>.
-          </>
+          t(
+            'Any amount still due is paid at the studio by card, mada or cash.',
+            'يُدفع أي مبلغ متبقٍ في الاستوديو بالبطاقة أو مدى أو نقدًا.'
+          )
         ]} />
       </InfoSection>
 
       <InfoSection title={t('3. Children\'s sessions', '٣. جلسات الأطفال')}>
         <InfoList items={[
-          <>
-            {t('Children\'s sessions are for ages', 'جلسات الأطفال مخصصة للأعمار')}{' '}
-            <ConfirmWithClient>{t('X and up', 'من X سنوات فأكثر')}</ConfirmWithClient>.
-          </>,
-          <>
-            {t('Children under', 'يجب أن يبقى مع الأطفال دون سن')}{' '}
-            <ConfirmWithClient>{t('X years must stay with a parent or guardian', 'X سنوات أحد الوالدين أو وليّ الأمر')}</ConfirmWithClient>{' '}
-            {t('for the whole session. Parents and guardians remain responsible for their children at all times.', 'طوال الجلسة. ويبقى الوالدان أو وليّ الأمر مسؤولين عن أطفالهم في جميع الأوقات.')}
-          </>,
-          <>
-            {t(
-              'Clay and paint can stain clothes, so please dress children in clothes that can get messy.',
-              'قد يترك الطين والألوان بقعًا على الملابس، لذا يُفضّل إلباس الأطفال ملابس لا بأس باتساخها.'
-            )}{' '}
-            <ConfirmWithClient>{t('Aprons are provided.', 'نوفّر مرايل.')}</ConfirmWithClient>
-          </>
+          t('Children\'s sessions are for ages 7 and up.', 'جلسات الأطفال مخصصة للأعمار من 7 سنوات فأكثر.'),
+          t(
+            'Clay and paint can stain clothes, so please dress children in clothes that can get messy. Aprons are provided.',
+            'قد يترك الطين والألوان بقعًا على الملابس، لذا يُفضّل إلباس الأطفال ملابس لا بأس باتساخها. نوفّر المآزر.'
+          )
         ]} />
       </InfoSection>
 
@@ -112,19 +99,14 @@ export const TermsSection: React.FC = () => {
             'Pieces need to dry and be fired in the kiln. A piece is usually ready for pickup in about two weeks. We will let you know by SMS when it is ready.',
             'تحتاج القطع إلى التجفيف والحرق في الفرن، وتكون القطعة جاهزة للاستلام عادةً خلال أسبوعين تقريبًا. سنُعلمك برسالة نصية عند جاهزيتها.'
           ),
-          <>
-            {t('Please collect your piece within', 'يرجى استلام قطعتك خلال')}{' '}
-            <ConfirmWithClient>{t('X days', 'X يومًا')}</ConfirmWithClient>{' '}
-            {t('of being told it is ready. Pieces not collected after that may be disposed of', 'من إشعارك بجاهزيتها. وقد يتم التخلص من القطع غير المستلمة بعد ذلك')}{' '}
-            <ConfirmWithClient />.
-          </>,
-          <>
-            {t(
-              'Clay is a natural material: a piece can crack or break while drying or firing, even with the greatest care. If that happens,',
-              'الطين مادة طبيعية، وقد تتشقق القطعة أو تنكسر أثناء التجفيف أو الحرق رغم كل العناية. وفي هذه الحالة'
-            )}{' '}
-            <ConfirmWithClient>{t('we will let you know and offer a free session to make a new piece; no cash refund', 'سنُعلمك ونقدّم لك جلسة مجانية لصنع قطعة جديدة، دون استرداد نقدي')}</ConfirmWithClient>.
-          </>,
+          t(
+            'Finished pieces are kept for about 1.5 months after they are ready, so please collect yours within that time.',
+            'نحتفظ بالقطع المكتملة لمدة شهر ونصف تقريبًا بعد جاهزيتها، لذا يرجى استلام قطعتك خلال هذه المدة.'
+          ),
+          t(
+            'Clay is a natural material: a piece can crack or break while drying or firing, even with the greatest care. If that happens, the studio makes a new piece and you colour it. There is no cash refund.',
+            'الطين مادة طبيعية، وقد تتشقق القطعة أو تنكسر أثناء التجفيف أو الحرق رغم كل العناية. وفي هذه الحالة يصنع الاستوديو قطعة جديدة وتقوم أنت بتلوينها، دون استرداد نقدي.'
+          ),
           t(
             'Colours and glazes can look different after firing.',
             'قد تختلف الألوان والطلاءات بعد الحرق.'
@@ -133,20 +115,12 @@ export const TermsSection: React.FC = () => {
       </InfoSection>
 
       <InfoSection title={t('5. Photos', '٥. الصور')}>
-        <InfoList items={[
-          <ConfirmWithClient>
-            {t(
-              'We may take photos and videos during sessions and share them on our social media.',
-              'قد نلتقط صورًا ومقاطع فيديو أثناء الجلسات وننشرها على حساباتنا في وسائل التواصل الاجتماعي.'
-            )}
-          </ConfirmWithClient>,
-          <ConfirmWithClient>
-            {t(
-              'If you would rather you or your child did not appear, please tell a member of staff before the session. We never post a child\'s full name.',
-              'إذا كنت لا ترغب في ظهورك أو ظهور طفلك، يرجى إبلاغ أحد الموظفين قبل الجلسة. لا ننشر الاسم الكامل لأي طفل.'
-            )}
-          </ConfirmWithClient>
-        ]} />
+        <p>
+          {t(
+            'The studio asks for your permission before photographing you.',
+            'يستأذنك الاستوديو قبل تصويرك.'
+          )}
+        </p>
       </InfoSection>
 
       <InfoSection title={t('6. Changes by the studio', '٦. التغييرات من قِبل الاستوديو')}>
@@ -155,15 +129,10 @@ export const TermsSection: React.FC = () => {
             'We may occasionally need to change the instructor, or reschedule or cancel a session. We will tell you as early as we can.',
             'قد نحتاج أحيانًا إلى تغيير المدرّب أو تغيير موعد الجلسة أو إلغائها، وسنُعلمك بذلك في أقرب وقت ممكن.'
           ),
-          <>
-            {t('If we cancel or reschedule your session, ', 'إذا ألغينا جلستك أو غيّرنا موعدها، ')}
-            <ConfirmWithClient>
-              {t(
-                'you can choose a new time or a full refund of everything you paid, including any deposit.',
-                'يمكنك اختيار موعد جديد أو استرداد كامل ما دفعته، بما في ذلك العربون.'
-              )}
-            </ConfirmWithClient>
-          </>,
+          t(
+            'If we cancel or reschedule your session, we will offer you an alternative appointment.',
+            'إذا ألغينا جلستك أو غيّرنا موعدها، سنعرض عليك موعدًا بديلًا.'
+          ),
           t(
             'Prices and session details may change, but a change never affects a booking you have already confirmed.',
             'قد تتغير الأسعار وتفاصيل الجلسات، لكن أي تغيير لا يؤثر على حجز أكّدته مسبقًا.'
@@ -177,12 +146,10 @@ export const TermsSection: React.FC = () => {
 
       <InfoSection title={t('7. Governing law', '٧. القانون المعمول به')}>
         <p>
-          <ConfirmWithClient>
-            {t(
-              'These terms are governed by the laws of the Kingdom of Saudi Arabia.',
-              'تخضع هذه الشروط لأنظمة المملكة العربية السعودية.'
-            )}
-          </ConfirmWithClient>
+          {t(
+            'These terms are governed by the laws of the Kingdom of Saudi Arabia.',
+            'تخضع هذه الشروط لأنظمة المملكة العربية السعودية.'
+          )}
         </p>
       </InfoSection>
 

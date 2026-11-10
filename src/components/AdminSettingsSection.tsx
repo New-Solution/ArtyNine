@@ -1186,7 +1186,7 @@ export const AdminSettingsSection: React.FC = () => {
                       instructions: e.target.value.split('\n')
                     })}
                     className="w-full bg-brand-cream/20 border border-brand-clay/60 rounded-xl p-3 text-xs font-semibold text-brand-charcoal leading-relaxed"
-                    placeholder={t('One instruction per line, for example:\nPieces take 10 to 14 days to be ready.\nAprons are provided.', 'تعليمة واحدة في كل سطر، على سبيل المثال:\nتستغرق القطع من 10 إلى 14 يومًا لتصبح جاهزة.\nتتوفر المرايل.')}
+                    placeholder={t('One instruction per line, for example:\nPieces take about two weeks to be ready.\nAprons are provided.', 'تعليمة واحدة في كل سطر، على سبيل المثال:\nتستغرق القطع أسبوعين تقريبًا لتصبح جاهزة.\nنوفّر المآزر.')}
                   />
                   <p className="text-[10px] text-brand-charcoal/45">
                     {t('One per line. Each line appears as a bullet point.', 'واحدة في كل سطر. يظهر كل سطر كنقطة.')}
