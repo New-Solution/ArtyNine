@@ -56,6 +56,7 @@ import { sdb as db } from '../lib/supabaseDb';
 import { normalizeDateString, timeToMinutes } from '../utils/timeUtils';
 import { hasWebsiteAccount } from '../utils/accountUtils';
 import { supabase, supabaseStaff, SUPABASE_NOT_CONFIGURED, setStaffSessionActive } from '../lib/supabase';
+import { staffSessionBookingError, type StaffSessionBlockReason } from '../utils/staffSessionBlock';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { removePiecePhotoIfUnused } from '../lib/pieceImages';
 import {
@@ -294,6 +295,12 @@ interface AppContextType {
   /** Replaces the signed-in staff member's password (Supabase Auth). */
   changeStaffPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
   logoutStaff: () => void;
+  /**
+   * Ends the staff console's session on THIS browser only, without leaving the
+   * page (other devices stay signed in). Used by the customer checkout when a
+   * staff session would otherwise be in the way of a customer booking.
+   */
+  signOutStaffHere: () => Promise<void>;
   /** Page-level authorization for the signed-in staff member. */
   canAccessAdminPage: (pageId: string) => boolean;
 
@@ -1471,6 +1478,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCustomerTab('home');
   };
 
+  /*
+   * ONE ROLE AT A TIME.
+   *
+   * The customer site and the staff console have separate Supabase clients
+   * with separate stored sessions (src/lib/supabase.ts), and on one domain both
+   * can be signed in in the same browser. Data calls go through
+   * getDataClient(), which picks the STAFF client whenever a staff session
+   * exists — so a customer booking made while a staff session lingered ran as
+   * staff (no hold, no online payment). Signing in as one role therefore ends
+   * the other role's session here. scope 'local': only this browser; the same
+   * person stays signed in on their other devices.
+   */
+  const endStaffSessionHere = async () => {
+    setStaffSessionActive(false);
+    setCurrentStaffId(null);
+    if (!supabaseStaff) return;
+    try {
+      await supabaseStaff.auth.signOut({ scope: 'local' });
+    } catch (err) {
+      console.warn('Could not end the staff session on this browser:', err);
+    }
+  };
+
+  const endCustomerSessionHere = async () => {
+    if (!supabase) return;
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) return;
+    // Asked for, so no "your session expired" notice (see logoutCustomer).
+    intentionalSignOutRef.current = true;
+    setSessionExpired(false);
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch (err) {
+      console.warn('Could not end the customer session on this browser:', err);
+    }
+    intentionalSignOutRef.current = false;
+    setCurrentUser(null);
+  };
+
+  const signOutStaffHere = endStaffSessionHere;
+
+  /**
+   * Why a customer-site booking must not be written right now, or null.
+   * Asked at the moment of booking, not from page state.
+   */
+  const staffSessionBlockingCustomerBooking = async (): Promise<StaffSessionBlockReason | null> => {
+    if (isStaffSessionActive()) return 'staff-console';
+    if (supabaseStaff) {
+      const { data } = await supabaseStaff.auth.getSession();
+      if (data.session) return 'staff-console';
+    }
+    // The customer-site session may itself belong to a staff account; the
+    // booking RPCs would then treat it as a staff booking. is_staff() is the
+    // database's own test. An error here (e.g. no session) is not a block:
+    // the booking RPC enforces sign-in itself.
+    if (supabase) {
+      const { data, error } = await supabase.rpc('is_staff');
+      if (!error && data === true) return 'staff-account';
+    }
+    return null;
+  };
+
   // Active element triggers
   const [selectedWorkshopId, setSelectedWorkshopId] = useState<string>('ws-1');
   const [lastBookingCreated, setLastBookingCreated] = useState<Booking | null>(null);
@@ -2131,7 +2200,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // session row locked: two people taking the last seat cannot both succeed.
     // Never read capacity here and write it back.
     {
-      const client = getDataClient();
+      // A booking from the customer site ('Website', CheckoutPaymentSection)
+      // always runs on the customer's OWN session — never through
+      // getDataClient(), which would hand it to a staff session signed in on
+      // the same browser. If staff is signed in, nothing is written: the
+      // checkout explains and offers to sign the staff session out. Console
+      // bookings ('Admin' / 'Walk-in') are unchanged.
+      const isCustomerSiteBooking = newBookingData.source === 'Website';
+      if (isCustomerSiteBooking) {
+        const blocked = await staffSessionBlockingCustomerBooking();
+        if (blocked) throw staffSessionBookingError(blocked);
+      }
+      const client = isCustomerSiteBooking ? supabase : getDataClient();
       if (!client) {
         setBookingError(SUPABASE_NOT_CONFIGURED);
         throw new Error(SUPABASE_NOT_CONFIGURED);
@@ -2146,7 +2226,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // whichever record the phone typed at checkout matches, which may be
       // someone else's (0044 enforces the same in the database). Staff and
       // guests still resolve by phone/email below.
-      const ownCustomerId = !isStaffSessionActive() ? currentUser?.id : undefined;
+      const ownCustomerId = (isCustomerSiteBooking || !isStaffSessionActive()) ? currentUser?.id : undefined;
       let customerId = ownCustomerId || newBookingData.customerId;
       if (!customerId && (newBookingData.customerEmail || newBookingData.customerPhone)) {
         const resolved = await resolveCustomer(
@@ -3739,7 +3819,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       staffId = staffSession.data.session?.user?.id ?? null;
       customerId = customerSession.data.session?.user?.id ?? null;
       customerEmail = customerSession.data.session?.user?.email ?? null;
-      if (PHONE_AUTH_ENABLED) setPhoneSetupPending(isPhoneSetupPending(customerSession.data.session?.user));
+      // Both roles stored in this browser (possible before one-role-at-a-time):
+      // keep the one for the area being opened, end the other here.
+      if (staffId && customerId) {
+        if (initialAreaFromLocation() === 'staff') {
+          customerId = null;
+          customerEmail = null;
+          void endCustomerSessionHere();
+        } else {
+          staffId = null;
+          void endStaffSessionHere();
+        }
+      }
+      if (PHONE_AUTH_ENABLED) setPhoneSetupPending(isPhoneSetupPending(customerId ? customerSession.data.session?.user : null));
       // Seeds guard 2. Until this runs, hadCustomerSession is false, so a
       // SIGNED_OUT arriving during startup cannot announce an expiry.
       hadCustomerSessionRef.current = customerId !== null;
@@ -3754,6 +3846,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const customerSub = supabase.auth.onAuthStateChange((event, session) => {
       const nextCustomerId = session?.user?.id ?? null;
+
+      // A NEW customer sign-in (no customer session before) — by any route:
+      // password, phone code, sign-up, a confirmation link. Supabase can
+      // re-announce SIGNED_IN for an existing session (e.g. on tab focus);
+      // requiring "none before" keeps that from signing staff out.
+      if (event === 'SIGNED_IN' && nextCustomerId && customerId === null && staffId) {
+        staffId = null;
+        void endStaffSessionHere();
+      }
 
       if (event === 'SIGNED_OUT') {
         if (intentionalSignOutRef.current) {
@@ -4055,6 +4156,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await supabaseStaff.auth.signOut();
       return { success: false, error: `This account is ${account.status} and cannot sign in.` };
     }
+
+    // One role at a time: a customer signed in on this browser is signed out
+    // here, so nothing on the customer site can run under the wrong session.
+    await endCustomerSessionHere();
 
     // Data reads now go through the staff session, so RLS grants the
     // staff-only tables.
@@ -4762,7 +4867,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       rawWorkshops, rawEvents,
       loggingFields, updateLoggingFields,
       customers,
-      currentStaff, staffAuthChecked, loginStaff, changeStaffPassword, logoutStaff, canAccessAdminPage,
+      currentStaff, staffAuthChecked, loginStaff, changeStaffPassword, logoutStaff, signOutStaffHere, canAccessAdminPage,
       resolveCustomer,
       studioResources, addStudioResource, updateStudioResource, removeStudioResource,
       birthdayPackages, publishedBirthdayPackages,

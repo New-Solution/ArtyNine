@@ -62,8 +62,14 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
  * A browser holds one Supabase session per storage key. With a single client,
  * signing in on the customer site replaced the staff session — the console then
  * lost every staff-only read (staff list, bookings, queue) because RLS saw an
- * ordinary customer. Giving the staff console its own storage key lets both
- * sessions exist side by side, which is how the two areas are actually used.
+ * ordinary customer. Giving the staff console its own storage key keeps the
+ * two apart.
+ *
+ * Since customers and staff share one domain, only ONE role is signed in per
+ * browser at a time: signing in as a customer ends the staff session here and
+ * vice versa (AppContext, "ONE ROLE AT A TIME"). Customer-site bookings also
+ * never go through getDataClient(); they always use `supabase`, the customer's
+ * own session, and are refused while a staff session is present.
  */
 const makeClient = (storageKey?: string) =>
   createClient(url!, anonKey!, {

@@ -20,7 +20,7 @@
  *   curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A
  */
 
-import { getDataClient, supabase } from './supabase';
+import { supabase } from './supabase';
 
 export const MOYASAR_FORM_VERSION = '2.3.0';
 const CDN = `https://cdn.jsdelivr.net/npm/moyasar-payment-form@${MOYASAR_FORM_VERSION}/dist`;
@@ -112,7 +112,9 @@ export interface PaymentQuote {
 }
 
 export async function fetchPaymentQuote(bookingId: string): Promise<PaymentQuote | null> {
-  const client = getDataClient();
+  // Customer checkout only: always the customer's own session, never a staff
+  // session that happens to be signed in on the same browser.
+  const client = supabase;
   if (!client) throw new Error('Supabase is not configured.');
   const { data, error } = await client.rpc('booking_payment_quote', { p_booking_id: bookingId });
   if (error) throw new Error(error.message);
