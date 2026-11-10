@@ -16,20 +16,23 @@ Pages project settings.
 
 ```
  Customer site  ─┐                       ┌─ Supabase Postgres (data, RLS, RPCs)
- artybooking.com │  supabase-js (anon    ├─ Supabase Auth (phone OTP / email)
- (coming)        ├─ key + user JWT) ───► ├─ Supabase Storage (photos)
- Staff console  ─┘                       └─ Supabase Edge Functions (Deno)
- staff.                                        │            │
- artybooking.com                               ▼            ▼
- (both on Cloudflare Pages)
+ + staff console │  supabase-js (anon    ├─ Supabase Auth (phone OTP / email)
+ app.            ├─ key + user JWT) ───► ├─ Supabase Storage (photos)
+ artybooking.com─┘                       └─ Supabase Edge Functions (Deno)
+ (staff console                                │            │
+  ?staff; staff.                               ▼            ▼
+  still works)   (Cloudflare Pages)
                                         Moyasar API    SMS provider
                                         (payments)     (mShastra / meertek)
 ```
 
-- **One React + Vite codebase** (`src/`) builds both the customer site and the
-  staff console. Which one a deployment is depends on its
-  `VITE_CUSTOMER_SITE_URL` / `VITE_STAFF_SITE_URL`. With neither set (local
-  dev) the app switches areas in-app.
+- **One React + Vite codebase** (`src/`) serves the customer site and the
+  staff console from **one domain**, `app.artybooking.com`. "Staff Login"
+  switches to the console in the same tab and adds `?staff` to the URL, so a
+  refresh stays in the console (`initialAreaFromLocation` in `AppContext.tsx`).
+  A hostname with a `staff` label (`staff.artybooking.com`) still always opens
+  the console. The café's main website is `https://artybooking.com` (the
+  header logo and "Main website" link go there).
 - **No application server.** The browser talks to Supabase directly. Every
   rule that matters (prices, seats, who can see what, who can mark something
   paid) is enforced **in Postgres** with RLS and `SECURITY DEFINER` functions,
@@ -37,9 +40,9 @@ Pages project settings.
 - **Edge Functions** do the things that need a secret: talking to Moyasar,
   sending SMS, creating staff logins, and the scheduled auto-cancel job
   (triggered every 5 minutes by **pg_cron** in the Supabase project).
-- **Hosting:** Cloudflare Pages only (account run by Ahsan). Staff console:
-  `staff.artybooking.com`. Customer site: `artybooking.com` (coming). The app
-  opens the staff console when the hostname has a `staff` label. Pushing
+- **Hosting:** Cloudflare Pages only (account run by Ahsan). Customers and
+  staff: `app.artybooking.com`. `staff.artybooking.com` keeps working (it opens
+  the console because the hostname has a `staff` label). Pushing
   `main` rebuilds the front end.
   Pushing does **not** apply migrations or deploy Edge Functions; both are
   manual (see §4 and §5).
@@ -69,7 +72,7 @@ Key places in the code:
 | Service | Used for | Where it is configured |
 |---|---|---|
 | **Supabase** | Postgres database, Auth (phone OTP + email/password), Storage (workshop and piece photos), Edge Functions | Supabase dashboard; `supabase/` in the repo |
-| **Cloudflare Pages** | The only host: staff console at `staff.artybooking.com`, customer site at `artybooking.com` (coming) | Cloudflare dashboard → Pages (account run by Ahsan) |
+| **Cloudflare Pages** | The only host: customers and staff at `app.artybooking.com` (`staff.artybooking.com` still works); the café's main website is `artybooking.com` | Cloudflare dashboard → Pages (account run by Ahsan) |
 | **Cloudflare Turnstile** | CAPTCHA on sign-in / sign-up (only when its key is set) | Site key in Pages env; secret key in Supabase → Authentication → Attack Protection |
 | **Moyasar** | Card + Apple Pay payments; webhook as a backup confirmation path; refunds (done by hand in the Moyasar dashboard) | Moyasar dashboard (keys, webhook, Apple Pay domains) |
 | **mShastra** | SMS provider (default) | Credentials as Supabase secrets |
@@ -90,13 +93,13 @@ Only public values belong here. Change one → **redeploy** for it to take effec
 |---|---|
 | `VITE_SUPABASE_URL` | The Supabase project URL. |
 | `VITE_SUPABASE_ANON_KEY` | Supabase public (anon) key. Safe in the browser; RLS protects data. |
-| `VITE_CUSTOMER_SITE_URL` | Link target for "Customer Site" from the console (`https://artybooking.com` once it is live). Unset in local dev. |
-| `VITE_STAFF_SITE_URL` | Link target for "Staff Login" from the customer site (`https://staff.artybooking.com`). Unset in local dev. |
+| `VITE_CUSTOMER_SITE_URL` | Where "View Customer Site" goes **from `staff.artybooking.com` only** (`https://app.artybooking.com`). Ignored on any other host. Unset in local dev. |
 | `VITE_PHONE_AUTH` | `"true"` turns on phone sign-in by SMS code (`src/utils/featureFlags.ts`). |
 | `VITE_TURNSTILE_SITE_KEY` | Turnstile site key. Unset = no CAPTCHA widget. |
 | `VITE_MOYASAR_PUBLISHABLE_KEY` | Moyasar publishable key (`pk_test_…` / `pk_live_…`). Unset = online payments cannot be switched on. |
 
 Not read by the code (safe to remove from Cloudflare if present):
+`VITE_STAFF_SITE_URL` (Staff Login always stays on the current domain, since 10 Nov 2026),
 `VITE_MOYASAR_METHODS` (payment methods are fixed in `src/lib/onlinePayment.ts`,
 `MOYASAR_METHODS`), `GEMINI_API_KEY`, `APP_URL`, `DISABLE_HMR` (AI Studio
 template leftovers, removed from `.env.example` / `vite.config.ts` on 8 Nov 2026).
@@ -118,7 +121,7 @@ Set with `npx supabase secrets set NAME=…`; list names with
 | `MSHASTRA_USERNAME`, `MSHASTRA_PASSWORD`, `MSHASTRA_SENDER_ID` | SMS (mShastra) | mShastra account and sender name. |
 | `MEERTEK_PROXY_TOKEN` | SMS (meertek) | Token for the meertek proxy endpoint. |
 | `SEND_SMS_HOOK_SECRET` | send-sms-hook | The `v1,whsec_…` secret of the Supabase Auth "Send SMS" hook. |
-| `STAFF_SITE_URL` | provision-staff | Where staff invitation emails point (`https://staff.artybooking.com`). |
+| `STAFF_SITE_URL` | provision-staff | Where staff invitation emails point (`https://app.artybooking.com/?staff`). |
 
 Other secrets outside the functions: the Turnstile **secret** key (Supabase →
 Authentication → Attack Protection); the scripts in `scripts/` read

@@ -29,7 +29,10 @@ export interface FooterSocial {
 
 export interface FooterAction {
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
+  /** A real link instead of an action — for leaving the app (e.g. the café's
+   *  main website). Opens in the same tab. */
+  href?: string;
   /** Renders in the brand colour — used for the staff console entry. */
   emphasis?: boolean;
 }
@@ -103,17 +106,28 @@ export const Footer: React.FC<FooterProps> = ({
             <ul className="-mx-2 -my-1 flex list-none flex-wrap lg:justify-end">
               {mainLinks.map(link => (
                 <li key={link.label} className="mx-2 my-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={link.onClick}
-                    className={`cursor-pointer text-sm underline-offset-4 hover:underline ${
-                      link.emphasis
-                        ? 'font-semibold text-brand-terracotta'
-                        : 'text-brand-charcoal'
-                    }`}
-                  >
-                    {link.label}
-                  </button>
+                  {link.href ? (
+                    <a
+                      href={link.href}
+                      className={`cursor-pointer text-sm underline-offset-4 hover:underline ${
+                        link.emphasis ? 'font-semibold text-brand-terracotta' : 'text-brand-charcoal'
+                      }`}
+                    >
+                      {link.label}
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={link.onClick}
+                      className={`cursor-pointer text-sm underline-offset-4 hover:underline ${
+                        link.emphasis
+                          ? 'font-semibold text-brand-terracotta'
+                          : 'text-brand-charcoal'
+                      }`}
+                    >
+                      {link.label}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

@@ -5,11 +5,15 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Palette, Coffee, Menu, X, User, Calendar, Flame, Instagram, Facebook } from 'lucide-react';
+import { Palette, Coffee, Menu, X, User, Calendar, Flame, Instagram, Facebook, Globe } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { Footer } from './ui/Footer';
 import { LanguageToggle } from './LanguageToggle';
 import { CustomerNotificationBell } from './ui/CustomerNotificationBell';
+
+/** The café's main website (artybooking.com). This app is the booking site
+ *  under it; the logo and a "Main website" link lead back there. */
+export const MAIN_WEBSITE_URL = 'https://artybooking.com';
 
 export const CustomerHeader: React.FC = () => {
   const { customerTab, setCustomerTab, currentUser, setWorkshopsInitialCategory } = useApp();
@@ -40,9 +44,11 @@ export const CustomerHeader: React.FC = () => {
       <header className="sticky top-0 z-40 w-full border-b border-brand-clay bg-brand-cream/92 backdrop-blur-md">
         <div className="mx-auto flex h-[78px] max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-12">
 
-          {/* Wordmark */}
-          <button
-            onClick={() => handleNavClick('home')}
+          {/* Wordmark — links to the café's main website. "Home" in the
+              menu is still this app's own home page. */}
+          <a
+            href={MAIN_WEBSITE_URL}
+            aria-label={t('Arty Café — main website', 'آرتي كافيه — الموقع الرئيسي')}
             className="flex items-center gap-3 text-start group focus:outline-none cursor-pointer shrink-0"
           >
             <img
@@ -56,7 +62,7 @@ export const CustomerHeader: React.FC = () => {
             <span className="text-[10px] font-medium uppercase leading-none tracking-[0.14em] text-brand-sage">
               Jeddah Art &amp; Clay
             </span>
-          </button>
+          </a>
 
           {/* Desktop navigation — plain words, weight marks the active one */}
           <nav className="hidden md:flex items-center gap-[30px]">
@@ -76,6 +82,12 @@ export const CustomerHeader: React.FC = () => {
                 </button>
               );
             })}
+            <a
+              href={MAIN_WEBSITE_URL}
+              className="text-sm font-normal text-brand-ink transition-colors hover:text-brand-charcoal"
+            >
+              {t('Main website', 'الموقع الرئيسي')}
+            </a>
           </nav>
 
           <div className="flex items-center gap-3 shrink-0">
@@ -118,6 +130,13 @@ export const CustomerHeader: React.FC = () => {
                 </button>
               );
             })}
+            <a
+              href={MAIN_WEBSITE_URL}
+              className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-base font-medium text-brand-ink hover:bg-brand-sand/60"
+            >
+              <Globe className="h-5 w-5 text-brand-sage" />
+              {t('Main website', 'الموقع الرئيسي')}
+            </a>
             <button
               onClick={() => handleNavClick('workshops')}
               className="mt-2 w-full cursor-pointer rounded-2xl bg-brand-terracotta px-4 py-3.5 text-sm font-semibold text-brand-cream"
@@ -193,6 +212,7 @@ export const CustomerFooter: React.FC = () => {
         }
       ]}
       mainLinks={[
+        { label: t('Main website', 'الموقع الرئيسي'), href: MAIN_WEBSITE_URL },
         /* TEMPORARY — DEVELOPMENT CONVENIENCE. Reconsider before launch.
            This restores the public "Staff Login" link that was removed with
            the customer/staff site separation, which deliberately stopped the
@@ -201,10 +221,9 @@ export const CustomerFooter: React.FC = () => {
            only so the console stays one click away while both sites are being
            built. Removing this entry restores the separated behaviour.
 
-           goToStaffLogin() already handles both worlds — it navigates to
-           VITE_STAFF_SITE_URL when that is configured, and falls back to the
-           in-app setArea('staff') switch locally where it is not — so this
-           does not point at a route that no longer exists post-separation. */
+           goToStaffLogin() opens the console in this same tab on the current
+           domain (adding ?staff on a shared domain such as app.artybooking.com),
+           so it works on one domain and on the old split setup alike. */
         currentStaff
           ? {
               label: t('Back to Staff Console', 'العودة إلى لوحة الموظفين'),
