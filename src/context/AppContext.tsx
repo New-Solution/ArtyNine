@@ -321,7 +321,17 @@ interface AppContextType {
      * not.
      */
     source?: CustomerAccount['source']
-  ) => Promise<{ customer: CustomerAccount; created: boolean; matchedOn: string }>;
+  ) => Promise<{
+    customer: CustomerAccount;
+    created: boolean;
+    matchedOn: string;
+    /**
+     * Set when no customer record could be found or created — `customer.id` is
+     * then ''. Callers must stop rather than write a row pointing at a
+     * customer that does not exist (pieces/queue/bookings customer_id FKs).
+     */
+    error?: string;
+  }>;
 
   /** Studio rooms and table stations — one shared record used everywhere. */
   studioResources: StudioResource[];
@@ -1909,8 +1919,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   /** Returns a cancelled booking's seats, clamped to capacity, in one statement. */
   const releaseSeats = async (bookingId: string) => {
-    if (!supabase || !bookingId) return;
-    const { error } = await supabase.rpc('release_booking_seats', { p_booking_id: bookingId });
+    // The active session (staff on the console): release_booking_seats is
+    // authenticated-only, and the customer client is signed out on the console.
+    const client = getDataClient();
+    if (!client || !bookingId) return;
+    const { error } = await client.rpc('release_booking_seats', { p_booking_id: bookingId });
     if (error) console.error('Failed to release seats:', error.message);
     else notifySeatsChanged();
   };
@@ -1966,8 +1979,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const generateNextQueueNumber = async (): Promise<number> => {
     const today = getRiyadhDateString();
 
-    if (supabase) {
-      const { data, error } = await supabase.rpc('next_queue_number', { p_date: today });
+    // Active session: next_queue_number is authenticated-only, and on the
+    // console the customer client is signed out.
+    const queueClient = getDataClient();
+    if (queueClient) {
+      const { data, error } = await queueClient.rpc('next_queue_number', { p_date: today });
       if (!error && typeof data === 'number') return data;
       if (error) console.error('next_queue_number failed, numbering locally:', error.message);
     }
@@ -2239,7 +2255,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // it was first filed under.
           isBirthdayBookingData(newBookingData) ? 'Birthday Package' : 'Workshop Booking'
         );
-        customerId = resolved.customer?.id;
+        if (!resolved.customer?.id) {
+          // Never write a booking pointing at a customer that does not exist.
+          const message = resolved.error || 'Could not create the customer record for this booking.';
+          setBookingError(message);
+          throw new Error(message);
+        }
+        customerId = resolved.customer.id;
       }
 
       newBooking.customerId = customerId;
@@ -4287,7 +4309,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { customer: (cached || { id: '', name: input.name || 'Guest' }) as CustomerAccount, created: false, matchedOn: reason };
     }
 
-    const { data: id, error } = await supabase.rpc('resolve_customer_record', {
+    // Which session runs the find-or-create. On the staff console it MUST be
+    // the staff session: the customer client is signed out there (one role
+    // per browser), and since 0055 anon may no longer execute
+    // resolve_customer_record — the call was refused, the error swallowed,
+    // and a piece/walk-in was then written with customer_id '' (FK failure).
+    // Running as staff also lets the function's staff branch (rule 3) fill in
+    // an unclaimed record. Customer-site callers keep the customer's own
+    // session; a customer-site booking is refused while staff is signed in.
+    const rpcClient = (isStaffSessionActive() && supabaseStaff) ? supabaseStaff : supabase;
+
+    const { data: id, error } = await rpcClient.rpc('resolve_customer_record', {
       p_name: input.name ?? null,
       p_phone: input.phone ?? null,
       p_email: input.email ?? null,
@@ -4297,7 +4329,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (error || !id) {
       console.error('resolve_customer_record failed:', error?.message);
-      return { customer: (cached || { id: '', name: input.name || 'Guest' }) as CustomerAccount, created: false, matchedOn: reason };
+      // A customer already known locally is still safe to link to.
+      if (cached?.id) {
+        return { customer: cached as CustomerAccount, created: false, matchedOn: reason };
+      }
+      return {
+        customer: { id: '', name: input.name || 'Guest' } as CustomerAccount,
+        created: false,
+        matchedOn: reason,
+        error: `Could not create the customer record: ${error?.message || 'no record was returned'}`
+      };
     }
 
     // resolve_customer_record() already returned the id — the caller's own
