@@ -2096,7 +2096,7 @@ export const AdminPiecesTrackingSection: React.FC = () => {
 
                   // Resolve against the one shared customers table: an existing
                   // customer is reused (matched on normalized phone), never copied.
-                  const { customer: linkedCustomer } = await resolveCustomer(
+                  const { customer: linkedCustomer, error: customerError } = await resolveCustomer(
                     {
                       name: manualName.trim(),
                       phone: manualPhone.trim(),
@@ -2105,6 +2105,13 @@ export const AdminPiecesTrackingSection: React.FC = () => {
                     // Staff typing a customer in by hand while logging a piece.
                     'Admin Created'
                   );
+
+                  // No customer record, no piece: inserting would fail on the
+                  // customer_id foreign key (or orphan the piece). Show why.
+                  if (!linkedCustomer.id) {
+                    alert(customerError || t('Could not create the customer record. The piece was not logged.', 'تعذّر إنشاء سجل العميل. لم يتم تسجيل القطعة.'));
+                    return;
+                  }
 
                   const newPieceData = {
                     customerId: linkedCustomer.id,

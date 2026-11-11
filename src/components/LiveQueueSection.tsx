@@ -1304,10 +1304,18 @@ export const LiveQueueSection: React.FC = () => {
     // 'Live Queue' rather than the default 'Website': this person is standing at
     // the counter. Only applies when the record is created — a customer already
     // known to the studio keeps whatever they were first filed under.
-    const { customer } = await resolveCustomer(
+    const { customer, error: customerError } = await resolveCustomer(
       { name: nameToUse, phone: normPhone },
       'Live Queue'
     );
+
+    // No customer record, no queue entry — never write a row pointing at a
+    // customer that does not exist. The error shows in the modal.
+    if (!customer.id) {
+      setNameConflict(null);
+      setErrors({ phone: customerError || t('Could not create the customer record.', 'تعذّر إنشاء سجل العميل.') });
+      return;
+    }
 
     // "Update to new name" was chosen for an account that already existed.
     if (existing && nameToUse !== existing.name) {
