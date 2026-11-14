@@ -277,7 +277,7 @@ export const BookingConfirmationSection: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-xl px-4 py-12 animate-in zoom-in-95 duration-300 text-start">
-      <div className="rounded-[28px] border border-brand-clay bg-white p-8 shadow-card-sm relative overflow-hidden">
+      <div className="rounded-[28px] border border-brand-clay bg-white p-5 sm:p-8 shadow-card-sm relative overflow-hidden">
         
         {/* Subtle decorative clay background motif */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-brand-terracotta/5 rounded-full blur-2xl"></div>
@@ -319,19 +319,19 @@ export const BookingConfirmationSection: React.FC = () => {
         {/* Booking Details Summary List */}
         <div className="border-t border-brand-clay py-5 space-y-4 text-xs text-brand-ink">
           
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start gap-3">
             <span className="font-semibold text-brand-muted">{t('Workshop', 'الورشة')}</span>
             <span className="font-semibold text-brand-charcoal text-end min-w-0 break-words">{titleLabel}</span>
           </div>
 
-          <div className="flex justify-between">
+          <div className="flex justify-between gap-3">
             <span className="font-semibold text-brand-muted">{t('Date & Session', 'التاريخ والجلسة')}</span>
-            <span className="font-semibold text-brand-charcoal">{booking.date} {t('at', 'الساعة')} {timeLabel(booking.time, lang)}</span>
+            <span className="min-w-0 text-end font-semibold text-brand-charcoal">{booking.date} {t('at', 'الساعة')} {timeLabel(booking.time, lang)}</span>
           </div>
 
-          <div className="flex justify-between">
+          <div className="flex justify-between gap-3">
             <span className="font-semibold text-brand-muted">{t('Guests', 'الضيوف')}</span>
-            <span className="font-semibold text-brand-charcoal">
+            <span className="min-w-0 text-end font-semibold text-brand-charcoal">
               {/* ⚠ ARABIC PLURALIZATION — placeholder only, needs a native speaker. */}
               {booking.participants} {booking.participants === 1 ? t('Guest', 'ضيف') : t('Guests', 'ضيوف')}
             </span>
@@ -339,40 +339,40 @@ export const BookingConfirmationSection: React.FC = () => {
 
           {isOnlineDeposit ? (
             <>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span className="font-semibold text-brand-muted">{t('Paid now', 'المدفوع الآن')}</span>
                 <span className="font-semibold text-brand-terracotta text-sm ltr-numerals">{sarAmount(pay.paid)} {t('SAR', 'ريال')}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span className="font-semibold text-brand-muted">{t('Balance due at the studio', 'المتبقي للدفع في الاستوديو')}</span>
                 <span className="font-semibold text-brand-charcoal text-sm ltr-numerals">{sarAmount(pay.balance)} {t('SAR', 'ريال')}</span>
               </div>
             </>
           ) : pay.online ? (
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-3">
               <span className="font-semibold text-brand-muted">{t('Total paid', 'إجمالي المدفوع')}</span>
               <span className="font-semibold text-brand-terracotta text-sm ltr-numerals">{sarAmount(pay.paid)} {t('SAR', 'ريال')}</span>
             </div>
           ) : isPaidStatus((booking as { paymentStatus?: string }).paymentStatus) ? (
             <>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span className="font-semibold text-brand-muted">{t('Total Paid (VAT incl.)', 'الإجمالي المدفوع (شامل الضريبة)')}</span>
                 <span className="font-semibold text-brand-terracotta text-sm">{booking.totalPrice} {t('SAR', 'ريال')}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span className="font-semibold text-brand-muted">{t('VAT Registration No.', 'الرقم الضريبي')}</span>
                 <span dir="ltr" className="font-semibold text-brand-charcoal ltr-numerals">{STUDIO_VAT_NO}</span>
               </div>
             </>
           ) : (
             // Nothing was paid online: the whole amount is paid at the studio.
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-3">
               <span className="font-semibold text-brand-muted">{t('Pay at the studio', 'الدفع في الاستوديو')}</span>
               <span className="font-semibold text-brand-terracotta text-sm ltr-numerals">{sarAmount(Number(booking.totalPrice) || 0)} {t('SAR', 'ريال')}</span>
             </div>
           )}
 
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start gap-3">
             <span className="font-semibold text-brand-muted">{t('Studio Location', 'موقع الاستوديو')}</span>
             <div className="text-right">
               <span className="font-semibold text-brand-charcoal block">{matchingWorkshop?.room || t('Studio A', 'الاستوديو أ')}</span>

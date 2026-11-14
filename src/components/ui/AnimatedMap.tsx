@@ -77,7 +77,7 @@ export const AnimatedMap: React.FC<AnimatedMapProps> = ({
     {/* Place */}
     <div className="absolute bottom-0 inset-x-0 p-5">
       <p className="font-display text-lg font-semibold text-brand-charcoal">{label}</p>
-      <p className="mt-0.5 font-mono text-xs text-brand-muted ltr-numerals">{coordinates}</p>
+      <p className="mt-0.5 font-mono text-xs text-brand-muted"><span className="ltr-numerals">{coordinates}</span></p>
       <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-terracotta">
         {t('Open in Google Maps', 'افتح في خرائط جوجل')}
         <span className="transition-transform duration-200 group-hover:translate-x-1 flip-rtl">→</span>

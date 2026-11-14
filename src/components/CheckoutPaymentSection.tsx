@@ -378,22 +378,22 @@ export const CheckoutPaymentSection: React.FC = () => {
             </div>
 
             <div className="border-t border-brand-clay pt-3 space-y-2 text-xs text-brand-ink">
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span>{t('Workshop', 'الورشة')}:</span>
-                <span className="font-semibold text-brand-charcoal">{titleLabel}</span>
+                <span className="min-w-0 text-end font-semibold text-brand-charcoal">{titleLabel}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span>{t('Date', 'التاريخ')}:</span>
-                <span className="font-semibold text-brand-charcoal">{pendingBooking.date}</span>
+                <span className="min-w-0 text-end font-semibold text-brand-charcoal">{pendingBooking.date}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span>{t('Time Slot', 'الوقت')}:</span>
-                <span className="font-semibold text-brand-charcoal">{timeLabel(pendingBooking.time, lang)}</span>
+                <span className="min-w-0 text-end font-semibold text-brand-charcoal">{timeLabel(pendingBooking.time, lang)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span>{t('Participants', 'المشاركون')}:</span>
                 {/* ⚠ ARABIC PLURALIZATION — placeholder only, needs a native speaker. */}
-                <span className="font-semibold text-brand-charcoal">{pendingBooking.participants} {pendingBooking.participants === 1 ? t('guest', 'ضيف') : t('guests', 'ضيوف')}</span>
+                <span className="min-w-0 text-end font-semibold text-brand-charcoal">{pendingBooking.participants} {pendingBooking.participants === 1 ? t('guest', 'ضيف') : t('guests', 'ضيوف')}</span>
               </div>
             </div>
 
@@ -404,7 +404,7 @@ export const CheckoutPaymentSection: React.FC = () => {
               </span>
             </div>
             {onlineLive && (
-              <div className="flex justify-between items-center text-brand-charcoal">
+              <div className="flex justify-between items-center gap-3 text-brand-charcoal">
                 <span className="font-semibold text-sm">
                   {(hold?.quote.mode ?? estimate.mode) === 'deposit'
                     ? t('Deposit due now', 'العربون المستحق الآن')

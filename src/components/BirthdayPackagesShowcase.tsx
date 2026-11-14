@@ -399,8 +399,8 @@ export const BirthdayPackagesShowcase: React.FC<Props> = ({
                                 >
                                   {spec.label}
                                 </dt>
-                                <dd className="mt-0.5 text-[13px] font-semibold ltr-numerals">
-                                  {spec.value}
+                                <dd className="mt-0.5 text-[13px] font-semibold">
+                                  <bdi>{spec.value}</bdi>
                                 </dd>
                               </div>
                             ))}
@@ -512,8 +512,8 @@ export const BirthdayPackagesShowcase: React.FC<Props> = ({
                   )}
                   <div>
                     <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-muted">{t('Guests', 'الضيوف')}</dt>
-                    <dd className="mt-1 font-medium text-brand-charcoal ltr-numerals">
-                      {focused.minGuests}–{focused.maxGuests}
+                    <dd className="mt-1 font-medium text-brand-charcoal">
+                      <span className="ltr-numerals">{focused.minGuests}–{focused.maxGuests}</span>
                     </dd>
                   </div>
                   {focusedAgeInfo && (

@@ -60,7 +60,7 @@ export const Footer: React.FC<FooterProps> = ({
   copyright
 }) => {
   return (
-    <footer className="border-t border-brand-clay bg-brand-cream pt-10 pb-16 lg:pb-8">
+    <footer className="border-t border-brand-clay bg-brand-cream pt-10 pb-[calc(3rem+env(safe-area-inset-bottom))] lg:pb-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-12">
 
         <div className="md:flex md:items-start md:justify-between md:gap-10">
@@ -92,7 +92,7 @@ export const Footer: React.FC<FooterProps> = ({
                   rel="noopener noreferrer"
                   aria-label={link.label}
                   title={link.label}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-brand-clay bg-brand-sand text-brand-charcoal transition-colors hover:bg-brand-terracotta hover:border-brand-terracotta hover:text-brand-cream"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-brand-clay bg-brand-sand text-brand-charcoal transition-colors hover:bg-brand-terracotta hover:border-brand-terracotta hover:text-brand-cream"
                 >
                   {link.icon}
                 </a>
@@ -103,13 +103,13 @@ export const Footer: React.FC<FooterProps> = ({
 
         <div className="mt-6 border-t border-brand-clay pt-6 lg:grid lg:grid-cols-10 lg:gap-6">
           <nav className="lg:col-[4/11]">
-            <ul className="-mx-2 -my-1 flex list-none flex-wrap lg:justify-end">
+            <ul className="-mx-2 flex list-none flex-wrap sm:-my-1 lg:justify-end">
               {mainLinks.map(link => (
-                <li key={link.label} className="mx-2 my-1 shrink-0">
+                <li key={link.label} className="mx-2 shrink-0 sm:my-1">
                   {link.href ? (
                     <a
                       href={link.href}
-                      className={`cursor-pointer text-sm underline-offset-4 hover:underline ${
+                      className={`inline-flex min-h-11 cursor-pointer items-center text-sm underline-offset-4 hover:underline sm:min-h-0 ${
                         link.emphasis ? 'font-semibold text-brand-terracotta' : 'text-brand-charcoal'
                       }`}
                     >
@@ -119,7 +119,7 @@ export const Footer: React.FC<FooterProps> = ({
                     <button
                       type="button"
                       onClick={link.onClick}
-                      className={`cursor-pointer text-sm underline-offset-4 hover:underline ${
+                      className={`inline-flex min-h-11 cursor-pointer items-center text-sm underline-offset-4 hover:underline sm:min-h-0 ${
                         link.emphasis
                           ? 'font-semibold text-brand-terracotta'
                           : 'text-brand-charcoal'
@@ -135,13 +135,13 @@ export const Footer: React.FC<FooterProps> = ({
 
           {legalLinks.length > 0 && (
             <div className="mt-4 lg:col-[4/11] lg:mt-2">
-              <ul className="-mx-3 -my-1 flex list-none flex-wrap lg:justify-end">
+              <ul className="-mx-3 flex list-none flex-wrap sm:-my-1 lg:justify-end">
                 {legalLinks.map(link => (
-                  <li key={link.label} className="mx-3 my-1 shrink-0">
+                  <li key={link.label} className="mx-3 shrink-0 sm:my-1">
                     <button
                       type="button"
                       onClick={link.onClick}
-                      className="cursor-pointer text-sm text-brand-muted underline-offset-4 hover:underline"
+                      className="inline-flex min-h-11 cursor-pointer items-center text-sm text-brand-muted underline-offset-4 hover:underline sm:min-h-0"
                     >
                       {link.label}
                     </button>

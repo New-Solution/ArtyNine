@@ -22,7 +22,7 @@ import {
 } from './ui/CtaSectionWithGallery';
 import { formatDate } from '../utils/calendarConfig';
 import { selectFeaturedWorkshops, recentBookingsWindow } from '../utils/featuredWorkshops';
-import { STUDIO_PHONE, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL, STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_MAPS_URL } from '../utils/studioConfig';
+import { STUDIO_PHONE, STUDIO_PHONE_TEL, STUDIO_WHATSAPP_URL, STUDIO_WHATSAPP_DISPLAY, STUDIO_EMAIL, STUDIO_ADDRESS, STUDIO_ADDRESS_AR, STUDIO_MAPS_URL } from '../utils/studioConfig';
 import { StudioHours } from './ui/StudioHours';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
@@ -337,7 +337,7 @@ export const HomeSection: React.FC = () => {
                 setWorkshopsInitialCategory('All');
                 setCustomerTab('workshops');
               }}
-              className="group inline-flex shrink-0 items-center gap-2 rounded-full border border-brand-clay bg-brand-cream px-5 py-2.5 text-sm font-semibold text-brand-charcoal transition-colors hover:bg-brand-clay-soft cursor-pointer"
+              className="group inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-brand-clay bg-brand-cream px-5 py-2.5 text-sm font-semibold text-brand-charcoal transition-colors hover:bg-brand-clay-soft cursor-pointer"
             >
               <span>{t('View All', 'عرض الكل')} ({publishedWorkshops.length})</span>
               <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1 flip-rtl" />
@@ -397,7 +397,7 @@ export const HomeSection: React.FC = () => {
                   onClick={() => handleCardClick(activeFeatured.id)}
                   /* 24/28px sat heavy over a 260px card. One step down keeps it
                      the focal line without outweighing the image it describes. */
-                  className="group mt-2 cursor-pointer font-display text-xl md:text-2xl font-semibold text-brand-charcoal transition-colors hover:text-brand-terracotta"
+                  className="group mt-1 inline-flex min-h-11 cursor-pointer items-center font-display text-xl md:text-2xl font-semibold text-brand-charcoal transition-colors hover:text-brand-terracotta"
                 >
                   {activeTitle}
                 </button>
@@ -540,7 +540,7 @@ export const HomeSection: React.FC = () => {
                      lightness, so the button stopped reading as a button. Cream
                      on the band is 6.7:1 and charcoal on cream is 13.9:1.
                      Inverted for THIS instance only. */
-                  className="pill-btn pill-btn-light px-6 py-3.5 text-sm shadow-button"
+                  className="pill-btn pill-btn-light w-full px-6 py-4 text-base shadow-button sm:w-auto sm:py-3.5 sm:text-sm"
                 >
                   <span>{t('See packages', 'استعرض الباقات')}</span>
                   <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
@@ -599,13 +599,21 @@ export const HomeSection: React.FC = () => {
 
                       {/* 13px, so AA still wants 4.5:1. /60 no longer reaches it
                           on this ground; /75 does. */}
-                      <p className="mt-2 text-[13px] leading-relaxed text-brand-cream/75">
+                      {/* Each part is isolated (<bdi>) so an English duration or
+                          description inside Arabic text keeps its own order
+                          instead of being shuffled by the bidi algorithm. */}
+                      <p className="mt-2 text-sm leading-relaxed text-brand-cream/80">
                         {[
                           // ⚠ ARABIC PLURALIZATION — placeholder only, needs a native speaker.
                           pkg.maxGuests ? `${pkg.maxGuests} ${t('guests', 'ضيوف')}` : null,
                           localizedText(pkg.duration, pkg.durationAr, lang) || null,
                           localizedText(pkg.shortDescription, pkg.shortDescriptionAr, lang) || null
-                        ].filter(Boolean).join(' · ')}
+                        ].filter(Boolean).map((part, i) => (
+                          <React.Fragment key={i}>
+                            {i > 0 && ' · '}
+                            <bdi>{part}</bdi>
+                          </React.Fragment>
+                        ))}
                       </p>
                     </div>
 
@@ -735,9 +743,9 @@ export const HomeSection: React.FC = () => {
               >
                 <button
                   onClick={() => setShowOwnerContact(prev => !prev)}
-                  className="group pill-btn pill-btn-dark px-7 py-4 text-base shadow-button"
+                  className="group pill-btn pill-btn-dark w-full gap-2.5 whitespace-nowrap px-5 py-4 text-base shadow-button sm:w-auto sm:px-7"
                 >
-                  <Sparkles className="h-5 w-5 text-brand-terracotta transition-colors group-hover:text-brand-cream" />
+                  <Sparkles className="hidden h-5 w-5 shrink-0 text-brand-sage-line transition-colors group-hover:text-brand-cream min-[400px]:block" />
                   <span>{t('Create your own Event', 'أنشئ فعاليتك الخاصة')}</span>
                   {/* Always the forward chevron now: this button only exists on
                       the pitch face, and the way back is the Back control on
@@ -756,7 +764,7 @@ export const HomeSection: React.FC = () => {
                  clipped to zero area reports zero intersection, so useInView
                  never fires and the reveal holds it invisible. The wipe is on
                  the inner element, which inherits the variant. */
-              variants={{ hidden: { opacity: 0, x: 48 }, visible: { opacity: 1, x: 0 } }}
+              variants={{ hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0 } }}
               className="lg:col-span-7"
             >
               <motion.div
@@ -930,8 +938,9 @@ export const HomeSection: React.FC = () => {
                 <Reveal index={4}>
                   <div className="border-t border-b border-brand-clay py-4">
                     <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-muted">{t('Call Front Desk', 'اتصل بالاستقبال')}</dt>
-                    <dd className="mt-1.5 text-brand-charcoal ltr-numerals">
-                      {STUDIO_PHONE} ({t('Walk-ins welcome!', 'الزيارات بدون حجز مسبق مرحّب بها!')})
+                    <dd className="mt-1.5 text-brand-charcoal">
+                      <a href={STUDIO_PHONE_TEL} className="ltr-numerals -my-3 inline-block py-3 font-semibold underline-offset-4 hover:underline">{STUDIO_PHONE}</a>{' '}
+                      ({t('Walk-ins welcome!', 'الزيارات بدون حجز مسبق مرحّب بها!')})
                     </dd>
                   </div>
                 </Reveal>
@@ -951,7 +960,7 @@ export const HomeSection: React.FC = () => {
               once
               viewOptions={{ once: true, amount: 0.25 }}
               transition={{ delay: 0.15, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-              variants={{ hidden: { opacity: 0, x: 48 }, visible: { opacity: 1, x: 0 } }}
+              variants={{ hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0 } }}
               className="lg:col-span-7"
             >
               <motion.div

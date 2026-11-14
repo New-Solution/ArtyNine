@@ -456,7 +456,7 @@ export const WorkshopDetailSection: React.FC = () => {
 
         {/* RIGHT COLUMN: Sticky Booking Panel */}
         <div className="lg:col-span-5">
-          <div className="lg:sticky lg:top-24 bg-brand-cream rounded-[28px] p-6 sm:p-8 shadow-card shadow-brand-charcoal/5 border border-brand-terracotta/5 flex flex-col gap-6">
+          <div className="lg:sticky lg:top-24 bg-brand-cream rounded-[28px] p-4 min-[400px]:p-6 sm:p-8 shadow-card shadow-brand-charcoal/5 border border-brand-terracotta/5 flex flex-col gap-6">
             
             <div>
               <Reveal index={0}>
@@ -563,7 +563,7 @@ export const WorkshopDetailSection: React.FC = () => {
                   })}
                 </div>
 
-                <p className="text-[10px] text-center text-brand-muted pt-1">
+                <p className="text-xs text-center text-brand-muted pt-1">
                   {t('Selected', 'المحدد')}: <strong className="text-brand-terracotta">{selectedDate}</strong>
                 </p>
               </div>
@@ -698,11 +698,11 @@ export const WorkshopDetailSection: React.FC = () => {
             {/* 3. Participant stepper */}
             <div className="flex items-center justify-between py-1">
               <label className="text-xs font-semibold uppercase tracking-widest text-brand-charcoal/40">{t('3. Participants', '3. المشاركون')}</label>
-              <div className="flex items-center gap-4 bg-brand-sand/40 rounded-full px-4 py-2 border border-brand-clay/20">
+              <div className="flex items-center gap-3 bg-brand-sand/40 rounded-full px-2 py-1 border border-brand-clay/20">
                 <button
                   disabled={participants <= 1}
                   onClick={() => setParticipants(prev => Math.max(1, prev - 1))}
-                  className="w-9 h-9 flex items-center justify-center text-brand-charcoal/40 hover:text-brand-charcoal disabled:opacity-30 cursor-pointer text-lg font-semibold"
+                  className="w-11 h-11 flex items-center justify-center text-brand-charcoal/40 hover:text-brand-charcoal disabled:opacity-30 cursor-pointer text-lg font-semibold"
                 >
                   −
                 </button>
@@ -710,7 +710,7 @@ export const WorkshopDetailSection: React.FC = () => {
                 <button
                   disabled={participants >= maxParticipants}
                   onClick={() => setParticipants(prev => Math.min(maxParticipants, prev + 1))}
-                  className="w-9 h-9 flex items-center justify-center text-brand-terracotta hover:text-brand-terracotta-hover disabled:opacity-30 cursor-pointer text-lg font-semibold"
+                  className="w-11 h-11 flex items-center justify-center text-brand-terracotta hover:text-brand-terracotta-hover disabled:opacity-30 cursor-pointer text-lg font-semibold"
                 >
                   +
                 </button>
@@ -726,7 +726,7 @@ export const WorkshopDetailSection: React.FC = () => {
                     {totalPrice} <span className="text-sm font-sans font-normal">{t('SAR', 'ريال')}</span>
                   </p>
                 </div>
-                <p className="text-[10px] text-brand-charcoal/40 italic font-medium">{priceSubtitle}</p>
+                <p className="text-xs text-brand-charcoal/50 italic font-medium">{priceSubtitle}</p>
               </div>
             </div>
 
@@ -764,7 +764,7 @@ export const WorkshopDetailSection: React.FC = () => {
                 total: totalPrice
               });
               return (
-                <p className="text-[10px] text-center text-brand-charcoal/40 italic">
+                <p className="text-sm leading-relaxed text-center text-brand-charcoal/60 italic sm:text-xs">
                   {t(note.en, note.ar)}{' '}
                   <InfoPageNewTabLink
                     page="cancellation-policy"

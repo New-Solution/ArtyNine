@@ -41,7 +41,7 @@ export const CustomerHeader: React.FC = () => {
   };
 
   return (
-      <header className="sticky top-0 z-40 w-full border-b border-brand-clay bg-brand-cream/92 backdrop-blur-md">
+      <header className="sticky top-0 z-40 w-full border-b border-brand-clay bg-brand-cream/92 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="mx-auto flex h-[78px] max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-12">
 
           {/* Wordmark — goes to this site's home page, same as "Home". */}
@@ -49,7 +49,7 @@ export const CustomerHeader: React.FC = () => {
             type="button"
             onClick={() => handleNavClick('home')}
             aria-label={t('Arty Café — home', 'آرتي كافيه — الرئيسية')}
-            className="flex items-center gap-3 text-start group focus:outline-none cursor-pointer shrink-0"
+            className="flex min-h-11 items-center gap-3 text-start group focus:outline-none cursor-pointer shrink-0"
           >
             <img
               src={`${import.meta.env.BASE_URL}images/arty-logo-wordmark.png`}
@@ -91,7 +91,7 @@ export const CustomerHeader: React.FC = () => {
             })}
           </nav>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 sm:gap-3">
             {/* In the bar itself at every width, not folded into the mobile
                 drawer: a piece-is-ready notice is time-sensitive, and burying it
                 one tap deeper on the smaller screen is the wrong trade. Renders
@@ -102,8 +102,9 @@ export const CustomerHeader: React.FC = () => {
             {/* Mobile menu */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-xl text-brand-charcoal hover:bg-brand-sand focus:outline-none cursor-pointer"
+              className="-me-1.5 flex h-11 w-11 items-center justify-center rounded-xl text-brand-charcoal hover:bg-brand-sand focus:outline-none cursor-pointer md:hidden"
               aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
@@ -112,7 +113,7 @@ export const CustomerHeader: React.FC = () => {
 
         {/* Mobile drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-brand-clay bg-brand-cream px-4 py-4 space-y-1 shadow-card-sm animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="md:hidden max-h-[calc(100dvh-78px-env(safe-area-inset-top))] overflow-y-auto overscroll-contain border-t border-brand-clay bg-brand-cream px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-1 shadow-card-sm animate-in fade-in slide-in-from-top-4 duration-200">
             {navItems.map(item => {
               const Icon = item.icon;
               const isActive = customerTab === item.id;
@@ -133,7 +134,7 @@ export const CustomerHeader: React.FC = () => {
             })}
             <button
               onClick={() => handleNavClick('workshops')}
-              className="pill-btn pill-btn-primary mt-2 w-full px-4 py-3.5 text-sm"
+              className="pill-btn pill-btn-primary mt-2 w-full px-4 py-4 text-base"
             >
               <span>{t('Book Now', 'احجز الآن')}</span>
               <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>

@@ -230,7 +230,7 @@ export const AboutSection: React.FC = () => {
           <button
             type="button"
             onClick={browseWorkshops}
-            className="pill-btn pill-btn-primary mt-8 px-7 py-4 text-base shadow-button"
+            className="pill-btn pill-btn-primary mt-8 w-full px-7 py-4 text-base shadow-button sm:w-auto"
           >
             <span>{t('Browse Workshops', 'تصفح الورش')}</span>
             <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>

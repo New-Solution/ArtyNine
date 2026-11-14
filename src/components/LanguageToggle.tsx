@@ -17,7 +17,7 @@ export const LanguageToggle: React.FC<{ className?: string }> = ({ className = '
   const { lang, setLang } = useLanguage();
 
   const chip = (active: boolean) =>
-    `cursor-pointer rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all ${
+    `relative cursor-pointer rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-[''] ${
       active
         ? 'bg-white text-brand-charcoal shadow-[0_1px_2px_rgba(46,33,26,0.08)]'
         : 'text-brand-muted hover:text-brand-charcoal'

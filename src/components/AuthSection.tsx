@@ -452,8 +452,10 @@ export const AuthSection: React.FC = () => {
                     <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-muted">
                       {row.label}
                     </dt>
-                    <dd className={`mt-1.5 break-words ${row.value ? 'text-brand-charcoal ltr-numerals' : 'text-brand-muted italic'}`}>
-                      {row.value || t('Not on file', 'غير مسجّل')}
+                    <dd className={`mt-1.5 break-words ${row.value ? 'text-brand-charcoal' : 'text-brand-muted italic'}`}>
+                      {/* Isolated inline, not a left-to-right block, so in Arabic
+                          the value lines up under its label on the right. */}
+                      {row.value ? <bdi>{row.value}</bdi> : t('Not on file', 'غير مسجّل')}
                     </dd>
                   </div>
                 ))}

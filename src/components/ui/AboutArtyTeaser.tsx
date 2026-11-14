@@ -179,7 +179,7 @@ export const AboutArtyTeaser: React.FC<Props> = ({ onLearnMore }) => {
             <button
               type="button"
               onClick={onLearnMore}
-              className="pill-btn pill-btn-primary px-7 py-4 text-base shadow-button"
+              className="pill-btn pill-btn-primary w-full px-7 py-4 text-base shadow-button sm:w-auto"
             >
               <span>{t('Learn more', 'اعرف أكثر')}</span>
               <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>

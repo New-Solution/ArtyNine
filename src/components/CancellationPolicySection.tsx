@@ -134,7 +134,7 @@ export const CancellationPolicySection: React.FC = () => {
             <div key={card.title} className="rounded-2xl border border-brand-clay bg-brand-sand/30 p-4 text-start">
               <Icon className="h-5 w-5 text-brand-terracotta" />
               <p className="mt-2 text-sm font-semibold text-brand-charcoal">{card.title}</p>
-              <p className="mt-1 text-xs leading-relaxed text-brand-ink">{card.body}</p>
+              <p className="mt-1 text-sm leading-relaxed text-brand-ink">{card.body}</p>
             </div>
           );
         })}

@@ -243,12 +243,12 @@ export const WorkshopsBrowsingSection: React.FC = () => {
               {/* appearance-none drops the browser's own native arrow (which
                   reserves its own wide gutter regardless of padding) in favor
                   of a chevron placed right against the text. */}
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <select
                   value={selectedSkillLevel}
                   onChange={(e) => setSelectedSkillLevel(e.target.value)}
                   aria-label={t('Skill Level', 'المستوى المهاري')}
-                  className="appearance-none bg-white border border-brand-clay rounded-full py-3 ps-4 pe-9 text-sm font-medium text-brand-charcoal cursor-pointer focus:ring-1 focus:ring-brand-sage"
+                  className="w-full appearance-none bg-white border border-brand-clay rounded-full py-3 ps-4 pe-9 text-sm font-medium text-brand-charcoal cursor-pointer focus:ring-1 focus:ring-brand-sage sm:w-auto"
                 >
                   {/*
                     Two of these once read "All Levels" and "All Levels
@@ -268,12 +268,12 @@ export const WorkshopsBrowsingSection: React.FC = () => {
                 <ChevronDown className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-muted" />
               </div>
 
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
                   aria-label={t('Sort by', 'ترتيب حسب')}
-                  className="appearance-none bg-white border border-brand-clay rounded-full py-3 ps-4 pe-9 text-sm font-medium text-brand-charcoal cursor-pointer focus:ring-1 focus:ring-brand-sage"
+                  className="w-full appearance-none bg-white border border-brand-clay rounded-full py-3 ps-4 pe-9 text-sm font-medium text-brand-charcoal cursor-pointer focus:ring-1 focus:ring-brand-sage sm:w-auto"
                 >
                   <option value="Popularity">{t('Popularity (Filling Fast)', 'الأكثر رواجًا (يمتلئ بسرعة)')}</option>
                   <option value="PriceLow">{t('Price: Low to High', 'السعر: من الأقل إلى الأعلى')}</option>
@@ -295,7 +295,7 @@ export const WorkshopsBrowsingSection: React.FC = () => {
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-5 py-2.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors duration-150 border cursor-pointer active:scale-[0.97] ${
+                className={`min-h-11 px-5 py-2.5 rounded-full text-sm sm:text-[13px] font-medium whitespace-nowrap transition-colors duration-150 border cursor-pointer active:scale-[0.97] ${
                   isActive
                     ? 'bg-brand-terracotta border-brand-terracotta text-brand-cream font-semibold'
                     : 'bg-white border-brand-clay text-brand-ink hover:text-brand-charcoal hover:border-brand-muted'

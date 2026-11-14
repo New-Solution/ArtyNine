@@ -34,7 +34,7 @@ export const BackButton: React.FC<BackButtonProps> = ({ onClick, children, class
   <button
     type="button"
     onClick={onClick}
-    className={`inline-flex cursor-pointer items-center gap-2 rounded-full border border-brand-clay bg-brand-cream px-4 py-2 text-xs font-semibold text-brand-terracotta transition-colors hover:bg-brand-sand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sage ${className}`}
+    className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-brand-clay bg-brand-cream px-4 py-2 text-xs font-semibold text-brand-terracotta transition-colors hover:bg-brand-sand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sage ${className}`}
   >
     {/* flip-rtl so the arrow points back, not forward, in Arabic. */}
     <ArrowLeft className="h-4 w-4 flip-rtl" />

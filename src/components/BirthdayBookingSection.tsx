@@ -1302,8 +1302,8 @@ export const BirthdayBookingSection: React.FC = () => {
                                 {[localizedText(pkg.duration, pkg.durationAr, lang), `${pkg.minGuests}–${pkg.maxGuests} ${t('guests', 'ضيوف')}`, localizedText(pkg.ageInformation, pkg.ageInformationAr, lang)]
                                   .filter(Boolean).join(' · ')}
                               </p>
-                              <p className="mt-3 font-display text-xl font-semibold text-brand-charcoal ltr-numerals">
-                                {pkg.price}
+                              <p className="mt-3 font-display text-xl font-semibold text-brand-charcoal">
+                                <span className="ltr-numerals">{pkg.price}</span>
                                 <span className="ms-1.5 text-xs font-medium text-brand-muted">
                                   {t('SAR', 'ريال')} {localizedText(enumLabel('pricingType', pkg.pricingLabel || pkg.pricingType, lang), pkg.pricingLabelAr, lang)}
                                 </span>

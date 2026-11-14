@@ -416,7 +416,9 @@ export function CoverflowCarousel({
       </div>
 
       {showPagination && count > 1 && (
-        <div className="mt-6 flex items-center justify-center gap-2">
+        <div className="mt-4 flex items-center justify-center">
+          {/* The dot stays 8px; the button around it is a 44px-tall,
+              28px-wide tap target, so the row reads the same but is easy to hit. */}
           {slides.map((_, index) => (
             <button
               key={index}
@@ -424,10 +426,14 @@ export function CoverflowCarousel({
               aria-label={`Go to slide ${index + 1}`}
               aria-current={index === selected}
               onClick={() => goTo(index)}
-              className={`size-2 cursor-pointer rounded-full bg-brand-charcoal transition-opacity ${
-                index === selected ? 'opacity-100' : 'opacity-30'
-              }`}
-            />
+              className="flex h-11 w-7 cursor-pointer items-center justify-center"
+            >
+              <span
+                className={`size-2 rounded-full bg-brand-charcoal transition-opacity ${
+                  index === selected ? 'opacity-100' : 'opacity-30'
+                }`}
+              />
+            </button>
           ))}
         </div>
       )}

@@ -268,32 +268,32 @@ export const CheckoutInfoSection: React.FC = () => {
             </div>
 
             <div className="border-t border-brand-clay pt-3 space-y-2 text-xs text-brand-ink">
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span>{t('Date', 'التاريخ')}:</span>
-                <span className="font-semibold text-brand-charcoal">{pendingBooking.date}</span>
+                <span className="min-w-0 text-end font-semibold text-brand-charcoal">{pendingBooking.date}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span>{t('Time Slot', 'الوقت')}:</span>
-                <span className="font-semibold text-brand-charcoal">{timeLabel(pendingBooking.time, lang)}</span>
+                <span className="min-w-0 text-end font-semibold text-brand-charcoal">{timeLabel(pendingBooking.time, lang)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span>{birthday ? t('Guests', 'الضيوف') : t('Participants', 'المشاركون')}:</span>
                 {/* ⚠ ARABIC PLURALIZATION — placeholder only, needs a native speaker. */}
-                <span className="font-semibold text-brand-charcoal">{pendingBooking.participants} {pendingBooking.participants === 1 ? t('guest', 'ضيف') : t('guests', 'ضيوف')}</span>
+                <span className="min-w-0 text-end font-semibold text-brand-charcoal">{pendingBooking.participants} {pendingBooking.participants === 1 ? t('guest', 'ضيف') : t('guests', 'ضيوف')}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 {/* Fallback only — a package with a pricingLabel shows its own.
                     "Per child" here disagreed with the "Price per person" beside
                     it for a workshop, on the same line of the same panel. */}
                 <span>{birthday ? localizedText(birthdayPackage?.pricingLabel ? enumLabel('pricingType', birthdayPackage.pricingLabel, lang) : t('Per person', 'للشخص'), birthdayPackage?.pricingLabelAr, lang) : t('Price per person', 'السعر للشخص')}:</span>
-                <span className="font-semibold text-brand-charcoal">
+                <span className="min-w-0 text-end font-semibold text-brand-charcoal">
                   {birthday ? (birthdayPackage?.price ?? 0) : workshop.price} {t('SAR', 'ريال')}
                 </span>
               </div>
               {birthday?.birthdayPersonName && (
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-3">
                   <span>{t('Birthday person', 'صاحب عيد الميلاد')}:</span>
-                  <span className="font-semibold text-brand-charcoal">{birthday.birthdayPersonName}</span>
+                  <span className="min-w-0 text-end font-semibold text-brand-charcoal">{birthday.birthdayPersonName}</span>
                 </div>
               )}
             </div>

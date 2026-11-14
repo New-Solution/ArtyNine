@@ -545,3 +545,51 @@ balloons {
   .pill-btn, .pill-btn::before, .pill-btn-arrow { transition: none; }
   .pill-btn:active { transform: none; }
 }
+
+/* =============================================================================
+   PHONES — the mobile polish pass.
+   ============================================================================= */
+
+/* Nothing may scroll the page sideways. `clip` (unlike `hidden`) makes no
+   scroll container, so the sticky header keeps working, and iOS Safari
+   honours it where it ignores overflow-x: hidden on body. */
+html { overflow-x: clip; }
+
+/* No lone word on the last line of a heading; tidier paragraph rag. */
+h1, h2, h3 { text-wrap: balance; }
+p, li, dd { text-wrap: pretty; }
+
+/* Side insets for a phone held sideways (notch / rounded corners). In
+   portrait these are 0, so nothing moves. */
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+@media (max-width: 639px) {
+  /* Readable body copy on the customer site: Tailwind's text-sm (14px) and
+     text-xs (12px) step up to 15px and 13px on phones. Set on :root (via
+     :has) so modals portalled into <body> get it too. The staff console
+     never mounts alongside the customer site, so it is unaffected. */
+  :root:has(.customer-site) {
+    --text-sm: 0.9375rem;
+    --text-sm--line-height: 1.6;
+    --text-xs: 0.8125rem;
+  }
+}
+
+@media (max-width: 767px) {
+  /* iOS zooms into any field under 16px when it is focused. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 639px) {
+  /* Captions and labels set in arbitrary 10–11px sizes step up one notch on
+     phones, where they were hard to read. */
+  .customer-site .text-\[10px\] { font-size: 11px; }
+  .customer-site .text-\[11px\] { font-size: 12px; }
+}

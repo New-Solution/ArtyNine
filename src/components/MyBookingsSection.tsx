@@ -240,7 +240,7 @@ export const MyBookingsSection: React.FC = () => {
             <Calendar className="h-8 w-8" />
           </div>
           <h2 className="font-display text-xl font-semibold text-brand-charcoal">{t('Sign In to View Your Reservations', 'سجّل الدخول لعرض حجوزاتك')}</h2>
-          <p className="text-xs text-brand-ink leading-relaxed">
+          <p className="text-sm text-brand-ink leading-relaxed">
             {t(
               'Please log in or register an account to manage your workshop bookings, view reservation details, or request cancellations.',
               'يرجى تسجيل الدخول أو إنشاء حساب لإدارة حجوزات الورش، ومشاهدة تفاصيل الحجز، أو طلب الإلغاء.'
@@ -432,7 +432,7 @@ export const MyBookingsSection: React.FC = () => {
                             </span>
                             <span className="text-base font-semibold text-brand-charcoal whitespace-nowrap">{sarAmount(view.paid)} {t('SAR', 'ريال')}</span>
                             {view.balance > 0 && (
-                              <span className="block text-[10px] text-brand-muted whitespace-nowrap">
+                              <span className="block text-[10px] text-brand-muted sm:whitespace-nowrap">
                                 {t(`Balance ${sarAmount(view.balance)} SAR at the studio`, `المتبقي ${sarAmount(view.balance)} ريال في الاستوديو`)}
                               </span>
                             )}
@@ -455,7 +455,7 @@ export const MyBookingsSection: React.FC = () => {
                             </span>
                             <span className="text-base font-semibold text-brand-charcoal whitespace-nowrap">{sarAmount(view.amount)} {t('SAR', 'ريال')}</span>
                             {view.depositOnly && (
-                              <span className="block text-[10px] text-brand-muted whitespace-nowrap">
+                              <span className="block text-[10px] text-brand-muted sm:whitespace-nowrap">
                                 {t('Deposit paid · balance at the studio', 'تم دفع العربون · المتبقي في الاستوديو')}
                               </span>
                             )}

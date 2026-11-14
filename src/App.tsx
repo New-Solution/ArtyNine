@@ -104,7 +104,7 @@ export default function App() {
         /* 1. CUSTOMER SITE */
         <LanguageProvider key="customer" scope="customer">
         <PreferredLangSync />
-        <div className="flex flex-col flex-1 justify-between min-h-screen bg-brand-sand">
+        <div className="customer-site flex flex-col flex-1 justify-between min-h-screen bg-brand-sand">
           <PageCurtain pageKey={customerTab} />
           <CustomerHeader />
           

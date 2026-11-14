@@ -118,7 +118,7 @@ export const CustomerNotificationBell: React.FC = () => {
         <div
           role="dialog"
           aria-label={t('Notifications', 'الإشعارات')}
-          className="fixed inset-x-4 top-[86px] z-50 max-h-[70vh] overflow-y-auto rounded-2xl border border-brand-clay bg-white p-4 shadow-xl animate-in fade-in slide-in-from-top-2 duration-150 sm:absolute sm:inset-x-auto sm:end-0 sm:top-auto sm:mt-2 sm:w-80"
+          className="fixed inset-x-4 top-[calc(86px+env(safe-area-inset-top))] z-50 max-h-[min(70vh,calc(100dvh-110px-env(safe-area-inset-top)))] overflow-y-auto overscroll-contain rounded-2xl border border-brand-clay bg-white p-4 shadow-xl animate-in fade-in slide-in-from-top-2 duration-150 sm:absolute sm:inset-x-auto sm:end-0 sm:top-auto sm:mt-2 sm:w-80"
         >
           <div className="flex items-center justify-between border-b border-brand-clay/60 pb-2">
             <span className={`text-xs font-bold uppercase ${lang === 'ar' ? '' : 'tracking-wider '}text-brand-charcoal`}>
