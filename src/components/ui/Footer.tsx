@@ -30,8 +30,8 @@ export interface FooterSocial {
 export interface FooterAction {
   label: string;
   onClick?: () => void;
-  /** A real link instead of an action — for leaving the app (e.g. the café's
-   *  main website). Opens in the same tab. */
+  /** A real link instead of an action — for leaving the app. Opens in the
+   *  same tab. */
   href?: string;
   /** Renders in the brand colour — used for the staff console entry. */
   emphasis?: boolean;
