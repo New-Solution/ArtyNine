@@ -25,6 +25,7 @@ import { toE164Saudi, needsCustomerName } from '../utils/phoneAuth';
 import { supabase } from '../lib/supabase';
 import { useTurnstile } from './Turnstile';
 import { CREDENTIAL_INPUT_PROPS } from '../utils/credentialInput';
+import { localizeAuthMessage } from '../utils/authMessagesAr';
 
 /** Staggered fade-up for the title block over the photograph. */
 const textVariants = {
@@ -42,16 +43,16 @@ const textVariants = {
  */
 const AUTH_OVERLAY = {
   login: {
-    kicker: 'Returning maker',
-    lead: 'Where clay',
-    accent: 'meets calm.',
-    support: 'Your wheel, your shelf, and every piece you have made are waiting.'
+    kicker: ['Returning maker', 'أهلًا بعودتك'],
+    lead: ['Where clay', 'حيث يلتقي الطين'],
+    accent: ['meets calm.', 'بالهدوء.'],
+    support: ['Your wheel, your shelf, and every piece you have made are waiting.', 'عجلتك ورفّك وكل قطعة صنعتها بانتظارك.']
   },
   register: {
-    kicker: 'Your first piece',
-    lead: 'Every masterpiece begins with',
-    accent: 'a single touch of clay.',
-    support: 'Follow each piece from the wheel to the kiln to the shelf.'
+    kicker: ['Your first piece', 'قطعتك الأولى'],
+    lead: ['Every masterpiece begins with', 'كل تحفة تبدأ'],
+    accent: ['a single touch of clay.', 'بلمسة طين واحدة.'],
+    support: ['Follow each piece from the wheel to the kiln to the shelf.', 'تابع كل قطعة من العجلة إلى الفرن إلى الرف.']
   }
 } as const;
 
@@ -659,7 +660,13 @@ export const AuthSection: React.FC = () => {
               size. */}
           <AnimatePresence mode="wait" initial={false}>
             {(authScreen === 'login' || authScreen === 'register') && (() => {
-              const copy = AUTH_OVERLAY[authScreen];
+              const overlay = AUTH_OVERLAY[authScreen];
+              const copy = {
+                kicker: t(overlay.kicker[0], overlay.kicker[1]),
+                lead: t(overlay.lead[0], overlay.lead[1]),
+                accent: t(overlay.accent[0], overlay.accent[1]),
+                support: t(overlay.support[0], overlay.support[1])
+              };
               return (
                 <motion.figure
                   key={authScreen}
@@ -678,7 +685,7 @@ export const AuthSection: React.FC = () => {
                     className="flex items-center justify-center gap-3 lg:justify-start"
                   >
                     <span className="hidden h-px w-10 bg-brand-sage/70 lg:block" aria-hidden="true" />
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-sage">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-sage rtl:text-[13px] rtl:tracking-normal">
                       {copy.kicker}
                     </span>
                   </motion.figcaption>
@@ -690,7 +697,7 @@ export const AuthSection: React.FC = () => {
                     className="auth-title mt-5 text-[30px] leading-[1.12] text-brand-cream sm:text-[40px] lg:text-[46px]"
                   >
                     {copy.lead}{' '}
-                    <span className="italic text-brand-cream/90">{copy.accent}</span>
+                    <span className="italic text-brand-cream/90 rtl:not-italic">{copy.accent}</span>
                   </motion.blockquote>
 
                   <motion.div
@@ -708,9 +715,9 @@ export const AuthSection: React.FC = () => {
 
                   <motion.p
                     variants={overlayLineVariants}
-                    className="mt-8 text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-cream/45"
+                    className="mt-8 text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-cream/45 rtl:text-xs rtl:tracking-normal"
                   >
-                    Arty Café · Jeddah
+                    {t('Arty Café · Jeddah', 'آرتي كافيه · جدة')}
                   </motion.p>
                 </motion.figure>
               );
@@ -802,7 +809,7 @@ export const AuthSection: React.FC = () => {
               <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-start gap-2.5">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
                 <div className="flex-1">
-                  <p>{errorMsg}</p>
+                  <p>{localizeAuthMessage(errorMsg, lang)}</p>
                   {/* A failed email sign-in, whatever the reason, so it reveals
                       nothing: a phone account's email is not a sign-in. */}
                   {PHONE_AUTH_ENABLED && authScreen === 'login' && !phoneCodeOpen && (loginIdentifier || email).includes('@') && (
@@ -1225,7 +1232,7 @@ export const AuthSection: React.FC = () => {
                     {resetSent && (
                       <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 flex items-start gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <span className="leading-relaxed">{resetSent}</span>
+                        <span className="leading-relaxed">{localizeAuthMessage(resetSent, lang)}</span>
                       </div>
                     )}
 

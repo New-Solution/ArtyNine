@@ -42,6 +42,24 @@ export const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+/**
+ * Arabic Gregorian month names, in `getMonth()` order — the names
+ * `toLocaleDateString('ar-SA-u-ca-gregory')` prints. Display only: dates are
+ * still stored and compared as ISO strings.
+ */
+export const MONTH_NAMES_AR = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+];
+
+/** Single-letter Arabic weekday headers, in `getDay()` order (Sunday first). */
+export const WEEKDAY_LETTERS_AR = ['ح', 'ن', 'ث', 'ر', 'خ', 'ج', 'س'];
+
+/** The month's display name in the visitor's language (index from `getMonth()`). */
+export function monthName(monthIndex: number, lang: string): string {
+  return (lang === 'ar' ? MONTH_NAMES_AR : MONTH_NAMES)[monthIndex] ?? '';
+}
+
 export const MONTH_NAMES_SHORT = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
 ];

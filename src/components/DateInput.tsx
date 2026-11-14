@@ -20,7 +20,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 're
 import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
-import { MONTH_NAMES, MONTH_NAMES_SHORT, WEEKDAY_NAMES_SHORT, CALENDAR_INPUT_PROPS } from '../utils/calendarConfig';
+import { MONTH_NAMES, MONTH_NAMES_AR, MONTH_NAMES_SHORT, WEEKDAY_NAMES_SHORT, WEEKDAY_LETTERS_AR, CALENDAR_INPUT_PROPS } from '../utils/calendarConfig';
 
 export interface DateInputProps {
   /** ISO date, `YYYY-MM-DD`. */
@@ -55,11 +55,12 @@ function toISO(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-/** "04 Aug 2026" — always English Gregorian, never a locale-formatted string. */
-function formatDisplay(value?: string): string {
+/** "04 Aug 2026", or "04 أغسطس 2026" in Arabic — always Gregorian, display only. */
+function formatDisplay(value: string | undefined, lang: string): string {
   const parsed = parseISO(value);
   if (!parsed) return '';
-  return `${String(parsed.day).padStart(2, '0')} ${MONTH_NAMES_SHORT[parsed.month - 1]} ${parsed.year}`;
+  const month = lang === 'ar' ? MONTH_NAMES_AR[parsed.month - 1] : MONTH_NAMES_SHORT[parsed.month - 1];
+  return `${String(parsed.day).padStart(2, '0')} ${month} ${parsed.year}`;
 }
 
 export const DateInput: React.FC<DateInputProps> = ({
@@ -76,7 +77,7 @@ export const DateInput: React.FC<DateInputProps> = ({
   title
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const placeholder = placeholderProp ?? t('Select date', 'اختر التاريخ');
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -231,7 +232,7 @@ export const DateInput: React.FC<DateInputProps> = ({
         disabled={disabled}
         title={title}
         placeholder={placeholder}
-        value={formatDisplay(value)}
+        value={formatDisplay(value, lang)}
         onClick={() => !disabled && setIsOpen(open => !open)}
         onKeyDown={event => {
           if (disabled) return;
@@ -259,7 +260,7 @@ export const DateInput: React.FC<DateInputProps> = ({
               className="relative p-1.5 rounded-lg hover:bg-brand-sand text-brand-charcoal/70 cursor-pointer before:absolute before:-inset-2 before:content-['']"
               title={t('Previous month', 'الشهر السابق')}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4 flip-rtl" />
             </button>
 
             <div className="flex items-center gap-1.5">
@@ -268,7 +269,7 @@ export const DateInput: React.FC<DateInputProps> = ({
                 onChange={e => setViewMonth(Number(e.target.value))}
                 className="h-11 bg-brand-cream/50 border border-brand-clay rounded-lg px-1.5 text-[11px] font-bold text-brand-charcoal cursor-pointer"
               >
-                {MONTH_NAMES.map((label, idx) => (
+                {(lang === 'ar' ? MONTH_NAMES_AR : MONTH_NAMES).map((label, idx) => (
                   <option key={label} value={idx + 1}>{label}</option>
                 ))}
               </select>
@@ -286,15 +287,15 @@ export const DateInput: React.FC<DateInputProps> = ({
               className="relative p-1.5 rounded-lg hover:bg-brand-sand text-brand-charcoal/70 cursor-pointer before:absolute before:-inset-2 before:content-['']"
               title={t('Next month', 'الشهر التالي')}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4 flip-rtl" />
             </button>
           </div>
 
-          {/* English weekday headers */}
+          {/* Weekday headers (single letters, Arabic in Arabic) */}
           <div className="grid grid-cols-7 gap-0.5 mb-1">
-            {WEEKDAY_NAMES_SHORT.map(day => (
+            {WEEKDAY_NAMES_SHORT.map((day, i) => (
               <div key={day} className="text-center text-[9px] font-bold uppercase text-brand-charcoal/45 py-1">
-                {day.charAt(0)}
+                {lang === 'ar' ? WEEKDAY_LETTERS_AR[i] : day.charAt(0)}
               </div>
             ))}
           </div>

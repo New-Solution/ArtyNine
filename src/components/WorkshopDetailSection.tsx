@@ -14,7 +14,7 @@ import { getRiyadhNow, parseBookingDateTimeToRiyadhDate, getRiyadhDateString } f
 import { resolveStaffName } from '../utils/staffAssignments';
 import { useSessionSeats } from '../lib/sessionSeats';
 import { validateBookingForm } from '../utils/validation';
-import { MONTH_NAMES, WEEKDAY_NAMES_SHORT } from '../utils/calendarConfig';
+import { WEEKDAY_NAMES_SHORT, monthName } from '../utils/calendarConfig';
 import { Edit, ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { BackButton } from './ui/BackButton';
 import { localizedText } from '../utils/localizedText';
@@ -176,7 +176,6 @@ export const WorkshopDetailSection: React.FC = () => {
   };
 
   // English Gregorian month names from the shared calendar configuration.
-  const monthNames = MONTH_NAMES;
 
   // Time Slots for selected date calculated from Dexie
   const slots = useMemo(() => {
@@ -489,7 +488,7 @@ export const WorkshopDetailSection: React.FC = () => {
                     <ChevronLeft className="h-4 w-4 flip-rtl" />
                   </button>
                   <span className="font-display font-semibold text-sm text-brand-charcoal">
-                    {monthNames[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}
+                    {monthName(calendarMonth.getMonth(), lang)} {calendarMonth.getFullYear()}
                   </span>
                   <button
                     type="button"
