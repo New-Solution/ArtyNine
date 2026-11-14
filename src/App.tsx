@@ -25,6 +25,7 @@ import { CancellationPolicySection } from './components/CancellationPolicySectio
 import { TermsSection } from './components/TermsSection';
 import { PrivacyPolicySection } from './components/PrivacyPolicySection';
 import { ContactSection } from './components/ContactSection';
+import { AboutSection } from './components/AboutSection';
 
 import { AdminSidebar, AdminTopBar } from './components/AdminSidebar';
 import { AdminLoginSection } from './components/AdminLoginSection';
@@ -120,6 +121,7 @@ export default function App() {
             {customerTab === 'payment-return' && <PaymentReturnSection />}
             {customerTab === 'birthday-booking' && <BirthdayBookingSection />}
             {/* Public info pages: no sign-in, linked from the footer. */}
+            {customerTab === 'about' && <AboutSection />}
             {customerTab === 'cancellation-policy' && <CancellationPolicySection />}
             {customerTab === 'terms' && <TermsSection />}
             {customerTab === 'privacy' && <PrivacyPolicySection />}

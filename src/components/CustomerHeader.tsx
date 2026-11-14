@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Palette, Coffee, Menu, X, User, Calendar, Flame, Instagram, Facebook, Globe } from 'lucide-react';
+import { Palette, Coffee, Menu, X, User, Calendar, Flame, Instagram, Facebook, Globe, Info } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { Footer } from './ui/Footer';
 import { LanguageToggle } from './LanguageToggle';
@@ -23,6 +23,7 @@ export const CustomerHeader: React.FC = () => {
 
   const navItems = [
     { id: 'home', label: t('Home', 'الرئيسية'), icon: Coffee },
+    { id: 'about', label: t('About', 'من نحن'), icon: Info },
     { id: 'workshops', label: t('Workshops', 'الورش'), icon: Palette },
     { id: 'my-bookings', label: t('My Bookings', 'حجوزاتي'), icon: Calendar },
     { id: 'my-pieces', label: t('My Pieces', 'أعمالي'), icon: Flame },
@@ -60,13 +61,13 @@ export const CustomerHeader: React.FC = () => {
             {/* Just the tagline now — the logo already reads "Arty Café".
                 It is a single line, so it centres against the logo rather
                 than sitting where the top line of the old two-line block was. */}
-            <span className="text-[10px] font-medium uppercase leading-none tracking-[0.14em] text-brand-sage">
+            <span className="text-[10px] font-medium uppercase leading-none tracking-[0.14em] text-brand-sage md:hidden lg:inline">
               Jeddah Art &amp; Clay
             </span>
           </a>
 
           {/* Desktop navigation — plain words, weight marks the active one */}
-          <nav className="hidden md:flex items-center gap-[30px]">
+          <nav className="hidden md:flex items-center gap-4 lg:gap-[30px]">
             {navItems.map(item => {
               const isActive = customerTab === item.id;
               return (
@@ -213,6 +214,7 @@ export const CustomerFooter: React.FC = () => {
         }
       ]}
       mainLinks={[
+        { label: t('About', 'من نحن'), onClick: () => setCustomerTab('about') },
         { label: t('Main website', 'الموقع الرئيسي'), href: MAIN_WEBSITE_URL },
         /* TEMPORARY — DEVELOPMENT CONVENIENCE. Reconsider before launch.
            This restores the public "Staff Login" link that was removed with

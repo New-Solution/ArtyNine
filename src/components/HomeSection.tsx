@@ -9,9 +9,8 @@ import { useLanguage } from '../context/LanguageContext';
 import { categoryLabel } from '../utils/categoryLabel';
 import { enumLabel } from '../utils/enumLabels';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { PhotoGallery } from './ui/PhotoGallery';
-import { VerticalCutReveal } from './ui/VerticalCutReveal';
-import { CountingNumber } from './ui/CountingNumber';
+import { HeroVideo } from './ui/HeroVideo';
+import { AboutArtyTeaser } from './ui/AboutArtyTeaser';
 import { ScrollReveal } from './ui/ScrollReveal';
 import Reveal from './ui/Reveal';
 import { AnimatedMap } from './ui/AnimatedMap';
@@ -31,38 +30,12 @@ import { useSessionSeats, useRecentBookings } from '../lib/sessionSeats';
 import { Sparkles, ChevronRight, Paintbrush, MousePointerClick, CalendarRange, Gift, Phone, Mail, UserCheck, Star, ArrowLeft, Clock } from 'lucide-react';
 
 /**
- * The arc gallery's photographs, in the order the studio supplied them.
- * They live in /public so they are served as plain files, not bundled.
+ * The hero video and its poster. Served from /public as plain files, not
+ * bundled. The poster shows while the video loads, and stays if a browser
+ * declines to autoplay.
  */
-const HERO_IMAGES = [
-  'hero/studio-01.jpg',
-  'hero/studio-02.jpg',
-  'hero/studio-03.jpg',
-  'hero/studio-04.jpg',
-  'hero/studio-05.jpg',
-  'hero/studio-06.jpg',
-  'hero/studio-07.jpg',
-  'hero/studio-08.jpg',
-  'hero/studio-09.jpg',
-  'hero/studio-10.jpg',
-  'hero/studio-11.jpg',
-  'hero/studio-12.jpg'
-].map(path => `${import.meta.env.BASE_URL}images/${path}`);
-
-const HERO_ALTS = [
-  'Underglaze bottles beside a wall of fired colour test tiles',
-  'Hands trimming a terracotta pot on the wheel',
-  'Throwing a bowl on the potter’s wheel',
-  'Paint-covered studio tables under handmade ceramic lamps',
-  'A studio wall hung with students’ paintings',
-  'Shelves of glazed cups and bowls made by students',
-  'A hand reaching for brushes in a handmade cup',
-  'An artist holding a loaded paint palette',
-  'Shaping a cylinder with a rib tool at the wheel',
-  'A visitor looking at the portrait wall',
-  'A pot spinning on the wheel, seen from above',
-  'The pottery room mid-session, trays of thrown cups drying'
-];
+const HERO_VIDEO = `${import.meta.env.BASE_URL}media/arty-hero.mp4`;
+const HERO_POSTER = `${import.meta.env.BASE_URL}media/arty-hero-poster.jpg`;
 
 export const HomeSection: React.FC = () => {
   const {
@@ -229,88 +202,87 @@ export const HomeSection: React.FC = () => {
   return (
     <div className="animate-in fade-in duration-300">
       
-      {/* HERO — a stack of studio photographs that deals itself into a row.
-          Copy, CTAs and the three facts are unchanged; only the arrangement
-          around them is new. */}
-      <section className="bg-brand-cream pt-10 sm:pt-14 pb-16 md:pb-20 overflow-hidden">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
-          <Reveal index={0}>
-            <p className="text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-sage">
-              {t('Creative Sanctuary in Jeddah', 'ملاذ إبداعي في جدة')}
-            </p>
-          </Reveal>
-
-          <h1 dir={lang === 'ar' ? 'rtl' : 'ltr'} className="mx-auto mt-4 max-w-3xl text-center font-display text-[34px] sm:text-5xl lg:text-[62px] font-semibold text-brand-charcoal">
-            <VerticalCutReveal
-              key={lang}
-              splitBy={lang === 'ar' ? 'words' : 'characters'}
-              staggerDuration={0.04}
-              staggerFrom="center"
-              transition={{ damping: 20, stiffness: 300, type: 'spring' }}
-            >
-              {t('Melt into the art of ', 'انغمس في فن ')}
-              <span className="text-brand-sage">{t('clay & canvas', 'الطين واللوحة')}</span>
-              .
-            </VerticalCutReveal>
+      {/* HERO — the studio on video, full width. The café name, the line
+          under it and Browse Workshops sit on top; HeroVideo handles the scrim
+          that keeps them readable over light and dark frames alike. */}
+      <HeroVideo src={HERO_VIDEO} poster={HERO_POSTER}>
+        <div className="max-w-2xl text-start">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-cream/85 rtl:tracking-normal">
+            {t('Arty Café · Creative Sanctuary in Jeddah', 'آرتي كافيه · ملاذ إبداعي في جدة')}
+          </p>
+          <h1 className="mt-4 font-display text-[38px] font-semibold leading-[1.08] text-brand-cream [text-shadow:0_2px_24px_rgba(46,33,26,0.45)] sm:text-5xl lg:text-[64px]">
+            {t('Melt into the art of clay & canvas.', 'انغمس في فن الطين واللوحة.')}
           </h1>
+          <p className="mt-5 max-w-xl text-base leading-[1.7] text-brand-cream/90 [text-shadow:0_1px_12px_rgba(46,33,26,0.5)] sm:text-lg">
+            {t(
+              'Slow down, pour a fresh cup of espresso, and handcraft ceramic pottery or vibrant acrylic art in Jeddah’s favorite creative retreat.',
+              'خذ وقتك، اصبب فنجانًا من الإسبريسو الطازج، واصنع بيديك أعمال فخارية أو لوحات أكريليك في ملاذ جدة الإبداعي المفضل.'
+            )}
+          </p>
+          <button
+            onClick={() => {
+              setWorkshopsInitialCategory('All');
+              setCustomerTab('workshops');
+            }}
+            className="mt-8 w-full cursor-pointer rounded-full bg-brand-cream px-7 py-4 text-base font-semibold text-brand-charcoal shadow-button transition-colors duration-200 hover:bg-brand-clay-soft active:scale-[0.98] sm:w-auto"
+          >
+            {t('Browse Workshops', 'تصفح الورش')}
+          </button>
+        </div>
+      </HeroVideo>
 
-          <Reveal index={1}>
-            <p className="mx-auto mt-5 max-w-xl text-center text-base sm:text-lg text-brand-ink leading-[1.7]">
-              {t(
-                'Slow down, pour a fresh cup of espresso, and handcraft ceramic pottery or vibrant acrylic art in Jeddah’s favorite creative retreat.',
-                'خذ وقتك، اصبب فنجانًا من الإسبريسو الطازج، واصنع بيديك أعمال فخارية أو لوحات أكريليك في ملاذ جدة الإبداعي المفضل.'
-              )}
-            </p>
-          </Reveal>
+      {/* ABOUT ARTY — a short, playful introduction; Learn more opens the
+          About page. */}
+      <AboutArtyTeaser onLearnMore={() => setCustomerTab('about')} />
 
-          <PhotoGallery images={HERO_IMAGES} alts={HERO_ALTS} className="mt-10">
-            <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4">
-              <button
-                onClick={() => {
-                  setWorkshopsInitialCategory('All');
-                  setCustomerTab('workshops');
-                }}
-                className="cursor-pointer rounded-full bg-brand-terracotta px-7 py-4 text-base font-semibold text-brand-cream shadow-button hover:bg-brand-terracotta-hover transition-colors duration-200 active:scale-[0.98]"
-              >
-                {t('Browse Workshops', 'تصفح الورش')}
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedWorkshopId('ws-1');
-                  setCustomerTab('detail');
-                }}
-                className="cursor-pointer rounded-full border border-brand-clay bg-brand-cream px-7 py-4 text-base font-semibold text-brand-charcoal hover:bg-brand-clay-soft transition-colors duration-200"
-              >
-                {t('View Top Experience', 'استعرض أفضل التجارب')}
-              </button>
-            </div>
+      {/* HOW BOOKING WORKS */}
+      <section className="bg-brand-sand border-y border-brand-clay py-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
+          <div className="max-w-xl mx-auto mb-12">
+            <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-sage">{t('Three steps', 'ثلاث خطوات')}</span>
+            <Reveal index={0}>
+              <h2 className="mt-2 font-display text-3xl md:text-[38px] font-semibold text-brand-charcoal">
+                {t('How Booking Works', 'كيف يتم الحجز')}
+              </h2>
+            </Reveal>
+            <Reveal index={1}>
+              <p className="text-brand-ink mt-2">
+                {t(
+                  'Three simple, effortless steps from clay mud to beautiful glazed pottery.',
+                  'ثلاث خطوات بسيطة وسلسة من طين الفخار إلى قطعة خزفية جميلة ومزجّجة.'
+                )}
+              </p>
+            </Reveal>
+          </div>
 
-            {/* Three plain facts about the studio — the design leads with
-                proof rather than adjectives. */}
-            <dl className="mx-auto mt-12 grid max-w-xl grid-cols-1 xs:grid-cols-3 gap-6 border-t border-brand-clay pt-8">
-              <div>
-                <dt className="font-display text-2xl font-semibold text-brand-charcoal ltr-numerals">
-                  <CountingNumber target={publishedWorkshops.length} />
-                </dt>
-                <dd className="mt-1 text-[11px] uppercase tracking-[0.1em] text-brand-muted">{t('Workshops running', 'ورشة نشطة')}</dd>
-              </div>
-              <div>
-                <dt className="font-display text-2xl font-semibold text-brand-charcoal ltr-numerals">
-                  <CountingNumber target={2} />
-                </dt>
-                <dd className="mt-1 text-[11px] uppercase tracking-[0.1em] text-brand-muted">{t('Kilns firing weekly', 'أفران تعمل أسبوعيًا')}</dd>
-              </div>
-              <div>
-                <dt className="font-display text-2xl font-semibold text-brand-charcoal ltr-numerals">
-                  {/* A year, so no thousands separator — never "2,021". */}
-                  <CountingNumber target={2021} from={1990} groupThousands={false} />
-                </dt>
-                <dd className="mt-1 text-[11px] uppercase tracking-[0.1em] text-brand-muted">{t('On Ahmad Al Attas St.', 'في شارع أحمد العطاس')}</dd>
-              </div>
-            </dl>
-          </PhotoGallery>
-
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {steps.map((step, stepIndex) => {
+              const Icon = step.icon;
+              return (
+                <ScrollReveal
+                  key={step.num}
+                  once
+                  /* Fires a little before the card is 30% in, so the stagger
+                     is already running as the section arrives rather than
+                     finishing after it has settled. */
+                  viewOptions={{ once: true, amount: 0.3, margin: '0px 0px -80px 0px' }}
+                  transition={{ delay: stepIndex * 0.12, duration: 0.5, ease: 'easeOut' }}
+                  variants={{ hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0 } }}
+                >
+                <div className="bg-brand-cream rounded-[22px] p-7 border border-brand-clay shadow-card-sm relative text-start h-full">
+                  <div className="absolute top-5 end-6 font-display text-3xl font-semibold text-brand-clay">
+                    {step.num}
+                  </div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-brand-sage-soft text-brand-sage-hover mb-5">
+                    <Icon className="h-6 w-6" />
+                  </div>
+                  <h3 className="font-display text-lg font-semibold text-brand-charcoal mb-2">{step.title}</h3>
+                  <p className="text-sm text-brand-ink leading-relaxed">{step.desc}</p>
+                </div>
+                </ScrollReveal>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -475,57 +447,6 @@ export const HomeSection: React.FC = () => {
       </div>
       </section>
       )}
-
-      {/* HOW BOOKING WORKS */}
-      <section className="bg-brand-sand border-y border-brand-clay py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-          <div className="max-w-xl mx-auto mb-12">
-            <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-sage">{t('Three steps', 'ثلاث خطوات')}</span>
-            <Reveal index={0}>
-              <h2 className="mt-2 font-display text-3xl md:text-[38px] font-semibold text-brand-charcoal">
-                {t('How Booking Works', 'كيف يتم الحجز')}
-              </h2>
-            </Reveal>
-            <Reveal index={1}>
-              <p className="text-brand-ink mt-2">
-                {t(
-                  'Three simple, effortless steps from clay mud to beautiful glazed pottery.',
-                  'ثلاث خطوات بسيطة وسلسة من طين الفخار إلى قطعة خزفية جميلة ومزجّجة.'
-                )}
-              </p>
-            </Reveal>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {steps.map((step, stepIndex) => {
-              const Icon = step.icon;
-              return (
-                <ScrollReveal
-                  key={step.num}
-                  once
-                  /* Fires a little before the card is 30% in, so the stagger
-                     is already running as the section arrives rather than
-                     finishing after it has settled. */
-                  viewOptions={{ once: true, amount: 0.3, margin: '0px 0px -80px 0px' }}
-                  transition={{ delay: stepIndex * 0.12, duration: 0.5, ease: 'easeOut' }}
-                  variants={{ hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0 } }}
-                >
-                <div className="bg-brand-cream rounded-[22px] p-7 border border-brand-clay shadow-card-sm relative text-start h-full">
-                  <div className="absolute top-5 end-6 font-display text-3xl font-semibold text-brand-clay">
-                    {step.num}
-                  </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-brand-sage-soft text-brand-sage-hover mb-5">
-                    <Icon className="h-6 w-6" />
-                  </div>
-                  <h3 className="font-display text-lg font-semibold text-brand-charcoal mb-2">{step.title}</h3>
-                  <p className="text-sm text-brand-ink leading-relaxed">{step.desc}</p>
-                </div>
-                </ScrollReveal>
-              );
-            })}
-          </div>
-        </div>
-      </section>
 
       {/* CELEBRATE YOUR BIRTHDAY WITH US — a dark full-bleed band, like every
           other section on the page, instead of a card floating on the cream

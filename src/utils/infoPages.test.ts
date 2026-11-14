@@ -35,6 +35,7 @@ check('isInfoPage rejects non-strings', !isInfoPage(null) && !isInfoPage(3));
 check('reads ?page=terms', readInfoPageParam('?page=terms') === 'terms');
 check('reads without leading ?', readInfoPageParam('page=contact') === 'contact');
 check('reads ?page=privacy', readInfoPageParam('?page=privacy') === 'privacy');
+check('reads ?page=about', readInfoPageParam('?page=about') === 'about');
 check('privacy is a public info page', isInfoPage('privacy'));
 check('reads alongside other params',
   readInfoPageParam('?utm_source=ig&page=cancellation-policy') === 'cancellation-policy');

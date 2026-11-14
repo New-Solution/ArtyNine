@@ -16,7 +16,7 @@
  * infoPages.test.ts.
  */
 
-export const INFO_PAGES = ['cancellation-policy', 'terms', 'privacy', 'contact'] as const;
+export const INFO_PAGES = ['about', 'cancellation-policy', 'terms', 'privacy', 'contact'] as const;
 export type InfoPage = typeof INFO_PAGES[number];
 
 export const INFO_PAGE_PARAM = 'page';
