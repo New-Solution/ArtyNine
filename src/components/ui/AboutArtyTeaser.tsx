@@ -179,10 +179,10 @@ export const AboutArtyTeaser: React.FC<Props> = ({ onLearnMore }) => {
             <button
               type="button"
               onClick={onLearnMore}
-              className="group inline-flex cursor-pointer items-center gap-2.5 rounded-full bg-brand-terracotta px-7 py-4 text-base font-semibold text-brand-cream shadow-button transition-colors duration-200 hover:bg-brand-terracotta-hover active:scale-[0.98]"
+              className="pill-btn pill-btn-primary px-7 py-4 text-base shadow-button"
             >
               <span>{t('Learn more', 'اعرف أكثر')}</span>
-              <ArrowRight className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-1 flip-rtl" />
+              <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
             </button>
           </ScrollReveal>
         </div>

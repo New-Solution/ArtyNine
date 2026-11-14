@@ -462,3 +462,86 @@ balloons {
   }
   .map-pin-pulse { opacity: 0; }
 }
+
+/* =============================================================================
+   PILL BUTTONS — the site's main calls to action.
+   A second colour rises from below on hover instead of the fill snapping, and
+   the small round arrow turns and nudges forward. Current brown/cream palette.
+   Utilities on the same element (padding, width, text size) still win,
+   because these sit in the components layer.
+   ============================================================================= */
+@layer components {
+  .pill-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    overflow: hidden;
+    isolation: isolate;
+    border-radius: 999px;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: color 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s ease;
+  }
+  .pill-btn:active { transform: scale(0.98); }
+
+  .pill-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    transform: translateY(101%);
+    transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @media (hover: hover) {
+    .pill-btn:hover::before { transform: translateY(0); }
+  }
+  .pill-btn:focus-visible::before { transform: translateY(0); }
+
+  /* Brown, charcoal rises. */
+  .pill-btn-primary { background: var(--color-brand-terracotta); color: var(--color-brand-cream); }
+  .pill-btn-primary::before { background: var(--color-brand-charcoal); }
+
+  /* Charcoal, brown rises. */
+  .pill-btn-dark { background: var(--color-brand-charcoal); color: var(--color-brand-cream); }
+  .pill-btn-dark::before { background: var(--color-brand-terracotta); }
+
+  /* Cream (on video and on the sage band), brown rises and the text turns cream. */
+  .pill-btn-light { background: var(--color-brand-cream); color: var(--color-brand-charcoal); }
+  .pill-btn-light::before { background: var(--color-brand-terracotta); }
+  @media (hover: hover) {
+    .pill-btn-light:hover { color: var(--color-brand-cream); }
+  }
+  .pill-btn-light:focus-visible { color: var(--color-brand-cream); }
+
+  /* Small round arrow inside a pill button. The icon inside carries flip-rtl,
+     so in Arabic it points left and the turn mirrors. */
+  .pill-btn-arrow {
+    display: inline-flex;
+    flex: none;
+    height: 1.75rem;
+    width: 1.75rem;
+    margin-inline-end: -0.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 16%, transparent);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .pill-btn:hover .pill-btn-arrow { transform: translateX(3px) rotate(-45deg); }
+    [dir="rtl"] .pill-btn:hover .pill-btn-arrow { transform: translateX(-3px) rotate(45deg); }
+  }
+}
+
+/* Photo strip: always laid out left to right; the component picks the
+   direction it travels in, so it can follow the reading direction. */
+.photo-strip { direction: ltr; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pill-btn, .pill-btn::before, .pill-btn-arrow { transition: none; }
+  .pill-btn:active { transform: none; }
+}

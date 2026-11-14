@@ -15,7 +15,7 @@ import { resolveStaffName } from '../utils/staffAssignments';
 import { useSessionSeats } from '../lib/sessionSeats';
 import { validateBookingForm } from '../utils/validation';
 import { MONTH_NAMES, WEEKDAY_NAMES_SHORT } from '../utils/calendarConfig';
-import { Edit, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Edit, ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { BackButton } from './ui/BackButton';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
@@ -738,13 +738,18 @@ export const WorkshopDetailSection: React.FC = () => {
             <button
               disabled={!selectedSlot}
               onClick={handleBook}
-              className={`w-full py-4 text-white rounded-full font-semibold text-lg shadow-card transition-all duration-150 cursor-pointer ${
-                selectedSlot 
-                  ? 'bg-brand-terracotta shadow-brand-terracotta/20 hover:scale-[1.02] active:scale-[0.98]' 
-                  : 'bg-brand-sand text-brand-charcoal/40 border border-brand-clay cursor-not-allowed shadow-none'
+              className={`w-full py-4 rounded-full font-semibold text-lg ${
+                selectedSlot
+                  ? 'pill-btn pill-btn-primary shadow-card'
+                  : 'bg-brand-sand text-brand-charcoal/40 border border-brand-clay cursor-not-allowed'
               }`}
             >
-              {selectedSlot ? t('Confirm Booking', 'تأكيد الحجز') : t('Select a Time Slot', 'اختر وقتًا')}
+              {selectedSlot ? (
+                <>
+                  <span>{t('Confirm Booking', 'تأكيد الحجز')}</span>
+                  <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
+                </>
+              ) : t('Select a Time Slot', 'اختر وقتًا')}
             </button>
 
             {/* The real policy, from the same Online Payments setting the

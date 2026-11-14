@@ -4,8 +4,9 @@
  */
 
 import React, { useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { useApp } from '../context/AppContext';
-import { Palette, Coffee, Menu, X, User, Calendar, Flame, Instagram, Facebook, Info } from 'lucide-react';
+import { Palette, Coffee, Menu, X, User, Calendar, Flame, Instagram, Facebook, Info, ArrowRight } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { Footer } from './ui/Footer';
 import { LanguageToggle } from './LanguageToggle';
@@ -16,6 +17,7 @@ export const CustomerHeader: React.FC = () => {
   const { customerTab, setCustomerTab, currentUser, setWorkshopsInitialCategory } = useApp();
   const { t } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   const navItems = [
     { id: 'home', label: t('Home', 'الرئيسية'), icon: Coffee },
@@ -62,20 +64,27 @@ export const CustomerHeader: React.FC = () => {
             </span>
           </button>
 
-          {/* Desktop navigation — plain words, weight marks the active one */}
-          <nav className="hidden md:flex items-center gap-4 lg:gap-[30px]">
+          {/* Desktop navigation — a dark pill slides under the active page.
+              Reduced motion: the pill moves without the slide. */}
+          <nav className="hidden md:flex items-center gap-0.5 rounded-full border border-brand-clay bg-brand-cream/70 p-1">
             {navItems.map(item => {
               const isActive = customerTab === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => handleNavClick(item.id)}
-                  className={`text-sm transition-colors cursor-pointer ${
-                    isActive
-                      ? 'font-semibold text-brand-charcoal'
-                      : 'font-normal text-brand-ink hover:text-brand-charcoal'
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`relative z-0 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-medium transition-colors duration-300 cursor-pointer lg:px-4 ${
+                    isActive ? 'text-brand-cream' : 'text-brand-ink hover:text-brand-charcoal'
                   }`}
                 >
+                  {isActive && (
+                    <motion.span
+                      layoutId="customer-nav-pill"
+                      transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 32 }}
+                      className="absolute inset-0 -z-10 rounded-full bg-brand-charcoal"
+                    />
+                  )}
                   {item.label}
                 </button>
               );
@@ -124,9 +133,10 @@ export const CustomerHeader: React.FC = () => {
             })}
             <button
               onClick={() => handleNavClick('workshops')}
-              className="mt-2 w-full cursor-pointer rounded-2xl bg-brand-terracotta px-4 py-3.5 text-sm font-semibold text-brand-cream"
+              className="pill-btn pill-btn-primary mt-2 w-full px-4 py-3.5 text-sm"
             >
-              Book Now
+              <span>{t('Book Now', 'احجز الآن')}</span>
+              <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
             </button>
           </div>
         )}

@@ -21,6 +21,7 @@ import { ResetPasswordSection } from './components/ResetPasswordSection';
 import { PaymentReturnSection } from './components/PaymentReturnSection';
 import { MigrationWarning } from './components/MigrationWarning';
 import { PageTransition } from './components/PageTransition';
+import { PageCurtain } from './components/site/PageCurtain';
 import { CancellationPolicySection } from './components/CancellationPolicySection';
 import { TermsSection } from './components/TermsSection';
 import { PrivacyPolicySection } from './components/PrivacyPolicySection';
@@ -104,6 +105,7 @@ export default function App() {
         <LanguageProvider key="customer" scope="customer">
         <PreferredLangSync />
         <div className="flex flex-col flex-1 justify-between min-h-screen bg-brand-sand">
+          <PageCurtain pageKey={customerTab} />
           <CustomerHeader />
           
           <main className="flex-1 w-full">

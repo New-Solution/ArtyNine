@@ -8,7 +8,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import {
   Cake, CalendarRange, CheckCircle2, Compass, Paintbrush, Sparkles, ArrowLeft,
-  ScrollText
+  ScrollText, ArrowRight
 } from 'lucide-react';
 import { BirthdayPackage } from '../types';
 import { AppImage } from './ui/AppImage';
@@ -140,9 +140,10 @@ export const BirthdayPackagesShowcase: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => onChoose(focused.id)}
-                  className="mt-6 w-full cursor-pointer rounded-full bg-brand-terracotta px-6 py-4 text-sm font-semibold text-brand-cream shadow-button transition-colors hover:bg-brand-terracotta-hover active:scale-[0.99]"
+                  className="pill-btn pill-btn-primary mt-6 w-full px-6 py-4 text-sm shadow-button"
                 >
-                  {t('Choose this package', 'اختر هذه الباقة')}
+                  <span>{t('Choose this package', 'اختر هذه الباقة')}</span>
+                  <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
                 </button>
                 <p className="mt-2.5 text-center text-[11px] text-brand-muted">
                   {focused.depositAmount ?? DEFAULT_DEPOSIT_AMOUNT} {t('SAR deposit confirms your date.', 'ريال عربون يؤكد حجز تاريخك.')}

@@ -27,7 +27,7 @@ import { StudioHours } from './ui/StudioHours';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
 import { useSessionSeats, useRecentBookings } from '../lib/sessionSeats';
-import { Sparkles, ChevronRight, Paintbrush, MousePointerClick, CalendarRange, Gift, Phone, Mail, UserCheck, Star, ArrowLeft, Clock } from 'lucide-react';
+import { Sparkles, ChevronRight, Paintbrush, MousePointerClick, CalendarRange, Gift, Phone, Mail, UserCheck, Star, ArrowLeft, ArrowRight, Clock } from 'lucide-react';
 
 /**
  * The hero video and its poster. Served from /public as plain files, not
@@ -224,9 +224,10 @@ export const HomeSection: React.FC = () => {
               setWorkshopsInitialCategory('All');
               setCustomerTab('workshops');
             }}
-            className="mt-8 w-full cursor-pointer rounded-full bg-brand-cream px-7 py-4 text-base font-semibold text-brand-charcoal shadow-button transition-colors duration-200 hover:bg-brand-clay-soft active:scale-[0.98] sm:w-auto"
+            className="pill-btn pill-btn-light mt-8 w-full px-7 py-4 text-base shadow-button sm:w-auto"
           >
-            {t('Browse Workshops', 'تصفح الورش')}
+            <span>{t('Browse Workshops', 'تصفح الورش')}</span>
+            <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
           </button>
         </div>
       </HeroVideo>
@@ -539,9 +540,10 @@ export const HomeSection: React.FC = () => {
                      lightness, so the button stopped reading as a button. Cream
                      on the band is 6.7:1 and charcoal on cream is 13.9:1.
                      Inverted for THIS instance only. */
-                  className="cursor-pointer rounded-full bg-brand-cream px-6 py-3.5 text-sm font-semibold text-brand-charcoal shadow-button transition-colors hover:bg-brand-clay-soft active:scale-[0.98]"
+                  className="pill-btn pill-btn-light px-6 py-3.5 text-sm shadow-button"
                 >
-                  {t('See packages', 'استعرض الباقات')}
+                  <span>{t('See packages', 'استعرض الباقات')}</span>
+                  <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
                 </button>
               </ScrollReveal>
             </div>
@@ -733,14 +735,14 @@ export const HomeSection: React.FC = () => {
               >
                 <button
                   onClick={() => setShowOwnerContact(prev => !prev)}
-                  className="group cursor-pointer inline-flex items-center justify-center gap-2.5 rounded-full bg-brand-charcoal px-7 py-4 text-base font-semibold text-brand-cream shadow-button transition-colors duration-200 hover:bg-brand-terracotta active:scale-[0.98]"
+                  className="group pill-btn pill-btn-dark px-7 py-4 text-base shadow-button"
                 >
                   <Sparkles className="h-5 w-5 text-brand-terracotta transition-colors group-hover:text-brand-cream" />
                   <span>{t('Create your own Event', 'أنشئ فعاليتك الخاصة')}</span>
                   {/* Always the forward chevron now: this button only exists on
                       the pitch face, and the way back is the Back control on
                       the contact face rather than a collapse here. */}
-                  <ChevronRight className="h-5 w-5 text-brand-cream/70 transition-transform duration-200 group-hover:translate-x-1 flip-rtl" />
+                  <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
                 </button>
               </ScrollReveal>
             </div>

@@ -12,6 +12,7 @@
  */
 
 import React from 'react';
+import { PhotoStrip } from './site/PhotoStrip';
 import { Disc3, Hand, Palette, Users, Cake, PartyPopper, Coffee, ArrowRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -27,9 +28,26 @@ const rise = (delay = 0) => ({
   variants: { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0 } }
 });
 
+/** The café's own photographs for the "From the studio" strip. */
+const STUDIO_PHOTOS: { file: string; en: string; ar: string }[] = [
+  { file: 'studio-01.jpg', en: 'Underglaze bottles beside a wall of fired colour test tiles', ar: 'زجاجات ألوان بجانب جدار من بلاطات اختبار الألوان المحروقة' },
+  { file: 'studio-02.jpg', en: 'Hands trimming a terracotta pot on the wheel', ar: 'يدان تشذّبان إناءً فخاريًا على العجلة' },
+  { file: 'studio-03.jpg', en: 'Throwing a bowl on the potter’s wheel', ar: 'تشكيل وعاء على عجلة الفخار' },
+  { file: 'studio-04.jpg', en: 'Paint-covered studio tables under handmade ceramic lamps', ar: 'طاولات الاستوديو الملوّنة تحت مصابيح خزفية مصنوعة يدويًا' },
+  { file: 'studio-05.jpg', en: 'A studio wall hung with students’ paintings', ar: 'جدار في الاستوديو تزيّنه لوحات المشاركين' },
+  { file: 'studio-06.jpg', en: 'Shelves of glazed cups and bowls made by students', ar: 'رفوف من الأكواب والأوعية المزجّجة من صنع المشاركين' },
+  { file: 'studio-07.jpg', en: 'A hand reaching for brushes in a handmade cup', ar: 'يد تمتد إلى فُرش في كوب مصنوع يدويًا' },
+  { file: 'studio-08.jpg', en: 'An artist holding a loaded paint palette', ar: 'فنان يحمل لوحة ألوان مليئة' },
+  { file: 'studio-09.jpg', en: 'Shaping a cylinder with a rib tool at the wheel', ar: 'تشكيل أسطوانة بأداة التسوية على العجلة' },
+  { file: 'studio-10.jpg', en: 'A visitor looking at the portrait wall', ar: 'زائر يتأمل جدار اللوحات' },
+  { file: 'studio-11.jpg', en: 'A pot spinning on the wheel, seen from above', ar: 'إناء يدور على العجلة من الأعلى' },
+  { file: 'studio-12.jpg', en: 'The pottery room mid-session, trays of thrown cups drying', ar: 'غرفة الفخار أثناء الورشة وصواني الأكواب تجف' }
+];
+
 export const AboutSection: React.FC = () => {
   const { setCustomerTab, setWorkshopsInitialCategory } = useApp();
   const { t } = useLanguage();
+  const studioPhotos = STUDIO_PHOTOS.map(p => ({ src: img(`hero/${p.file}`), alt: t(p.en, p.ar) }));
 
   const browseWorkshops = () => {
     setWorkshopsInitialCategory('All');
@@ -158,6 +176,11 @@ export const AboutSection: React.FC = () => {
         </div>
       </section>
 
+      {/* FROM THE STUDIO — the café's own photographs on a slow moving strip. */}
+      <section className="bg-brand-cream pb-16 md:pb-20" aria-label={t('From the studio', 'من الاستوديو')}>
+        <PhotoStrip photos={studioPhotos} />
+      </section>
+
       {/* OUR SERVICES */}
       <section className="border-y border-brand-clay bg-brand-sand py-16 md:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -207,10 +230,10 @@ export const AboutSection: React.FC = () => {
           <button
             type="button"
             onClick={browseWorkshops}
-            className="group mt-8 inline-flex cursor-pointer items-center gap-2.5 rounded-full bg-brand-terracotta px-7 py-4 text-base font-semibold text-brand-cream shadow-button transition-colors duration-200 hover:bg-brand-terracotta-hover active:scale-[0.98]"
+            className="pill-btn pill-btn-primary mt-8 px-7 py-4 text-base shadow-button"
           >
             <span>{t('Browse Workshops', 'تصفح الورش')}</span>
-            <ArrowRight className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-1 flip-rtl" />
+            <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
           </button>
         </ScrollReveal>
       </section>
