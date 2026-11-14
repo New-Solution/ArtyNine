@@ -59,7 +59,7 @@ export const CustomerHeader: React.FC = () => {
             {/* Just the tagline now — the logo already reads "Arty Café".
                 It is a single line, so it centres against the logo rather
                 than sitting where the top line of the old two-line block was. */}
-            <span className="text-[10px] font-medium uppercase leading-none tracking-[0.14em] text-brand-sage md:hidden lg:inline">
+            <span className="text-[10px] font-medium uppercase leading-none tracking-[0.14em] text-brand-sage hidden lg:inline">
               Jeddah Art &amp; Clay
             </span>
           </button>
