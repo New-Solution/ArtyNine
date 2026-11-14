@@ -12,3 +12,6 @@ supabase/.temp/
 
 # Local database backups (supabase db dump) — never commit
 backup_*.sql
+
+# Raw source video — only the compressed public/media/arty-hero.mp4 is committed
+*.mov
