@@ -800,8 +800,11 @@ export const HomeSection: React.FC = () => {
               className="relative text-start lg:min-h-[26rem] lg:flex lg:flex-col lg:justify-center"
             >
               {/* Same five/seven split as the pitch: the heading holds the
-                  narrow column, the details take the wider one. */}
-              <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12 lg:gap-14">
+                  narrow column, the details take the wider one. From lg the
+                  two columns centre on each other, so the contact cards line
+                  up with the icon/heading/text/Back block instead of sitting
+                  at the top with empty sand beneath them. */}
+              <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12 lg:items-center lg:gap-14">
 
                 <div className="lg:col-span-5">
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-terracotta text-brand-cream shrink-0">
@@ -836,7 +839,11 @@ export const HomeSection: React.FC = () => {
                   {/* Cream on sand, where these sub-boxes used to be sand on
                       cream — the tones swap with the background they now sit
                       on so the blocks stay legible. */}
-                  <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+                  {/* Phone: one under the other, below the text. sm–md: side
+                      by side. lg: stacked again in the right column (capped
+                      width, so a short number or address does not float in a
+                      very wide card). */}
+                  <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:max-w-md lg:grid-cols-1">
                     <div className="bg-brand-cream p-5 rounded-2xl border border-brand-clay flex items-start gap-3">
                       <Phone className="h-5 w-5 text-brand-terracotta shrink-0 mt-0.5" />
                       <div className="min-w-0">

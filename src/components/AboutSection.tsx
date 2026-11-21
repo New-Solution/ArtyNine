@@ -33,6 +33,14 @@ const rise = (delay = 0) => ({
   variants: { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0 } }
 });
 
+/**
+ * The same rise for a whole tall section. It fires when 15% is on screen
+ * rather than 25%: on a phone a section can be taller than the screen, and a
+ * higher threshold would hold it invisible for too long. Each section plays
+ * once; ScrollReveal renders it plainly under reduced motion.
+ */
+const sectionRise = () => ({ ...rise(0), viewOptions: { once: true, amount: 0.15 } });
+
 /** The café's own photographs for the "From the studio" strip. */
 const STUDIO_PHOTOS: { file: string; en: string; ar: string }[] = [
   { file: 'studio-01.jpg', en: 'Underglaze bottles beside a wall of fired colour test tiles', ar: 'زجاجات ألوان بجانب جدار من بلاطات اختبار الألوان المحروقة' },
@@ -136,24 +144,25 @@ export const AboutSection: React.FC = () => {
             </svg>
           </ScrollReveal>
 
-          {/* The story */}
-          <div className="text-start">
-            <ScrollReveal {...rise(0.05)}>
+          {/* The story — one reveal for the whole block, a beat after the
+              photos, rather than line by line. */}
+          <ScrollReveal {...rise(0.08)} className="text-start">
+            <div>
               <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-sage rtl:tracking-normal">
                 {t('About Arty', 'عن آرتي')}
               </span>
-            </ScrollReveal>
+            </div>
 
-            <ScrollReveal {...rise(0.12)}>
+            <div>
               <h1 className="mt-3 font-display text-[36px] font-semibold leading-[1.1] text-brand-charcoal sm:text-5xl lg:text-[56px]">
                 <span className="relative inline-block">
                   {t('It Was All A Dream…', 'بدأ كل شيء بحلم…')}
                   <Scribble className="absolute -bottom-3 start-0 h-3 w-2/3 text-brand-sage" />
                 </span>
               </h1>
-            </ScrollReveal>
+            </div>
 
-            <ScrollReveal {...rise(0.2)}>
+            <div>
               <div className="mt-8 space-y-5 text-base leading-[1.8] text-brand-ink sm:text-[17px]">
                 <p>
                   {t(
@@ -174,8 +183,8 @@ export const AboutSection: React.FC = () => {
                   )}
                 </p>
               </div>
-            </ScrollReveal>
-          </div>
+            </div>
+          </ScrollReveal>
         </div>
       </section>
 
@@ -183,7 +192,7 @@ export const AboutSection: React.FC = () => {
           under a heavy top rule on wide screens, stacked on a phone: an
           editorial layout rather than identical icon cards. */}
       <section className="bg-brand-cream pb-16 md:pb-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <ScrollReveal {...sectionRise()} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <h2 className="text-start font-display text-[28px] font-semibold leading-tight text-brand-charcoal md:text-[34px]">
             {t('Our Promise', 'وعدنا')}
           </h2>
@@ -217,12 +226,14 @@ export const AboutSection: React.FC = () => {
               </div>
             ))}
           </div>
-        </div>
+        </ScrollReveal>
       </section>
 
       {/* FROM THE STUDIO — the café's own photographs on a slow moving strip. */}
       <section className="bg-brand-cream pb-16 md:pb-20" aria-label={t('From the studio', 'من الاستوديو')}>
-        <PhotoStrip photos={studioPhotos} />
+        <ScrollReveal {...sectionRise()}>
+          <PhotoStrip photos={studioPhotos} />
+        </ScrollReveal>
       </section>
 
       {/* OUR SERVICES */}
@@ -230,21 +241,19 @@ export const AboutSection: React.FC = () => {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* An editorial list beside one tall photograph, not a grid of
               identical icon cards. Phone: the photo, then the list. */}
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-16">
+          <ScrollReveal {...sectionRise()} className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-16">
             <div className="text-start lg:col-span-5">
               <h2 className="font-display text-[28px] font-semibold leading-tight text-brand-charcoal md:text-[34px]">
                 {t('Our Services', 'خدماتنا')}
               </h2>
               <div className="mt-6 lg:sticky lg:top-28">
-                <ScrollReveal {...rise(0)}>
-                  <img
-                    src={img('hero/studio-11.jpg')}
-                    alt={t('A pot spinning on the wheel, seen from above', 'إناء يدور على العجلة من الأعلى')}
-                    className="aspect-[4/3] w-full rounded-xl object-cover lg:aspect-[4/5]"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </ScrollReveal>
+                <img
+                  src={img('hero/studio-11.jpg')}
+                  alt={t('A pot spinning on the wheel, seen from above', 'إناء يدور على العجلة من الأعلى')}
+                  className="aspect-[4/3] w-full rounded-xl object-cover lg:aspect-[4/5]"
+                  loading="lazy"
+                  decoding="async"
+                />
               </div>
             </div>
 
@@ -268,7 +277,7 @@ export const AboutSection: React.FC = () => {
                 </li>
               ))}
             </ul>
-          </div>
+          </ScrollReveal>
         </div>
       </section>
 
