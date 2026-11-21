@@ -21,10 +21,9 @@ import { Scribble } from './ui/AboutArtyTeaser';
 
 const img = (path: string) => `${import.meta.env.BASE_URL}images/${path}`;
 
-/* PLACEHOLDER — the youngest age for painting and pottery classes, still
-   being confirmed with the client. Shown on the page exactly as "[AGE]" so it
-   cannot ship unnoticed; replace this one value when it is known. */
-const CLASS_MIN_AGE = '[AGE]';
+/* The youngest age for painting and pottery classes, confirmed by the
+   client. Used in "Our Promise" in both languages. */
+const CLASS_MIN_AGE = 7;
 
 const rise = (delay = 0) => ({
   once: true as const,
