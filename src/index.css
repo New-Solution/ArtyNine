@@ -53,7 +53,10 @@ body {
   font-family: var(--font-sans);
   font-size: 16px;
   line-height: 1.7;
-  overflow-x: hidden;
+  /* No overflow-x here: `html { overflow-x: clip }` (phones section below)
+     already stops sideways scrolling. Hidden on body as well made <body> its
+     own scroll container, which silently broke every position: sticky on
+     the site, the header included. */
   -webkit-font-smoothing: antialiased;
 }
 
@@ -534,6 +537,33 @@ balloons {
   @media (hover: hover) and (prefers-reduced-motion: no-preference) {
     .pill-btn:hover .pill-btn-arrow { transform: translateX(3px) rotate(-45deg); }
     [dir="rtl"] .pill-btn:hover .pill-btn-arrow { transform: translateX(-3px) rotate(45deg); }
+  }
+}
+
+/* SECONDARY ACTIONS — e.g. "Learn more". A plain underlined link, so it
+   does not compete with the pill buttons. 44px tall for touch; the underline
+   darkens on hover. In the components layer so utilities still win. */
+@layer components {
+  .text-link {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    font-weight: 600;
+    color: var(--color-brand-charcoal);
+    text-decoration-line: underline;
+    text-decoration-color: var(--color-brand-clay);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 6px;
+    cursor: pointer;
+    transition: text-decoration-color 150ms ease;
+  }
+  @media (hover: hover) {
+    .text-link:hover { text-decoration-color: var(--color-brand-charcoal); }
+  }
+  .text-link:focus-visible {
+    outline: 2px solid var(--color-brand-sage);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 

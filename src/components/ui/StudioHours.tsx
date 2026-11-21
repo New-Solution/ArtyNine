@@ -14,16 +14,22 @@ import React from 'react';
 import { useLanguage } from '../../context/LanguageContext';
 import { STUDIO_HOURS } from '../../utils/studioConfig';
 
-export const StudioHours: React.FC = () => {
+/**
+ * `compact` is the short form for tight spots such as the map badge:
+ * "Daily 5:00 PM – 12:00 AM" / "يوميًا 5:00 مساءً – 12:00 منتصف الليل".
+ * Same hours, no colon, and no leading zero on the hour.
+ */
+export const StudioHours: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const { lang } = useLanguage();
+  const time = (value: string) => (compact ? value.replace(/^0/, '') : value);
   if (lang === 'ar') {
     const h = STUDIO_HOURS.ar;
     return (
       <>
-        يوميًا: <bdi dir="ltr">{h.opens}</bdi> {h.opensPeriod} – <bdi dir="ltr">{h.closes}</bdi> {h.closesPeriod}
+        {compact ? 'يوميًا ' : 'يوميًا: '}<bdi dir="ltr">{time(h.opens)}</bdi> {h.opensPeriod} – <bdi dir="ltr">{time(h.closes)}</bdi> {h.closesPeriod}
       </>
     );
   }
   const h = STUDIO_HOURS.en;
-  return <>Every day: <bdi dir="ltr">{h.opens}</bdi> – <bdi dir="ltr">{h.closes}</bdi></>;
+  return <>{compact ? 'Daily ' : 'Every day: '}<bdi dir="ltr">{time(h.opens)}</bdi> – <bdi dir="ltr">{time(h.closes)}</bdi></>;
 };

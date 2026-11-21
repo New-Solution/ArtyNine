@@ -13,13 +13,18 @@
 
 import React from 'react';
 import { PhotoStrip } from './site/PhotoStrip';
-import { Disc3, Hand, Palette, Users, Cake, PartyPopper, Coffee, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
 import { ScrollReveal } from './ui/ScrollReveal';
 import { Scribble } from './ui/AboutArtyTeaser';
 
 const img = (path: string) => `${import.meta.env.BASE_URL}images/${path}`;
+
+/* PLACEHOLDER — the youngest age for painting and pottery classes, still
+   being confirmed with the client. Shown on the page exactly as "[AGE]" so it
+   cannot ship unnoticed; replace this one value when it is known. */
+const CLASS_MIN_AGE = '[AGE]';
 
 const rise = (delay = 0) => ({
   once: true as const,
@@ -56,40 +61,38 @@ export const AboutSection: React.FC = () => {
 
   /* [CONFIRM WITH CLIENT] — the services list and the one-liners below are a
      starting point. Add, remove or reword entries once the client confirms
-     what Arty offers. */
-  const services = [
+     what Arty offers. A row carries a small photo only where the studio has a
+     real one for it; the others are text, which is honest rather than a
+     stock stand-in. */
+  const services: { title: string; desc: string; photo?: string }[] = [
     {
-      icon: Disc3,
       title: t('Pottery wheel', 'عجلة الفخار'),
-      desc: t('Center, throw and shape your own clay pieces on the wheel.', 'شكّل قطعك الفخارية بنفسك على عجلة الفخار.')
+      desc: t('Center, throw and shape your own clay pieces on the wheel.', 'شكّل قطعك الفخارية بنفسك على عجلة الفخار.'),
+      photo: img('hero/studio-09.jpg')
     },
     {
-      icon: Hand,
       title: t('Hand-building', 'التشكيل اليدوي'),
       desc: t('Pinch, coil and slab clay into anything you can imagine.', 'شكّل الطين بيديك بالقرص واللفائف والشرائح كما تتخيّل.')
     },
     {
-      icon: Palette,
       title: t('Painting', 'الرسم'),
-      desc: t('Canvas, acrylics and colour, guided step by step.', 'لوحات وألوان أكريليك، مع توجيه خطوة بخطوة.')
+      desc: t('Canvas, acrylics and colour, guided step by step.', 'لوحات وألوان أكريليك، مع توجيه خطوة بخطوة.'),
+      photo: img('hero/studio-08.jpg')
     },
     {
-      icon: Users,
       title: t('Workshops', 'الورش'),
       desc: t('Small, hands-on classes for every age and skill level.', 'ورش عملية بأعداد محدودة لكل الأعمار والمستويات.')
     },
     {
-      icon: Cake,
       title: t('Birthday parties', 'حفلات أعياد الميلاد'),
       desc: t('Creative celebrations with art, balloons and cake.', 'احتفالات إبداعية بالفن والبالونات والكيك.')
     },
     {
-      icon: PartyPopper,
       title: t('Private events', 'الفعاليات الخاصة'),
-      desc: t('Team-building, gatherings and custom events, made to measure.', 'بناء الفريق والتجمعات والفعاليات المخصصة حسب طلبك.')
+      desc: t('Team-building, gatherings and custom events, made to measure.', 'بناء الفريق والتجمعات والفعاليات المخصصة حسب طلبك.'),
+      photo: img('custom-events.jpg')
     },
     {
-      icon: Coffee,
       title: t('Café', 'المقهى'),
       desc: t('Fresh coffee and a cozy corner while you create.', 'قهوة طازجة وركن دافئ بينما تبدع.')
     }
@@ -176,6 +179,47 @@ export const AboutSection: React.FC = () => {
         </div>
       </section>
 
+      {/* OUR PROMISE — the client's own words, in three parts. Three columns
+          under a heavy top rule on wide screens, stacked on a phone: an
+          editorial layout rather than identical icon cards. */}
+      <section className="bg-brand-cream pb-16 md:pb-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <h2 className="text-start font-display text-[28px] font-semibold leading-tight text-brand-charcoal md:text-[34px]">
+            {t('Our Promise', 'وعدنا')}
+          </h2>
+          <div className="mt-8 grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-8 lg:gap-12">
+            {[
+              {
+                title: t('Our Customers', 'عملاؤنا'),
+                body: t(
+                  `You don’t have to be an artist to visit us. We believe everyone has an artistic eye for something, and we’re here to help you find your inner artist. Our painting and pottery classes start from age ${CLASS_MIN_AGE}, and there’s no upper age limit.`,
+                  `ما يحتاج تكون فنان عشان تزورنا. نؤمن إن كل شخص عنده عين فنية بمجال معين، وإحنا هنا نساعدك تكتشف الفنان اللي فيك. دروس الرسم والفخار عندنا من عمر ${CLASS_MIN_AGE} سنوات، ومهما كان عمرك.`
+                )
+              },
+              {
+                title: t('The Arty Family', 'عائلة آرتي'),
+                body: t(
+                  'Our team is carefully chosen to give you a fun, passionate and professional experience. Everyone on the team is skilled in painting, pottery, arts and crafts or coffee art. We’re more like a family.',
+                  'فريقنا مختار بعناية عشان يقدم لك تجربة ممتعة وشغوفة واحترافية. كل الفريق متخصص في الرسم، الفخار، الفنون اليدوية أو فن القهوة. إحنا أقرب لعائلة.'
+                )
+              },
+              {
+                title: t('Our Goal', 'هدفنا'),
+                body: t(
+                  'To show our community that art is more than beautiful colours. It’s about being creative, connecting with each other and building a community: a therapeutic, judgement-free space.',
+                  'نبي نوصل لمجتمعنا إن الفن أكثر من ألوان حلوة. الفن إبداع، وتواصل مع بعض، وبناء مجتمع، ومساحة علاجية خالية من الأحكام.'
+                )
+              }
+            ].map(part => (
+              <div key={part.title} className="border-t-2 border-brand-charcoal pt-5 text-start">
+                <h3 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">{part.title}</h3>
+                <p className="mt-3 text-[15px] leading-[1.8] text-brand-ink sm:text-base">{part.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* FROM THE STUDIO — the café's own photographs on a slow moving strip. */}
       <section className="bg-brand-cream pb-16 md:pb-20" aria-label={t('From the studio', 'من الاستوديو')}>
         <PhotoStrip photos={studioPhotos} />
@@ -184,37 +228,47 @@ export const AboutSection: React.FC = () => {
       {/* OUR SERVICES */}
       <section className="border-y border-brand-clay bg-brand-sand py-16 md:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-xl text-center">
-            <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-sage rtl:tracking-normal">
-              {t('What we do', 'ماذا نقدّم')}
-            </span>
-            <ScrollReveal {...rise(0)}>
-              <h2 className="mt-2 font-display text-3xl font-semibold text-brand-charcoal md:text-[38px]">
+          {/* An editorial list beside one tall photograph, not a grid of
+              identical icon cards. Phone: the photo, then the list. */}
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-16">
+            <div className="text-start lg:col-span-5">
+              <h2 className="font-display text-[28px] font-semibold leading-tight text-brand-charcoal md:text-[34px]">
                 {t('Our Services', 'خدماتنا')}
               </h2>
-            </ScrollReveal>
-          </div>
-
-          {/* Flex rather than grid, so a short last row centres instead of
-              leaving an empty slot. */}
-          <ul className="mt-10 flex flex-wrap justify-center gap-4 sm:gap-5">
-            {services.map((service, i) => {
-              const Icon = service.icon;
-              return (
-                <ScrollReveal key={service.title} as="li" {...rise(Math.min(i, 4) * 0.07)} className="w-full sm:w-[calc(50%-10px)] lg:w-[calc(25%-15px)]">
-                  <div className="flex h-full items-start gap-4 rounded-[22px] border border-brand-clay bg-brand-cream p-5 text-start shadow-card-sm transition-transform duration-300 motion-safe:hover:-translate-y-1 sm:flex-col sm:gap-0 sm:p-6">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] bg-brand-sage-soft text-brand-sage-hover sm:mb-5">
-                      <Icon className="h-6 w-6" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-display text-lg font-semibold text-brand-charcoal">{service.title}</h3>
-                      <p className="mt-1.5 text-sm leading-relaxed text-brand-ink">{service.desc}</p>
-                    </div>
-                  </div>
+              <div className="mt-6 lg:sticky lg:top-28">
+                <ScrollReveal {...rise(0)}>
+                  <img
+                    src={img('hero/studio-11.jpg')}
+                    alt={t('A pot spinning on the wheel, seen from above', 'إناء يدور على العجلة من الأعلى')}
+                    className="aspect-[4/3] w-full rounded-xl object-cover lg:aspect-[4/5]"
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </ScrollReveal>
-              );
-            })}
-          </ul>
+              </div>
+            </div>
+
+            <ul className="border-t border-brand-clay lg:col-span-7 lg:mt-14">
+              {services.map(service => (
+                <li key={service.title} className="flex items-center gap-5 border-b border-brand-clay py-5 text-start sm:py-6">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">{service.title}</h3>
+                    <p className="mt-1 text-[15px] leading-relaxed text-brand-ink">{service.desc}</p>
+                  </div>
+                  {service.photo && (
+                    /* The row's title already says what it shows. */
+                    <img
+                      src={service.photo}
+                      alt=""
+                      className="h-16 w-16 shrink-0 rounded-xl object-cover sm:h-20 sm:w-24"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 

@@ -27,7 +27,7 @@ import { StudioHours } from './ui/StudioHours';
 import { localizedText } from '../utils/localizedText';
 import { durationLabel, ageRangeLabel } from '../utils/workshopMetaLabel';
 import { useSessionSeats, useRecentBookings } from '../lib/sessionSeats';
-import { Sparkles, ChevronRight, Paintbrush, MousePointerClick, CalendarRange, Gift, Phone, Mail, UserCheck, Star, ArrowLeft, ArrowRight, Clock } from 'lucide-react';
+import { Sparkles, ChevronRight, Paintbrush, MousePointerClick, CalendarRange, Gift, Phone, Mail, UserCheck, ArrowLeft, ArrowRight, Clock } from 'lucide-react';
 
 /**
  * The hero video and its poster. Served from /public as plain files, not
@@ -867,18 +867,6 @@ export const HomeSection: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="bg-brand-cream p-5 rounded-2xl border border-brand-clay text-[13px] text-brand-ink space-y-1.5">
-                    <p className="font-semibold text-brand-charcoal flex items-center gap-1.5">
-                      <Star className="h-3.5 w-3.5 text-brand-terracotta fill-brand-terracotta" />
-                      {t('Bespoke Custom Event Planning', 'تخطيط فعاليات مخصص بالكامل')}
-                    </p>
-                    <p className="leading-[1.7]">
-                      {t(
-                        'Have a unique theme, adult pottery party, corporate team-building, or birthday celebration in mind? Reach out via WhatsApp or email for custom quotes, private venue buyout availability, and tailored artist arrangements!',
-                        'هل لديك فكرة مميزة، حفلة فخار للبالغين، نشاط بناء فريق للشركات، أو احتفال عيد ميلاد؟ تواصل معنا عبر واتساب أو البريد الإلكتروني للحصول على عروض أسعار مخصصة، وحجز الاستوديو بالكامل، وترتيبات فنية مصممة خصيصًا لك!'
-                      )}
-                    </p>
-                  </div>
                 </div>
 
               </div>

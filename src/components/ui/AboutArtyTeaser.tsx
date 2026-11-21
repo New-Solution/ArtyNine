@@ -13,7 +13,6 @@
 
 import React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowRight } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { ScrollReveal } from './ScrollReveal';
 
@@ -162,9 +161,10 @@ export const AboutArtyTeaser: React.FC<Props> = ({ onLearnMore }) => {
             variants={{ hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0 } }}
           >
             <p className="mt-6 max-w-lg text-base leading-[1.75] text-brand-ink sm:text-[17px]">
+              {/* The client's own words. */}
               {t(
-                'Arty: your creative destination for art, expression and inspiration. An interactive art space offering hands-on workshops in pottery, painting and other crafts, in a warm and welcoming environment that blends learning, fun and self-expression.',
-                'آرتي: وجهتك الإبداعية للفن والتعبير والإلهام. مساحة فنية تفاعلية تقدّم ورشًا عملية في الفخار والرسم وحِرف يدوية أخرى، في أجواء دافئة ومرحِّبة تجمع بين التعلّم والمتعة والتعبير عن الذات.'
+                'It’s not your regular neighbourhood coffee shop. Enjoy your coffee while you watch artists and customers creating and learning, or be part of it yourself. We provide all the art supplies, and there’s always a list of workshops and daily activities to join.',
+                'مو مجرد كوفي شوب عادي بالحي. استمتع بقهوتك وأنت تشوف الفنانين والزوار يرسمون ويتعلمون، أو شارك معهم. نوفر لك كل أدوات الفن، وعندنا دايماً ورش وأنشطة يومية تقدر تنضم لها.'
               )}
             </p>
           </ScrollReveal>
@@ -176,13 +176,10 @@ export const AboutArtyTeaser: React.FC<Props> = ({ onLearnMore }) => {
             variants={{ hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0 } }}
             className="mt-8"
           >
-            <button
-              type="button"
-              onClick={onLearnMore}
-              className="pill-btn pill-btn-primary w-full px-7 py-4 text-base shadow-button sm:w-auto"
-            >
-              <span>{t('Learn more', 'اعرف أكثر')}</span>
-              <span className="pill-btn-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4 flip-rtl" /></span>
+            {/* A secondary action, so a plain underlined link rather than
+                another pill competing with the page's main calls to action. */}
+            <button type="button" onClick={onLearnMore} className="text-link">
+              {t('Learn more', 'اعرف أكثر')}
             </button>
           </ScrollReveal>
         </div>

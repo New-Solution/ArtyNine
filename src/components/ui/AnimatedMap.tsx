@@ -6,6 +6,7 @@
 import React from 'react';
 import { MapPin } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { StudioHours } from './StudioHours';
 
 /**
  * A stylised map of the studio's block — drawn, not embedded.
@@ -68,10 +69,11 @@ export const AnimatedMap: React.FC<AnimatedMapProps> = ({
       </span>
     </div>
 
-    {/* Open badge */}
-    <div className="absolute end-4 top-4 inline-flex items-center gap-2 rounded-full bg-brand-cream/95 px-3 py-1.5 text-[11px] font-semibold text-brand-charcoal shadow-card-sm backdrop-blur-sm">
-      <span className="map-live-dot h-2 w-2 rounded-full bg-brand-sage" />
-      <span>{t('Open today', 'مفتوح اليوم')}</span>
+    {/* Opening hours — plain text from studioConfig, the same every day.
+        It replaced an always-on "Open today", which was true only during
+        opening hours. No live open/closed logic. */}
+    <div className="absolute end-4 top-4 inline-flex items-center rounded-full bg-brand-cream/95 px-3 py-1.5 text-[11px] font-semibold text-brand-charcoal shadow-card-sm backdrop-blur-sm">
+      <span><StudioHours compact /></span>
     </div>
 
     {/* Place */}
